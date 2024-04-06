@@ -7,4 +7,7 @@ __all__ = ['ensemble',
            'neuralnet',
            'rkhs',
            'shape',
-           'dgps']
+           'dgps',
+           'dgps_mediated',
+           'dgps_nested',
+           'tsls']
