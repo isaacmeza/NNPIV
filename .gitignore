@@ -106,3 +106,9 @@ ENV/
 # Data files
 /Data/
 /Data/**
+/Data/*
+
+# Virtual Environment
+/nnpiv_venv/
+/nnpiv_venv/**
+/nnpiv_venv/*

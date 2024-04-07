@@ -12,7 +12,7 @@
 
 
 # load modules
-module load python/3.10.9-fasrc01
+module load python/3.10.13-fasrc01
 mamba activate python_envgpu
 
 
