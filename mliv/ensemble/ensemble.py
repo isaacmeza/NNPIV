@@ -203,15 +203,19 @@ class EnsembleIVL2:
         Z, T, Y = self._check_input(Z, T, Y)
         n = Y.shape[0] 
         delta = self._get_delta(n)
-        adversary = self._get_new_adversary().fit(Z, Y.flatten())
+        adversary = []
+        adversary.append(self._get_new_adversary().fit(Z, Y.flatten()))
+        f = 0
         learners = []
-        h = np.zeros(Y.shape)
+        h = 0
         for it in range(self.n_iter):
-            test = adversary.predict(Z).flatten() / (alpha * delta ** 2)
-            learners.append(self._get_new_learner().fit(T, test))
+            f = f * it / (it + 1)
+            f += adversary[it].predict(Z).flatten() / ((alpha * delta ** 2) * (it + 1))
+            learners.append(self._get_new_learner().fit(T, f))
             h = h * it / (it + 1)
             h += learners[it].predict(T).flatten() / (it + 1)
-            adversary.fit(Z, Y - h)
+            adversary.append(self._get_new_adversary().fit(Z, Y - h))
+
 
         self.learners = learners
         return self

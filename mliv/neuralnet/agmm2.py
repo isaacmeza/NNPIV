@@ -34,7 +34,7 @@ def add_weight_decay(net, l2_value, skip_list=()):
 class _BaseAGMM2:
 
     def _pretrain(self, A, B, C, D, Y,
-                  learner_l2, adversary_l2,
+                  learner_l2, adversary_l2, adversary_norm_reg, learner_norm_reg,
                   learner_lr, adversary_lr, n_epochs, bs, train_learner_every, train_adversary_every,
                   warm_start, model_dir, device, verbose, add_sample_inds=False):
         """ Prepares the variables required to begin training.
@@ -61,9 +61,13 @@ class _BaseAGMM2:
         self.adversary2 = self.adversary2.to(device)
 
         if not warm_start:
-            self.learner.apply(lambda m: (
+            self.learnerh.apply(lambda m: (
                 m.reset_parameters() if hasattr(m, 'reset_parameters') else None))
-            self.adversary.apply(lambda m: (
+            self.learnerg.apply(lambda m: (
+                m.reset_parameters() if hasattr(m, 'reset_parameters') else None))
+            self.adversary1.apply(lambda m: (
+                m.reset_parameters() if hasattr(m, 'reset_parameters') else None))
+            self.adversary2.apply(lambda m: (
                 m.reset_parameters() if hasattr(m, 'reset_parameters') else None))
 
         beta1 = 0.
@@ -157,49 +161,56 @@ class _BaseSupLossAGMM2(_BaseAGMM2):
                 Ab, Bb, Cb, Db, Yb = map(lambda x: x.to(device), (Ab, Bb, Cb, Db, Yb))
 
                 if (it % train_learner_every == 0):
+                    # Set models to training mode
                     self.learnerh.train()
                     self.learnerg.train()
 
+                    # Forward passes
                     hat_g = self.learnerg(Ab)
                     hat_h = self.learnerh(Bb)
-                
                     hat_f_ = self.adversary1(Db)
                     hat_f = self.adversary2(Cb)
 
+                    # Calculate losses for each learner
                     G_loss = torch.mean(2 * (hat_g - Yb) * hat_f_) + torch.mean(2 * (hat_h - hat_g) * hat_f)
-                    G_loss += learner_norm_reg * torch.mean(hat_g**2)
-
+                    G_loss += learner_norm_reg * 0
                     H_loss = torch.mean(2 * (hat_h - hat_g) * hat_f)
-                    H_loss += learner_norm_reg * torch.mean(hat_h**2)
+                    H_loss += learner_norm_reg * 0
 
+                    # Backpropagate and update for learnerg
                     self.optimizerg.zero_grad()
-                    G_loss.backward()
+                    G_loss.backward(retain_graph=True)  # Retain graph for subsequent use in H_loss
                     self.optimizerg.step()
                     self.learnerg.eval()
 
+                    # Backpropagate and update for learnerh
                     self.optimizerh.zero_grad()
                     H_loss.backward()
                     self.optimizerh.step()
                     self.learnerh.eval()
 
                 if (it % train_adversary_every == 0):
+                    # Set models to training mode
                     self.adversary1.train()
                     self.adversary2.train()
 
+                    # Since models are being reused, ensure data is consistent or re-compute if necessary
                     hat_g = self.learnerg(Ab)
                     hat_h = self.learnerh(Bb)
-                
                     hat_f_ = self.adversary1(Db)
                     hat_f = self.adversary2(Cb)
 
+                    # Calculate losses for each adversary
                     F_loss = - torch.mean(2 * (hat_h - hat_g) * hat_f) + torch.mean(hat_f**2)
                     F__loss = - torch.mean(2 * (hat_g - Yb) * hat_f_) + torch.mean(hat_f_**2)
 
+                    # Update adversary2
                     self.optimizerf.zero_grad()
-                    F_loss.backward()
+                    F_loss.backward(retain_graph=True)
                     self.optimizerf.step()
                     self.adversary2.eval()
 
+                    # Update adversary1
                     self.optimizerf_.zero_grad()
                     F__loss.backward()
                     self.optimizerf_.step()
@@ -230,3 +241,125 @@ class AGMM2(_BaseSupLossAGMM2):
         # which adversary parameters to not ell2 penalize
         self.skip_list = []
 
+
+class _BaseSupLossAGMM2L2(_BaseAGMM2):
+
+    def fit(self, A, B, C, D, Y,
+            learner_l2=1e-3, adversary_l2=1e-4, adversary_norm_reg=1e-3, learner_norm_reg=1e-3,
+            learner_lr=0.001, adversary_lr=0.001, n_epochs=100, bs=100, train_learner_every=1, train_adversary_every=1,
+            warm_start=False, model_dir='.', device=None, verbose=0):
+        """
+        Parameters
+        ----------
+        A : endogenous vars for first stage
+        B : endogenous vars for second stage
+        C : instrument vars for second stage
+        D : instrument vars for first stage
+        Y : outcome
+        learner_l2, adversary_l2 : l2_regularization of parameters of learner and adversary
+        adversary_norm_reg : adversary norm regularization weight
+        learner_norm_reg : learner norm regularization weight
+        learner_lr : learning rate of the Adam optimizer for learner
+        adversary_lr : learning rate of the Adam optimizer for adversary
+        n_epochs : how many passes over the data
+        bs : batch size
+        train_learner_every : after how many training iterations of the adversary should we train the learner
+        warm_start : if False then network parameters are initialized at the beginning, otherwise we start
+            from their current weights
+        model_dir : folder where to store the learned models after every epoch
+        """
+
+        A, B, C, D, Y = self._pretrain(A, B, C, D, Y,
+                                 learner_l2, adversary_l2, adversary_norm_reg, learner_norm_reg,
+                                 learner_lr, adversary_lr, n_epochs, bs, train_learner_every, train_adversary_every,
+                                 warm_start, model_dir, device, verbose)
+
+        for epoch in range(n_epochs):
+
+            if self.verbose > 0:
+                print("Epoch #", epoch, sep="")
+
+            for it, (Ab, Bb, Cb, Db, Yb) in enumerate(self.train_dl):
+
+                Ab, Bb, Cb, Db, Yb = map(lambda x: x.to(device), (Ab, Bb, Cb, Db, Yb))
+
+                if (it % train_learner_every == 0):
+                    # Set models to training mode
+                    self.learnerh.train()
+                    self.learnerg.train()
+
+                    # Forward passes
+                    hat_g = self.learnerg(Ab)
+                    hat_h = self.learnerh(Bb)
+                    hat_f_ = self.adversary1(Db)
+                    hat_f = self.adversary2(Cb)
+
+                    # Calculate losses for each learner
+                    G_loss = torch.mean(2 * (hat_g - Yb) * hat_f_) + torch.mean(2 * (hat_h - hat_g) * hat_f)
+                    G_loss += learner_norm_reg * torch.mean(hat_g**2)
+                    H_loss = torch.mean(2 * (hat_h - hat_g) * hat_f)
+                    H_loss += learner_norm_reg * torch.mean(hat_h**2)
+
+                    # Backpropagate and update for learnerg
+                    self.optimizerg.zero_grad()
+                    G_loss.backward(retain_graph=True)  # Retain graph for subsequent use in H_loss
+                    self.optimizerg.step()
+                    self.learnerg.eval()
+
+                    # Backpropagate and update for learnerh
+                    self.optimizerh.zero_grad()
+                    H_loss.backward()
+                    self.optimizerh.step()
+                    self.learnerh.eval()
+
+                if (it % train_adversary_every == 0):
+                    # Set models to training mode
+                    self.adversary1.train()
+                    self.adversary2.train()
+
+                    # Since models are being reused, ensure data is consistent or re-compute if necessary
+                    hat_g = self.learnerg(Ab)
+                    hat_h = self.learnerh(Bb)
+                    hat_f_ = self.adversary1(Db)
+                    hat_f = self.adversary2(Cb)
+
+                    # Calculate losses for each adversary
+                    F_loss = - torch.mean(2 * (hat_h - hat_g) * hat_f) + torch.mean(hat_f**2)
+                    F__loss = - torch.mean(2 * (hat_g - Yb) * hat_f_) + torch.mean(hat_f_**2)
+
+                    # Update adversary2
+                    self.optimizerf.zero_grad()
+                    F_loss.backward(retain_graph=True)
+                    self.optimizerf.step()
+                    self.adversary2.eval()
+
+                    # Update adversary1
+                    self.optimizerf_.zero_grad()
+                    F__loss.backward()
+                    self.optimizerf_.step()
+                    self.adversary1.eval()
+
+            torch.save(self.learnerg, os.path.join(
+                self.model_dir, "g_epoch{}".format(epoch)))
+            torch.save(self.learnerh, os.path.join(
+                self.model_dir, "h_epoch{}".format(epoch)))
+
+        return self
+    
+
+class AGMM2L2(_BaseSupLossAGMM2L2):
+
+    def __init__(self, learnerh, learnerg, adversary1, adversary2):
+        """
+        Parameters
+        ----------
+        learner : a pytorch neural net module
+        adversary : a pytorch neural net module
+        """
+        self.learnerh = learnerh
+        self.learnerg = learnerg
+        self.adversary1 = adversary1
+        self.adversary2 = adversary2
+
+        # which adversary parameters to not ell2 penalize
+        self.skip_list = []

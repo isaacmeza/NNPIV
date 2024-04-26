@@ -50,11 +50,11 @@ class Ensemble2IV:
         A, B, C, D, Y = self._check_input(A, B, C, D, Y)
         max_value = self.max_abs_value
         adversary1 = self._get_new_adversary().fit(D, -Y.flatten())
-        adversary2 = self._get_new_adversary().fit(C, np.zeros(Y.shape))
+        adversary2 = self._get_new_adversary().fit(C, -Y.flatten())
         learnersg = []
         learnersh = []
-        h = np.zeros(Y.shape)
-        g = np.zeros(Y.shape)
+        h = 0
+        g = 0
         for it in range(self.n_iter + self.n_burn_in):
             v = -adversary2.predict(C).flatten()
             v_ = -adversary1.predict(D).flatten() - v
@@ -80,8 +80,8 @@ class Ensemble2IV:
             adversary2.fit(C, h - g)
             adversary1.fit(D, g - Y)
 
-        self.learnersg = learnersg[self.burn_in:]
-        self.learnersh = learnersh[self.burn_in:]
+        self.learnersg = learnersg[self.n_burn_in:]
+        self.learnersh = learnersh[self.n_burn_in:]
         return self
 
     def predict(self, B, *args):
@@ -106,13 +106,13 @@ class Ensemble2IV:
 class Ensemble2IVL2:
 
     def __init__(self, adversary='auto', learnerg='auto', learnerh='auto',
-                 n_iter=100, burn_in=10, delta_scale='auto', delta_exp='auto', CV = False, 
+                 n_iter=100, n_burn_in=10, delta_scale='auto', delta_exp='auto', CV = False, 
                  alpha_scales='auto', n_alphas=30, n_folds=5):
         self.adversary = adversary
         self.learnerg = learnerg
         self.learnerh = learnerh
         self.n_iter = n_iter
-        self.n_burn_in = burn_in
+        self.n_burn_in = n_burn_in
         self.delta_scale = delta_scale
         self.delta_exp = delta_exp
         self.CV = CV
@@ -196,8 +196,8 @@ class Ensemble2IVL2:
         adversary2 = self._get_new_adversary().fit(C, np.zeros(Y.shape))
         learnersg = []
         learnersh = []
-        h = np.zeros(Y.shape)
-        g = np.zeros(Y.shape)
+        h = 0
+        g = 0
         for it in range(self.n_iter + self.n_burn_in):
             v = -adversary2.predict(C).flatten() / (alpha * delta ** 2)
             v_ = -adversary1.predict(D).flatten() / (alpha * delta ** 2) - v
@@ -210,8 +210,8 @@ class Ensemble2IVL2:
             adversary2.fit(C, h - g)
             adversary1.fit(D, g - Y)
 
-        self.learnersg = learnersg[self.burn_in:]
-        self.learnersh = learnersh[self.burn_in:]
+        self.learnersg = learnersg[self.n_burn_in:]
+        self.learnersh = learnersh[self.n_burn_in:]
         return self
 
     def predict(self, B, *args):
