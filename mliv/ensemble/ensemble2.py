@@ -199,8 +199,15 @@ class Ensemble2IVL2:
         h = 0
         g = 0
         for it in range(self.n_iter + self.n_burn_in):
-            v = -adversary2.predict(C).flatten() / (alpha * delta ** 2)
-            v_ = -adversary1.predict(D).flatten() / (alpha * delta ** 2) - v
+            if it < self.n_burn_in:
+                v = -adversary2.predict(C).flatten()
+                v_ = -adversary1.predict(D).flatten() - v
+            else:
+                iter = it - self.n_burn_in
+                v = v * iter / (iter + 1)
+                v_ = v_ * iter / (iter + 1)
+                v += -adversary2.predict(C).flatten() / (alpha * delta ** 2)
+                v_ += -adversary1.predict(D).flatten() / (alpha * delta ** 2) - v
             learnersg.append(self._get_new_learnerg().fit(A, v_))
             learnersh.append(self._get_new_learnerh().fit(B, v))
             g = g * it / (it + 1)

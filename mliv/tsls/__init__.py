@@ -1,9 +1,8 @@
 # Copyright (c) Microsoft Corporation.
 # Licensed under the MIT License.
 
-from .tsls import regtsls, tsls, exptsls
+from .tsls import regtsls, tsls
 
 
 __all__ = ['regtsls',
-           'tsls',
-           'exptsls']
+           'tsls']

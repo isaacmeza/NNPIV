@@ -112,3 +112,6 @@ ENV/
 /nnpiv_venv/
 /nnpiv_venv/**
 /nnpiv_venv/*
+
+# Tempfile folders
+tmp*/
