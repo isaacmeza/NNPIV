@@ -225,8 +225,8 @@ class DML_longterm:
             bridge_1_d0_hat = bridge_1_d0_hat[ind_0]
 
             if self.nn_2==True:
-                B1_1 = torch.cat((X0_1),1)
-                B1_0 = torch.cat((X0_0),1)
+                B1_1 = X0_1
+                B1_0 = X0_0
             else:            
                 B1_1 = _transform_poly(X0_1,self.opts)
                 B1_0 = _transform_poly(X0_0,self.opts)
@@ -298,8 +298,8 @@ class DML_longterm:
             bridge_1_hat_0 = bridge_1_hat[ind_0]
 
             if self.nn_2==True:
-                B1_1 = torch.cat((X0_1),1)
-                B1_0 = torch.cat((X0_0),1)
+                B1_1 = X0_1
+                B1_0 = X0_0
             else:            
                 B1_1 = _transform_poly(X0_1,self.opts)
                 B1_0 = _transform_poly(X0_0,self.opts)
@@ -480,10 +480,10 @@ class DML_longterm:
          
         if self.estimator == 'MR' or self.estimator == 'OR':
             if self.nn_2 == True:
-                test_X = tuple(map(lambda x: torch.Tensor(x), [test_X]))
-                nu_1_hat = nu_1.predict(torch.cat((test_X), 1).to(device),
+                test_X = torch.Tensor(test_X)
+                nu_1_hat = nu_1.predict(test_X.to(device),
                                             model='avg', burn_in=_get(self.opts, 'burnin', 0)).reshape(-1, 1)
-                nu_0_hat = nu_0.predict(torch.cat((test_X), 1).to(device),
+                nu_0_hat = nu_0.predict(test_X.to(device),
                                             model='avg', burn_in=_get(self.opts, 'burnin', 0)).reshape(-1, 1)
             else:
                 nu_1_hat = nu_1.predict(_transform_poly(test_X, opts=self.opts)).reshape(-1, 1)

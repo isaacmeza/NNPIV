@@ -154,7 +154,7 @@ class DML_npiv:
 
             #First stage
             if self.nn_1==True:
-                Y, X, Z = map(lambda x: torch.Tensor(x), [Y, X, Z]) 
+                Y, X, Z = tuple(map(lambda x: torch.Tensor(x), [Y, X, Z]))
 
             if self.nn_1==False:
                 X = _transform_poly(X,self.opts)
@@ -171,7 +171,7 @@ class DML_npiv:
                 else:
                     bridge_[d] = copy.deepcopy(model_1).fit(Z1, X1, Y1)
         
-        return copy.deepcopy(bridge_[1]), copy.deepcopy(bridge_[0])
+        return bridge_[1], bridge_[0]
 
 
     def _propensity_score(self, X, W, D):
@@ -228,7 +228,7 @@ class DML_npiv:
 
             #First stage
             if self.nn_q1==True:
-                ps_hat_1, ps_hat_0, W, X, Z = map(lambda x: torch.Tensor(x), [ps_hat_1, ps_hat_0, W, X, Z]) 
+                ps_hat_1, ps_hat_0, W, X, Z = tuple(map(lambda x: torch.Tensor(x), [ps_hat_1, ps_hat_0, W, X, Z]))
 
             if self.nn_q1==True:
                 A2 = torch.cat((X,W),1)
@@ -244,7 +244,7 @@ class DML_npiv:
                 bridge_[0] = copy.deepcopy(model_q1).fit(A2, A1, 1/ps_hat_0)
                 bridge_[1] = copy.deepcopy(model_q1).fit(A2, A1, 1/ps_hat_1)
            
-        return copy.deepcopy(bridge_[1]), copy.deepcopy(bridge_[0])
+        return bridge_[1], bridge_[0]
 
 
     def _process_fold(self, fold_idx, train_data, test_data):
@@ -267,10 +267,10 @@ class DML_npiv:
         # Evaluate the estimated moment functions using test_data
         if self.estimator == 'MR' or self.estimator == 'OR':
             if self.nn_1 == True:
-                test_X = tuple(map(lambda x: torch.Tensor(x), [test_X]))
-                gamma_1_hat = gamma_1.predict(torch.cat((test_X), 1).to(device),
+                test_X = torch.Tensor(test_X)
+                gamma_1_hat = gamma_1.predict(test_X.to(device),
                                             model='avg', burn_in=_get(self.opts, 'burnin', 0)).reshape(-1, 1)
-                gamma_0_hat = gamma_0.predict(torch.cat((test_X), 1).to(device),
+                gamma_0_hat = gamma_0.predict(test_X.to(device),
                                             model='avg', burn_in=_get(self.opts, 'burnin', 0)).reshape(-1, 1)
             else:
                 gamma_1_hat = gamma_1.predict(_transform_poly(test_X, opts=self.opts)).reshape(-1, 1)
