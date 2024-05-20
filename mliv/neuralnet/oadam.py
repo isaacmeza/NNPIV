@@ -40,17 +40,15 @@ class OAdam(Optimizer):
         if not 0.0 <= eps:
             raise ValueError("Invalid epsilon value: {}".format(eps))
         if not 0.0 <= betas[0] < 1.0:
-            raise ValueError(
-                "Invalid beta parameter at index 0: {}".format(betas[0]))
+            raise ValueError("Invalid beta parameter at index 0: {}".format(betas[0]))
         if not 0.0 <= betas[1] < 1.0:
-            raise ValueError(
-                "Invalid beta parameter at index 1: {}".format(betas[1]))
+            raise ValueError("Invalid beta parameter at index 1: {}".format(betas[1]))
         defaults = dict(lr=lr, betas=betas, eps=eps,
                         weight_decay=weight_decay, amsgrad=amsgrad)
         super(OAdam, self).__init__(params, defaults)
 
     def __setstate__(self, state):
-        super(Adam, self).__setstate__(state)
+        super(OAdam, self).__setstate__(state)
         for group in self.param_groups:
             group.setdefault('amsgrad', False)
 
@@ -71,8 +69,7 @@ class OAdam(Optimizer):
                     continue
                 grad = p.grad.data
                 if grad.is_sparse:
-                    raise RuntimeError(
-                        'Adam does not support sparse gradients, please consider SparseAdam instead')
+                    raise RuntimeError('Adam does not support sparse gradients, please consider SparseAdam instead')
                 amsgrad = group['amsgrad']
 
                 state = self.state[p]
@@ -96,20 +93,18 @@ class OAdam(Optimizer):
                 state['step'] += 1
 
                 if group['weight_decay'] != 0:
-                    grad.add_(group['weight_decay'], p.data)
+                    grad.add_(p.data, alpha=group['weight_decay'])
 
                 bias_correction1 = 1 - beta1 ** state['step']
                 bias_correction2 = 1 - beta2 ** state['step']
-                step_size = group['lr'] * \
-                    math.sqrt(bias_correction2) / bias_correction1
+                step_size = group['lr'] * math.sqrt(bias_correction2) / bias_correction1
 
                 # Optimistic update :)
-                p.data.addcdiv_(step_size, exp_avg,
-                                exp_avg_sq.sqrt().add(group['eps']))
+                p.data.addcdiv_(exp_avg, exp_avg_sq.sqrt().add(group['eps']), value=step_size)
 
                 # Decay the first and second moment running average coefficient
-                exp_avg.mul_(beta1).add_(1 - beta1, grad)
-                exp_avg_sq.mul_(beta2).addcmul_(1 - beta2, grad, grad)
+                exp_avg.mul_(beta1).add_(grad, alpha=1 - beta1)
+                exp_avg_sq.mul_(beta2).addcmul_(grad, grad, value=1 - beta2)
                 if amsgrad:
                     # Maintains the maximum of all 2nd moment running avg. till now
                     torch.max(max_exp_avg_sq, exp_avg_sq, out=max_exp_avg_sq)
@@ -118,6 +113,6 @@ class OAdam(Optimizer):
                 else:
                     denom = exp_avg_sq.sqrt().add_(group['eps'])
 
-                p.data.addcdiv_(-2.0 * step_size, exp_avg, denom)
+                p.data.addcdiv_(exp_avg, denom, value=-2.0 * step_size)
 
         return loss

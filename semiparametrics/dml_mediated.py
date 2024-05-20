@@ -381,7 +381,7 @@ class DML_mediated:
         # Evaluate the estimated moment functions using test_data
         if self.estimator == 'MR' or self.estimator == 'hybrid':
             if self.nn_1 == True:
-                test_M, test_X, test_W = map(lambda x: torch.Tensor(x), [test_M, test_X, test_W])
+                test_M, test_X, test_W = tuple(map(lambda x: torch.Tensor(x), [test_M, test_X, test_W]))
                 gamma_1_hat = gamma_1.predict(torch.cat((test_M, test_X, test_W), 1).to(device),
                                             model='avg', burn_in=_get(self.opts, 'burnin', 0)).reshape(-1, 1)
             else:
@@ -389,7 +389,7 @@ class DML_mediated:
 
         if self.estimator == 'MR' or self.estimator == 'OR':
             if self.nn_2 == True:
-                test_X, test_W = map(lambda x: torch.Tensor(x), [test_X, test_W])
+                test_X, test_W = tuple(map(lambda x: torch.Tensor(x), [test_X, test_W]))
                 gamma_0_hat = gamma_0.predict(torch.cat((test_X, test_W), 1).to(device),
                                             model='avg', burn_in=_get(self.opts, 'burnin', 0)).reshape(-1, 1)
             else:
@@ -397,7 +397,7 @@ class DML_mediated:
 
         if self.estimator == 'MR' or self.estimator == 'hybrid':
             if self.nn_q1 == True:
-                test_X, test_Z = map(lambda x: torch.Tensor(x), [test_X, test_Z])
+                test_X, test_Z = tuple(map(lambda x: torch.Tensor(x), [test_X, test_Z]))
                 q_0_hat = q_0.predict(torch.cat((test_X, test_Z), 1).to(device),
                                     model='avg', burn_in=_get(self.opts, 'burnin', 0)).reshape(-1, 1)
             else:
@@ -405,7 +405,7 @@ class DML_mediated:
 
         if self.estimator == 'MR' or self.estimator == 'IPW':
             if self.nn_q2 == True:
-                test_M, test_X, test_Z = map(lambda x: torch.Tensor(x), [test_M, test_X, test_Z])
+                test_M, test_X, test_Z = tuple(map(lambda x: torch.Tensor(x), [test_M, test_X, test_Z]))
                 q_1_hat = q_1.predict(torch.cat((test_M, test_X, test_Z), 1).to(device),
                                     model='avg', burn_in=_get(self.opts, 'burnin', 0)).reshape(-1, 1)
             else:

@@ -267,19 +267,18 @@ class DML_npiv:
         # Evaluate the estimated moment functions using test_data
         if self.estimator == 'MR' or self.estimator == 'OR':
             if self.nn_1 == True:
-                test_X = map(lambda x: torch.Tensor(x), [test_X])
+                test_X = tuple(map(lambda x: torch.Tensor(x), [test_X]))
                 gamma_1_hat = gamma_1.predict(torch.cat((test_X), 1).to(device),
                                             model='avg', burn_in=_get(self.opts, 'burnin', 0)).reshape(-1, 1)
                 gamma_0_hat = gamma_0.predict(torch.cat((test_X), 1).to(device),
                                             model='avg', burn_in=_get(self.opts, 'burnin', 0)).reshape(-1, 1)
-        
             else:
                 gamma_1_hat = gamma_1.predict(_transform_poly(test_X, opts=self.opts)).reshape(-1, 1)
                 gamma_0_hat = gamma_0.predict(_transform_poly(test_X, opts=self.opts)).reshape(-1, 1)
 
         if self.estimator == 'MR' or self.estimator == 'IPW':
             if self.nn_q1 == True:
-                test_X, test_Z = map(lambda x: torch.Tensor(x), [test_X, test_Z])
+                test_X, test_Z = tuple(map(lambda x: torch.Tensor(x), [test_X, test_Z]))
                 q_1_hat = q_1.predict(torch.cat((test_X, test_Z), 1).to(device),
                                     model='avg', burn_in=_get(self.opts, 'burnin', 0)).reshape(-1, 1)
                 q_0_hat = q_0.predict(torch.cat((test_X, test_Z), 1).to(device),

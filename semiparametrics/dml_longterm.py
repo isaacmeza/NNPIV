@@ -456,7 +456,7 @@ class DML_longterm:
             # Evaluate the estimated moment functions using test_data
             if self.estimator == 'MR' or self.estimator == 'hybrid':
                 if self.nn_1 == True:
-                    test_S, test_X = map(lambda x: torch.Tensor(x), [test_S, test_X])
+                    test_S, test_X = tuple(map(lambda x: torch.Tensor(x), [test_S, test_X]))
                     delta_d0_hat = delta_0.predict(torch.cat((test_S, test_X), 1).to(device),
                                                 model='avg', burn_in=_get(self.opts, 'burnin', 0)).reshape(-1, 1)
                     delta_d1_hat = delta_d0_hat
@@ -469,7 +469,7 @@ class DML_longterm:
             # Evaluate the estimated moment functions using test_data
             if self.estimator == 'MR' or self.estimator == 'hybrid':
                 if self.nn_1 == True:
-                    test_S, test_X = map(lambda x: torch.Tensor(x), [test_S, test_X])
+                    test_S, test_X = tuple(map(lambda x: torch.Tensor(x), [test_S, test_X]))
                     delta_d1_hat = delta_d1.predict(torch.cat((test_S, test_X), 1).to(device),
                                                 model='avg', burn_in=_get(self.opts, 'burnin', 0)).reshape(-1, 1)
                     delta_d0_hat = delta_d0.predict(torch.cat((test_S, test_X), 1).to(device),
@@ -480,7 +480,7 @@ class DML_longterm:
          
         if self.estimator == 'MR' or self.estimator == 'OR':
             if self.nn_2 == True:
-                test_X = map(lambda x: torch.Tensor(x), [test_X])
+                test_X = tuple(map(lambda x: torch.Tensor(x), [test_X]))
                 nu_1_hat = nu_1.predict(torch.cat((test_X), 1).to(device),
                                             model='avg', burn_in=_get(self.opts, 'burnin', 0)).reshape(-1, 1)
                 nu_0_hat = nu_0.predict(torch.cat((test_X), 1).to(device),

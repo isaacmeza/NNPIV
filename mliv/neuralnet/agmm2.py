@@ -49,7 +49,7 @@ class _BaseAGMM2:
         self.n_epochs = n_epochs
 
         if add_sample_inds:
-            sample_inds = torch.tensor(np.arange(Y.shape[0]))
+            sample_inds = torch.arange(Y.shape[0]).clone().detach()
             self.train_ds = TensorDataset(A, B, C, D, Y, sample_inds)
         else:
             self.train_ds = TensorDataset(A, B, C, D, Y)
