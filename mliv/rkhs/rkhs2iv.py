@@ -66,19 +66,34 @@ class RKHS2IV(_BaseRKHS2IV):
         self.delta_scale = delta_scale  # worst-case critical value of RKHS spaces
         self.delta_exp = delta_exp
 
-    def fit(self, A, B, C, D, Y):
+    def fit(self, A, B, C, D, Y, subsetted=False, subset_ind1=None, subset_ind2=None):
+        if subsetted:
+            if subset_ind1 is None:
+                raise ValueError("subset_ind1 must be provided when subsetted is True")
+            if len(subset_ind1) != len(Y):
+                raise ValueError("subset_ind1 must have the same length as Y")
+
         n = Y.shape[0]  # number of samples
+        Id = np.eye(n)
+
+        if subsetted:
+            ind1 = np.where(subset_ind1==1)[0] 
+            ind2 = np.where(subset_ind2==1)[0] if subset_ind2 is not None else np.where(subset_ind1==0)[0] 
+            Ip = Id[ind1, :]
+            Iq = Id[ind2, :] 
+            p = Ip.shape[0]
+            q = Iq.shape[0]
+
         delta = self._get_delta(n)
         alpha = delta**4
 
         Ka = self._get_kernel(A)
         Kb = self._get_kernel(B)
-        Kc = self._get_kernel(C)
-        Kd = self._get_kernel(D)
+        Kc = self._get_kernel(C) if not subsetted else Iq @ self._get_kernel(C) @ Iq.T
+        Kd = self._get_kernel(D) if not subsetted else Ip @ self._get_kernel(D) @ Ip.T
 
-        Id = np.eye(n)
-        Pc = np.linalg.pinv(Kc / n + Id) @ Kc
-        Pd = np.linalg.pinv(Kd / n + Id) @ Kd
+        Pc = np.linalg.pinv(Kc / n + Id) @ Kc if not subsetted else (n/q) * Iq.T @ np.linalg.pinv(Kc / q + np.eye(q)) @ Kc @ Iq
+        Pd = np.linalg.pinv(Kd / n + Id) @ Kd if not subsetted else (n/p) * Ip.T @ np.linalg.pinv(Kd / p + np.eye(p)) @ Kd @ Ip
 
         KbPcKa_inv = np.linalg.pinv(Kb @ Pc @ Ka)
 
@@ -131,7 +146,6 @@ class RKHS2IVCV(RKHS2IV):
         self.alpha_scales = alpha_scales  
         self.n_alphas = n_alphas
         self.cv = cv
-
 
     def fit(self, A, B, C, D, Y):
         n = Y.shape[0]
@@ -217,19 +231,34 @@ class RKHS2IVL2(_BaseRKHS2IV):
         self.delta_scale = delta_scale  # worst-case critical value of RKHS spaces
         self.delta_exp = delta_exp
 
-    def fit(self, A, B, C, D, Y):
+    def fit(self, A, B, C, D, Y, subsetted=False, subset_ind1=None, subset_ind2=None):
+        if subsetted:
+            if subset_ind1 is None:
+                raise ValueError("subset_ind1 must be provided when subsetted is True")
+            if len(subset_ind1) != len(Y):
+                raise ValueError("subset_ind1 must have the same length as Y")
+
         n = Y.shape[0]  # number of samples
+        Id = np.eye(n)
+
+        if subsetted:
+            ind1 = np.where(subset_ind1==1)[0] 
+            ind2 = np.where(subset_ind2==1)[0] if subset_ind2 is not None else np.where(subset_ind1==0)[0] 
+            Ip = Id[ind1, :]
+            Iq = Id[ind2, :] 
+            p = Ip.shape[0]
+            q = Iq.shape[0]
+
         delta = self._get_delta(n)
         alpha = delta**4
 
         Ka = self._get_kernel(A)
         Kb = self._get_kernel(B)
-        Kc = self._get_kernel(C)
-        Kd = self._get_kernel(D)
+        Kc = self._get_kernel(C) if not subsetted else Iq @ self._get_kernel(C) @ Iq.T
+        Kd = self._get_kernel(D) if not subsetted else Ip @ self._get_kernel(D) @ Ip.T
 
-        Id = np.eye(n)
-        Pc = np.linalg.pinv(Kc / n) @ Kc
-        Pd = np.linalg.pinv(Kd / n) @ Kd
+        Pc = np.linalg.pinv(Kc / n) @ Kc if not subsetted else (n/q) * Iq.T @ np.linalg.pinv(Kc / q) @ Kc @ Iq
+        Pd = np.linalg.pinv(Kd / n) @ Kd if not subsetted else (n/p) * Ip.T @ np.linalg.pinv(Kd / p) @ Kd @ Ip
 
         KbPcKa_inv = np.linalg.pinv(Kb @ Pc @ Ka)
 
@@ -282,7 +311,6 @@ class RKHS2IVL2CV(RKHS2IVL2):
         self.alpha_scales = alpha_scales  
         self.n_alphas = n_alphas
         self.cv = cv
-
 
     def fit(self, A, B, C, D, Y):
         n = Y.shape[0]
