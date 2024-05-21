@@ -46,8 +46,16 @@ class Ensemble2IV:
         return RandomForestClassifier(n_estimators=5, max_depth=2, criterion='gini',
                                       bootstrap=False, min_samples_leaf=40, min_impurity_decrease=0.001) if self.learnerh == 'auto' else clone(self.learnerh)
 
-    def fit(self, A, B, C, D, Y):
+    def fit(self, A, B, C, D, Y, subsetted=False, subset_ind1=None, subset_ind2=None):
         A, B, C, D, Y = self._check_input(A, B, C, D, Y)
+        if subsetted:
+            if subset_ind1 is None:
+                raise ValueError("subset_ind1 must be provided when subsetted is True")
+            if len(subset_ind1) != len(Y):
+                raise ValueError("subset_ind1 must have the same length as Y")
+            subset_ind1 = subset_ind1.flatten()
+            subset_ind2 = subset_ind2.flatten() if subset_ind2 is not None else 1 - subset_ind1 
+
         max_value = self.max_abs_value
         adversary1 = self._get_new_adversary().fit(D, -Y.flatten())
         adversary2 = self._get_new_adversary().fit(C, -Y.flatten())
@@ -55,9 +63,10 @@ class Ensemble2IV:
         learnersh = []
         h = 0
         g = 0
+
         for it in range(self.n_iter + self.n_burn_in):
-            v = -adversary2.predict(C).flatten()
-            v_ = -adversary1.predict(D).flatten() - v
+            v = -adversary2.predict(C).flatten() if not subsetted else -adversary2.predict(C).flatten() * subset_ind2
+            v_ = -adversary1.predict(D).flatten() - v if not subsetted else -adversary1.predict(D).flatten() * subset_ind1 - v
             aug_A = np.vstack([np.zeros((2, A.shape[1])), A])
             aug_B = np.vstack([np.zeros((2, B.shape[1])), B])
             lbl_v = np.concatenate(([-1, 1], _mysign(v)))
@@ -185,11 +194,19 @@ class Ensemble2IVL2:
         
         return best_alpha
  
-    def fit(self, A, B, C, D, Y, alpha=1.0, cross_validating=False):
+    def fit(self, A, B, C, D, Y, alpha=1.0, cross_validating=False, subsetted=False, subset_ind1=None, subset_ind2=None): 
         if self.CV and not cross_validating:
             alpha = self._cross_validate_alpha(A, B, C, D, Y)
 
         A, B, C, D, Y = self._check_input(A, B, C, D, Y)
+        if subsetted:
+            if subset_ind1 is None:
+                raise ValueError("subset_ind1 must be provided when subsetted is True")
+            if len(subset_ind1) != len(Y):
+                raise ValueError("subset_ind1 must have the same length as Y")
+            subset_ind1 = subset_ind1.flatten()
+            subset_ind2 = subset_ind2.flatten() if subset_ind2 is not None else 1 - subset_ind1
+
         n = Y.shape[0] 
         delta = self._get_delta(n)
         adversary1 = self._get_new_adversary().fit(D, -Y.flatten())
@@ -200,14 +217,14 @@ class Ensemble2IVL2:
         g = 0
         for it in range(self.n_iter + self.n_burn_in):
             if it < self.n_burn_in:
-                v = -adversary2.predict(C).flatten()
-                v_ = -adversary1.predict(D).flatten() - v
+                v = -adversary2.predict(C).flatten() if not subsetted else -adversary2.predict(C).flatten() * subset_ind2
+                v_ = -adversary1.predict(D).flatten() - v if not subsetted else -adversary1.predict(D).flatten() * subset_ind1 - v
             else:
                 iter = it - self.n_burn_in
                 v = v * iter / (iter + 1)
                 v_ = v_ * iter / (iter + 1)
-                v += -adversary2.predict(C).flatten() / (alpha * delta ** 2)
-                v_ += -adversary1.predict(D).flatten() / (alpha * delta ** 2) - v
+                v += -adversary2.predict(C).flatten()/ (alpha * delta ** 2) if not subsetted else -adversary2.predict(C).flatten() * subset_ind2 / (alpha * delta ** 2)
+                v_ += -adversary1.predict(D).flatten()/ (alpha * delta ** 2) - v if not subsetted else -adversary1.predict(D).flatten() * subset_ind1 / (alpha * delta ** 2) - v
             learnersg.append(self._get_new_learnerg().fit(A, v_))
             learnersh.append(self._get_new_learnerh().fit(B, v))
             g = g * it / (it + 1)
