@@ -92,8 +92,8 @@ class RKHS2IV(_BaseRKHS2IV):
         Kc = self._get_kernel(C) if not subsetted else Iq @ self._get_kernel(C) @ Iq.T
         Kd = self._get_kernel(D) if not subsetted else Ip @ self._get_kernel(D) @ Ip.T
 
-        Pc = np.linalg.pinv(Kc / n + Id) @ Kc if not subsetted else (n/q) * Iq.T @ np.linalg.pinv(Kc / q + np.eye(q)) @ Kc @ Iq
-        Pd = np.linalg.pinv(Kd / n + Id) @ Kd if not subsetted else (n/p) * Ip.T @ np.linalg.pinv(Kd / p + np.eye(p)) @ Kd @ Ip
+        Pc = np.linalg.pinv(Kc + Id) @ Kc if not subsetted else (n/q) * Iq.T @ np.linalg.pinv(Kc + Iq @ Iq.T) @ Kc @ Iq
+        Pd = np.linalg.pinv(Kd + Id) @ Kd if not subsetted else (n/p) * Ip.T @ np.linalg.pinv(Kd + Ip @ Ip.T) @ Kd @ Ip
 
         KbPcKa_inv = np.linalg.pinv(Kb @ Pc @ Ka)
 
@@ -147,17 +147,31 @@ class RKHS2IVCV(RKHS2IV):
         self.n_alphas = n_alphas
         self.cv = cv
 
-    def fit(self, A, B, C, D, Y):
-        n = Y.shape[0]
+    def fit(self, A, B, C, D, Y, subsetted=False, subset_ind1=None, subset_ind2=None):
+        if subsetted:
+            if subset_ind1 is None:
+                raise ValueError("subset_ind1 must be provided when subsetted is True")
+            if len(subset_ind1) != len(Y):
+                raise ValueError("subset_ind1 must have the same length as Y")
+
+        n = Y.shape[0]  # number of samples
+        Id = np.eye(n)
+
+        if subsetted:
+            ind1 = np.where(subset_ind1==1)[0] 
+            ind2 = np.where(subset_ind2==1)[0] if subset_ind2 is not None else np.where(subset_ind1==0)[0] 
+            Ip = Id[ind1, :]
+            Iq = Id[ind2, :] 
+            p = Ip.shape[0]
+            q = Iq.shape[0]
 
         Ka = self._get_kernel(A)
         Kb = self._get_kernel(B)
         Kc = self._get_kernel(C)
         Kd = self._get_kernel(D)
 
-        Id = np.eye(n)
-        Pc = np.linalg.pinv(Kc / n + Id) @ Kc
-        Pd = np.linalg.pinv(Kd / n + Id) @ Kd
+        Pc = np.linalg.pinv(Kc + Id) @ Kc if not subsetted else (n/q) * Iq.T @ np.linalg.pinv(Iq @ Kc @ Iq.T + Iq @ Iq.T) @ Iq @ Kc @ Iq.T @ Iq
+        Pd = np.linalg.pinv(Kd + Id) @ Kd if not subsetted else (n/p) * Ip.T @ np.linalg.pinv(Ip @ Kd @ Ip.T + Ip @ Ip.T) @ Ip @ Kd @ Ip.T @ Ip
 
         alpha_scales = self._get_alpha_scales()
         n_train = n * (self.cv - 1) / self.cv
@@ -170,14 +184,31 @@ class RKHS2IVCV(RKHS2IV):
             Kb_train = Kb[np.ix_(train, train)]
             Id_train = np.eye(len(train))
             Id_test = np.eye(len(test))
-            Pc_train = np.linalg.pinv(Kc[np.ix_(train, train)] / n_train + Id_train) @ Kc[np.ix_(train, train)]
-            Pd_train = np.linalg.pinv(Kd[np.ix_(train, train)] / n_train + Id_train) @ Kd[np.ix_(train, train)]
-            Pc_test = np.linalg.pinv(Kc[np.ix_(test, test)] / n_test + Id_test) @ Kc[np.ix_(test, test)]
-            Pd_test = np.linalg.pinv(Kd[np.ix_(test, test)] / n_test + Id_test) @ Kd[np.ix_(test, test)]
-            
+            if not subsetted:
+                Pc_train = np.linalg.pinv(Kc[np.ix_(train, train)] + Id_train) @ Kc[np.ix_(train, train)]
+                Pd_train = np.linalg.pinv(Kd[np.ix_(train, train)] + Id_train) @ Kd[np.ix_(train, train)]
+                Pc_test = np.linalg.pinv(Kc[np.ix_(test, test)] + Id_test) @ Kc[np.ix_(test, test)]
+                Pd_test = np.linalg.pinv(Kd[np.ix_(test, test)] + Id_test) @ Kd[np.ix_(test, test)]
+            else:
+                Iq_train = Iq[train, :]
+                Ip_train = Ip[train, :]
+                Iq_test = Iq[test, :]
+                Ip_test = Ip[test, :]
+                q_train = Iq_train.shape[0]
+                p_train = Ip_train.shape[0]
+                q_test = Iq_test.shape[0]
+                p_test = Ip_test.shape[0]
+                Kc_train = Iq_train @ Kc[np.ix_(train, train)] @ Iq_train.T
+                Kd_train = Ip_train @ Kd[np.ix_(train, train)] @ Ip_train.T
+                Kc_test = Iq_test @ Kc[np.ix_(test, test)] @ Iq_test.T  
+                Kd_test = Ip_test @ Kd[np.ix_(test, test)] @ Ip_test.T
+                Pc_train = (n_train/q_train) * Iq_train.T @ np.linalg.pinv(Kc_train + Iq_train @ Iq_train.T) @ Kc_train @ Iq_train
+                Pd_train = (n_train/p_train) * Ip_train.T @ np.linalg.pinv(Kd_train + Ip_train @ Ip_train.T) @ Kd_train @ Ip_train
+                Pc_test = (n_test/q_test) * Iq_test.T @ np.linalg.pinv(Kc_test + Iq_test @ Iq_test.T) @ Kc_test @ Iq_test
+                Pd_test = (n_test/p_test) * Ip_test.T @ np.linalg.pinv(Kd_test + Ip_test @ Ip_test.T) @ Kd_test @ Ip_test
+
             KbPcKa_inv = np.linalg.pinv(Kb_train @ Pc_train @ Ka_train)
             B_train = Ka_train @ Pd_train @ Y[train]
-            C_train = KbPcKa_inv @ Kb_train 
 
             scores.append([])
             for alpha_scale in alpha_scales:
@@ -257,8 +288,8 @@ class RKHS2IVL2(_BaseRKHS2IV):
         Kc = self._get_kernel(C) if not subsetted else Iq @ self._get_kernel(C) @ Iq.T
         Kd = self._get_kernel(D) if not subsetted else Ip @ self._get_kernel(D) @ Ip.T
 
-        Pc = np.linalg.pinv(Kc / n) @ Kc if not subsetted else (n/q) * Iq.T @ np.linalg.pinv(Kc / q) @ Kc @ Iq
-        Pd = np.linalg.pinv(Kd / n) @ Kd if not subsetted else (n/p) * Ip.T @ np.linalg.pinv(Kd / p) @ Kd @ Ip
+        Pc = np.linalg.pinv(Kc) @ Kc if not subsetted else (n/q) * Iq.T @ np.linalg.pinv(Kc) @ Kc @ Iq
+        Pd = np.linalg.pinv(Kd) @ Kd if not subsetted else (n/p) * Ip.T @ np.linalg.pinv(Kd) @ Kd @ Ip
 
         KbPcKa_inv = np.linalg.pinv(Kb @ Pc @ Ka)
 
@@ -312,17 +343,31 @@ class RKHS2IVL2CV(RKHS2IVL2):
         self.n_alphas = n_alphas
         self.cv = cv
 
-    def fit(self, A, B, C, D, Y):
-        n = Y.shape[0]
+    def fit(self, A, B, C, D, Y, subsetted=False, subset_ind1=None, subset_ind2=None):
+        if subsetted:
+            if subset_ind1 is None:
+                raise ValueError("subset_ind1 must be provided when subsetted is True")
+            if len(subset_ind1) != len(Y):
+                raise ValueError("subset_ind1 must have the same length as Y")
+
+        n = Y.shape[0]  # number of samples
+        Id = np.eye(n)
+
+        if subsetted:
+            ind1 = np.where(subset_ind1==1)[0] 
+            ind2 = np.where(subset_ind2==1)[0] if subset_ind2 is not None else np.where(subset_ind1==0)[0] 
+            Ip = Id[ind1, :]
+            Iq = Id[ind2, :] 
+            p = Ip.shape[0]
+            q = Iq.shape[0]
 
         Ka = self._get_kernel(A)
         Kb = self._get_kernel(B)
         Kc = self._get_kernel(C)
         Kd = self._get_kernel(D)
 
-        Id = np.eye(n)
-        Pc = np.linalg.pinv(Kc / n) @ Kc
-        Pd = np.linalg.pinv(Kd / n) @ Kd
+        Pc = np.linalg.pinv(Kc) @ Kc if not subsetted else (n/q) * Iq.T @ np.linalg.pinv(Iq @ Kc @ Iq.T) @ Iq @ Kc @ Iq.T @ Iq
+        Pd = np.linalg.pinv(Kd) @ Kd if not subsetted else (n/p) * Ip.T @ np.linalg.pinv(Ip @ Kd @ Ip.T) @ Ip @ Kd @ Ip.T @ Ip
 
         alpha_scales = self._get_alpha_scales()
         n_train = n * (self.cv - 1) / self.cv
@@ -334,11 +379,30 @@ class RKHS2IVL2CV(RKHS2IVL2):
             Ka_train = Ka[np.ix_(train, train)]
             Kb_train = Kb[np.ix_(train, train)]
             Id_train = np.eye(len(train))
-            Pc_train = np.linalg.pinv(Kc[np.ix_(train, train)] / n_train) @ Kc[np.ix_(train, train)]
-            Pd_train = np.linalg.pinv(Kd[np.ix_(train, train)] / n_train) @ Kd[np.ix_(train, train)]
-            Pc_test = np.linalg.pinv(Kc[np.ix_(test, test)] / n_test) @ Kc[np.ix_(test, test)]
-            Pd_test = np.linalg.pinv(Kd[np.ix_(test, test)] / n_test) @ Kd[np.ix_(test, test)]
-            
+
+            if not subsetted:
+                Pc_train = np.linalg.pinv(Kc[np.ix_(train, train)]) @ Kc[np.ix_(train, train)]
+                Pd_train = np.linalg.pinv(Kd[np.ix_(train, train)]) @ Kd[np.ix_(train, train)]
+                Pc_test = np.linalg.pinv(Kc[np.ix_(test, test)]) @ Kc[np.ix_(test, test)]
+                Pd_test = np.linalg.pinv(Kd[np.ix_(test, test)]) @ Kd[np.ix_(test, test)]
+            else:
+                Iq_train = Iq[train, :]
+                Ip_train = Ip[train, :]
+                Iq_test = Iq[test, :]
+                Ip_test = Ip[test, :]
+                q_train = Iq_train.shape[0]
+                p_train = Ip_train.shape[0]
+                q_test = Iq_test.shape[0]
+                p_test = Ip_test.shape[0]
+                Kc_train = Iq_train @ Kc[np.ix_(train, train)] @ Iq_train.T
+                Kd_train = Ip_train @ Kd[np.ix_(train, train)] @ Ip_train.T
+                Kc_test = Iq_test @ Kc[np.ix_(test, test)] @ Iq_test.T  
+                Kd_test = Ip_test @ Kd[np.ix_(test, test)] @ Ip_test.T
+                Pc_train = (n_train/q_train) * Iq_train.T @ np.linalg.pinv(Kc_train) @ Kc_train @ Iq_train
+                Pd_train = (n_train/p_train) * Ip_train.T @ np.linalg.pinv(Kd_train) @ Kd_train @ Ip_train
+                Pc_test = (n_test/q_test) * Iq_test.T @ np.linalg.pinv(Kc_test) @ Kc_test @ Iq_test
+                Pd_test = (n_test/p_test) * Ip_test.T @ np.linalg.pinv(Kd_test) @ Kd_test @ Ip_test
+
             KbPcKa_inv = np.linalg.pinv(Kb_train @ Pc_train @ Ka_train)
             W = Ka_train @ KbPcKa_inv @ Kb_train
             B_train = Ka_train @ Pd_train @ Y[train]

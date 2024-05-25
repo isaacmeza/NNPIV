@@ -212,7 +212,7 @@ class RKHSIVL2(_BaseRKHSIV):
         Kh = self._get_kernel(T)
         Kf = self._get_kernel(Z)
 
-        M = np.linalg.pinv(Kf / n + np.eye(n)) @ Kf
+        M = np.linalg.pinv(Kf) @ Kf
         self.T = T.copy()
         self.a = np.linalg.pinv(Kh @ M @ Kh + alpha * Kh @ Kh) @ Kh @ M @ Y
         return self
@@ -263,8 +263,8 @@ class RKHSIVL2CV(RKHSIVL2):
         delta = self._get_delta(n)
         scores = []
         for it, (train, test) in enumerate(KFold(n_splits=self.cv).split(Z)):
-            M_train = np.linalg.pinv(Kf[np.ix_(train, train)] / n_train + np.eye(len(train))) @ Kf[np.ix_(train, train)]
-            M_test = np.linalg.pinv(Kf[np.ix_(test, test)] / n_test + np.eye(len(test))) @ Kf[np.ix_(test, test)]
+            M_train = np.linalg.pinv(Kf[np.ix_(train, train)]) @ Kf[np.ix_(train, train)]
+            M_test = np.linalg.pinv(Kf[np.ix_(test, test)]) @ Kf[np.ix_(test, test)]
             Kh_train = Kh[np.ix_(train, train)]
             KMK_train = Kh_train @ M_train @ Kh_train
             B_train = Kh_train @ M_train @ Y[train]
@@ -283,7 +283,7 @@ class RKHSIVL2CV(RKHSIVL2):
         delta = self._get_delta(n)
         self.best_alpha = self.best_alpha_scale * delta**4
 
-        M = np.linalg.pinv(Kf / n + np.eye(n)) @ Kf
+        M = np.linalg.pinv(Kf) @ Kf
 
         self.T = T.copy()
         self.a = np.linalg.pinv(
