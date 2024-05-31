@@ -33,10 +33,10 @@ def add_weight_decay(net, l2_value, skip_list=()):
 
 class _BaseAGMM2:
 
-    def _pretrain(self, A, B, C, D, Y,
+    def _pretrain(self, A, B, C, D, Y, 
                   learner_l2, adversary_l2, adversary_norm_reg, learner_norm_reg,
                   learner_lr, adversary_lr, n_epochs, bs, train_learner_every, train_adversary_every,
-                  warm_start, model_dir, device, verbose, add_sample_inds=False):
+                  warm_start, model_dir, device, verbose, add_sample_inds=False, subsetted=False, subset_ind1=None, subset_ind2=None):
         """ Prepares the variables required to begin training.
         """
         self.verbose = verbose
@@ -50,9 +50,9 @@ class _BaseAGMM2:
 
         if add_sample_inds:
             sample_inds = torch.arange(Y.shape[0]).clone().detach()
-            self.train_ds = TensorDataset(A, B, C, D, Y, sample_inds)
+            self.train_ds = TensorDataset(A, B, C, D, Y, sample_inds) if not subsetted else TensorDataset(A, B, C, D, Y, sample_inds, subset_ind1, subset_ind2)
         else:
-            self.train_ds = TensorDataset(A, B, C, D, Y)
+            self.train_ds = TensorDataset(A, B, C, D, Y) if not subsetted else TensorDataset(A, B, C, D, Y, subset_ind1, subset_ind2)
         self.train_dl = DataLoader(self.train_ds, batch_size=bs, shuffle=True)
 
         self.learnerh = self.learnerh.to(device)
@@ -80,7 +80,10 @@ class _BaseAGMM2:
         self.optimizerf_ = OAdam(add_weight_decay(
             self.adversary1, adversary_l2, skip_list=self.skip_list), lr=adversary_lr, betas=(beta1, .01))
 
-        return A, B, C, D, Y
+        if subsetted:
+            return A, B, C, D, Y, subset_ind1, subset_ind2
+        else:
+            return A, B, C, D, Y
 
     def predict(self, B, A, model='avg', burn_in=0, alpha=None):
         """
@@ -124,7 +127,7 @@ class _BaseSupLossAGMM2(_BaseAGMM2):
     def fit(self, A, B, C, D, Y,
             learner_l2=1e-3, adversary_l2=1e-4, adversary_norm_reg=1e-3, learner_norm_reg=1e-3,
             learner_lr=0.001, adversary_lr=0.001, n_epochs=100, bs=100, train_learner_every=1, train_adversary_every=1,
-            warm_start=False, model_dir='.', device=None, verbose=0):
+            warm_start=False, model_dir='.', device=None, verbose=0, subsetted=False, subset_ind1=None, subset_ind2=None):
         """
         Parameters
         ----------
@@ -145,20 +148,35 @@ class _BaseSupLossAGMM2(_BaseAGMM2):
             from their current weights
         model_dir : folder where to store the learned models after every epoch
         """
+        if subsetted:
+            if subset_ind1 is None:
+                raise ValueError("subset_ind1 must be provided when subsetted is True")
+            if len(subset_ind1) != len(Y):
+                raise ValueError("subset_ind1 must have the same length as Y")
+            subset_ind2 = 1 - subset_ind1 if subset_ind2 is None else subset_ind2
 
-        A, B, C, D, Y = self._pretrain(A, B, C, D, Y,
+            A, B, C, D, Y, subset_ind1, subset_ind2 = self._pretrain(A, B, C, D, Y,
                                  learner_l2, adversary_l2, adversary_norm_reg, learner_norm_reg,
                                  learner_lr, adversary_lr, n_epochs, bs, train_learner_every, train_adversary_every,
-                                 warm_start, model_dir, device, verbose)
+                                 warm_start, model_dir, device, verbose, subsetted=True, subset_ind1=subset_ind1, subset_ind2=subset_ind2)
+        else:
+            A, B, C, D, Y = self._pretrain(A, B, C, D, Y,
+                                 learner_l2, adversary_l2, adversary_norm_reg, learner_norm_reg,
+                                 learner_lr, adversary_lr, n_epochs, bs, train_learner_every, train_adversary_every,
+                                 warm_start, model_dir, device, verbose)    
 
         for epoch in range(n_epochs):
 
             if self.verbose > 0:
                 print("Epoch #", epoch, sep="")
 
-            for it, (Ab, Bb, Cb, Db, Yb) in enumerate(self.train_dl):
-
-                Ab, Bb, Cb, Db, Yb = map(lambda x: x.to(device), (Ab, Bb, Cb, Db, Yb))
+            for it, data in enumerate(self.train_dl):
+                
+                data = tuple(map(lambda x: x.to(device), data))
+                if subsetted:
+                    Ab, Bb, Cb, Db, Yb, subset_ind1, subset_ind2 = data
+                else:
+                    Ab, Bb, Cb, Db, Yb = data
 
                 if (it % train_learner_every == 0):
                     # Set models to training mode
@@ -168,8 +186,8 @@ class _BaseSupLossAGMM2(_BaseAGMM2):
                     # Forward passes
                     hat_g = self.learnerg(Ab)
                     hat_h = self.learnerh(Bb)
-                    hat_f_ = self.adversary1(Db)
-                    hat_f = self.adversary2(Cb)
+                    hat_f_ = self.adversary1(Db) if not subsetted else self.adversary1(Db) * subset_ind1
+                    hat_f = self.adversary2(Cb) if not subsetted else self.adversary2(Cb) * subset_ind2
 
                     # Calculate losses for each learner
                     G_loss = torch.mean(2 * (hat_g - Yb) * hat_f_) + torch.mean(2 * (hat_h - hat_g) * hat_f)
@@ -197,8 +215,8 @@ class _BaseSupLossAGMM2(_BaseAGMM2):
                     # Since models are being reused, ensure data is consistent or re-compute if necessary
                     hat_g = self.learnerg(Ab)
                     hat_h = self.learnerh(Bb)
-                    hat_f_ = self.adversary1(Db)
-                    hat_f = self.adversary2(Cb)
+                    hat_f_ = self.adversary1(Db) if not subsetted else self.adversary1(Db) * subset_ind1
+                    hat_f = self.adversary2(Cb) if not subsetted else self.adversary2(Cb) * subset_ind2
 
                     # Calculate losses for each adversary
                     F_loss = - torch.mean(2 * (hat_h - hat_g) * hat_f) + torch.mean(hat_f**2)
@@ -247,7 +265,7 @@ class _BaseSupLossAGMM2L2(_BaseAGMM2):
     def fit(self, A, B, C, D, Y,
             learner_l2=1e-3, adversary_l2=1e-4, adversary_norm_reg=1e-3, learner_norm_reg=1e-3,
             learner_lr=0.001, adversary_lr=0.001, n_epochs=100, bs=100, train_learner_every=1, train_adversary_every=1,
-            warm_start=False, model_dir='.', device=None, verbose=0):
+            warm_start=False, model_dir='.', device=None, verbose=0, subsetted=False, subset_ind1=None, subset_ind2=None):
         """
         Parameters
         ----------
@@ -268,20 +286,35 @@ class _BaseSupLossAGMM2L2(_BaseAGMM2):
             from their current weights
         model_dir : folder where to store the learned models after every epoch
         """
+        if subsetted:
+            if subset_ind1 is None:
+                raise ValueError("subset_ind1 must be provided when subsetted is True")
+            if len(subset_ind1) != len(Y):
+                raise ValueError("subset_ind1 must have the same length as Y")
+            subset_ind2 = 1 - subset_ind1 if subset_ind2 is None else subset_ind2
 
-        A, B, C, D, Y = self._pretrain(A, B, C, D, Y,
+            A, B, C, D, Y, subset_ind1, subset_ind2 = self._pretrain(A, B, C, D, Y,
                                  learner_l2, adversary_l2, adversary_norm_reg, learner_norm_reg,
                                  learner_lr, adversary_lr, n_epochs, bs, train_learner_every, train_adversary_every,
-                                 warm_start, model_dir, device, verbose)
+                                 warm_start, model_dir, device, verbose, subsetted=True, subset_ind1=subset_ind1, subset_ind2=subset_ind2)
+        else:
+            A, B, C, D, Y = self._pretrain(A, B, C, D, Y,
+                                 learner_l2, adversary_l2, adversary_norm_reg, learner_norm_reg,
+                                 learner_lr, adversary_lr, n_epochs, bs, train_learner_every, train_adversary_every,
+                                 warm_start, model_dir, device, verbose)  
 
         for epoch in range(n_epochs):
 
             if self.verbose > 0:
                 print("Epoch #", epoch, sep="")
 
-            for it, (Ab, Bb, Cb, Db, Yb) in enumerate(self.train_dl):
-
-                Ab, Bb, Cb, Db, Yb = map(lambda x: x.to(device), (Ab, Bb, Cb, Db, Yb))
+            for it, data in enumerate(self.train_dl):
+                
+                data = tuple(map(lambda x: x.to(device), data))
+                if subsetted:
+                    Ab, Bb, Cb, Db, Yb, subset_ind1, subset_ind2 = data
+                else:
+                    Ab, Bb, Cb, Db, Yb = data
 
                 if (it % train_learner_every == 0):
                     # Set models to training mode
@@ -291,8 +324,8 @@ class _BaseSupLossAGMM2L2(_BaseAGMM2):
                     # Forward passes
                     hat_g = self.learnerg(Ab)
                     hat_h = self.learnerh(Bb)
-                    hat_f_ = self.adversary1(Db)
-                    hat_f = self.adversary2(Cb)
+                    hat_f_ = self.adversary1(Db) if not subsetted else self.adversary1(Db) * subset_ind1
+                    hat_f = self.adversary2(Cb) if not subsetted else self.adversary2(Cb) * subset_ind2
 
                     # Calculate losses for each learner
                     G_loss = torch.mean(2 * (hat_g - Yb) * hat_f_) + torch.mean(2 * (hat_h - hat_g) * hat_f)
@@ -320,8 +353,8 @@ class _BaseSupLossAGMM2L2(_BaseAGMM2):
                     # Since models are being reused, ensure data is consistent or re-compute if necessary
                     hat_g = self.learnerg(Ab)
                     hat_h = self.learnerh(Bb)
-                    hat_f_ = self.adversary1(Db)
-                    hat_f = self.adversary2(Cb)
+                    hat_f_ = self.adversary1(Db) if not subsetted else self.adversary1(Db) * subset_ind1
+                    hat_f = self.adversary2(Cb) if not subsetted else self.adversary2(Cb) * subset_ind2
 
                     # Calculate losses for each adversary
                     F_loss = - torch.mean(2 * (hat_h - hat_g) * hat_f) + torch.mean(hat_f**2)
