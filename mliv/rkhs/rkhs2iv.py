@@ -66,7 +66,7 @@ class RKHS2IV(_BaseRKHS2IV):
         self.delta_scale = delta_scale  # worst-case critical value of RKHS spaces
         self.delta_exp = delta_exp
 
-    def fit(self, A, B, C, D, Y, subsetted=False, subset_ind1=None, subset_ind2=None):
+    def fit(self, A, B, C, D, Y, W=None, subsetted=False, subset_ind1=None, subset_ind2=None):
         if subsetted:
             if subset_ind1 is None:
                 raise ValueError("subset_ind1 must be provided when subsetted is True")
@@ -75,6 +75,7 @@ class RKHS2IV(_BaseRKHS2IV):
 
         n = Y.shape[0]  # number of samples
         Id = np.eye(n)
+        Iw = Id if W is None else np.diag(W)
 
         if subsetted:
             ind1 = np.where(subset_ind1==1)[0] 
@@ -95,9 +96,9 @@ class RKHS2IV(_BaseRKHS2IV):
         Pc = np.linalg.pinv(Kc + Id) @ Kc if not subsetted else (n/q) * Iq.T @ np.linalg.pinv(Kc + Iq @ Iq.T) @ Kc @ Iq
         Pd = np.linalg.pinv(Kd + Id) @ Kd if not subsetted else (n/p) * Ip.T @ np.linalg.pinv(Kd + Ip @ Ip.T) @ Kd @ Ip
 
-        KbPcKa_inv = np.linalg.pinv(Kb @ Pc @ Ka)
+        KbPcKa_inv = np.linalg.pinv(Kb @ Pc @ Iw @ Ka)
 
-        M = Ka @ (Pc + (Pd @ Ka + Pc @ Ka + alpha * Id) @ KbPcKa_inv @ (Kb @ Pc + alpha * Id)) @ Kb
+        M = Ka @ (Iw @ Pc + (Pd @ Ka + Iw @ Pc @ Iw @ Ka + alpha * Id) @ KbPcKa_inv @ (Kb @ Pc + alpha * Id)) @ Kb
         
         self.b = np.linalg.pinv(M) @ Ka @ Pd @ Y
         self.a = KbPcKa_inv @ (Kb @ Pc + alpha * Id) @ Kb @ self.b
@@ -147,7 +148,7 @@ class RKHS2IVCV(RKHS2IV):
         self.n_alphas = n_alphas
         self.cv = cv
 
-    def fit(self, A, B, C, D, Y, subsetted=False, subset_ind1=None, subset_ind2=None):
+    def fit(self, A, B, C, D, Y, W=None, subsetted=False, subset_ind1=None, subset_ind2=None):
         if subsetted:
             if subset_ind1 is None:
                 raise ValueError("subset_ind1 must be provided when subsetted is True")
@@ -156,6 +157,7 @@ class RKHS2IVCV(RKHS2IV):
 
         n = Y.shape[0]  # number of samples
         Id = np.eye(n)
+        Iw = Id if W is None else np.diag(W)
 
         if subsetted:
             ind1 = np.where(subset_ind1==1)[0] 
@@ -207,13 +209,14 @@ class RKHS2IVCV(RKHS2IV):
                 Pc_test = (n_test/q_test) * Iq_test.T @ np.linalg.pinv(Kc_test + Iq_test @ Iq_test.T) @ Kc_test @ Iq_test
                 Pd_test = (n_test/p_test) * Ip_test.T @ np.linalg.pinv(Kd_test + Ip_test @ Ip_test.T) @ Kd_test @ Ip_test
 
-            KbPcKa_inv = np.linalg.pinv(Kb_train @ Pc_train @ Ka_train)
+            Iw_train = Iw[np.ix_(train, train)]
+            KbPcKa_inv = np.linalg.pinv(Kb_train @ Pc_train @ Iw_train @ Ka_train)
             B_train = Ka_train @ Pd_train @ Y[train]
 
             scores.append([])
             for alpha_scale in alpha_scales:
                 alpha = alpha_scale * delta_train**4
-                M = Ka_train @ (Pc_train + (Pd_train @ Ka_train + Pc_train @ Ka_train + alpha * Id_train) @ KbPcKa_inv @ (Kb_train @ Pc_train + alpha * Id_train)) @ Kb_train
+                M = Ka_train @ (Iw_train @ Pc_train + (Pd_train @ Ka_train + Iw_train @ Pc_train @ Iw_train @ Ka_train + alpha * Id_train) @ KbPcKa_inv @ (Kb_train @ Pc_train + alpha * Id_train)) @ Kb_train
                 b = np.linalg.pinv(M) @ B_train
                 a = KbPcKa_inv @ (Kb_train @ Pc_train + alpha * Id_train) @ Kb_train @ b
                 res1 = Y[test] - Ka[np.ix_(test, train)] @ a
@@ -230,8 +233,8 @@ class RKHS2IVCV(RKHS2IV):
         delta = self._get_delta(n)
         self.best_alpha = self.best_alpha_scale * delta**4
 
-        KbPcKa_inv = np.linalg.pinv(Kb @ Pc @ Ka)
-        M = Ka @ (Pc + (Pd @ Ka + Pc @ Ka + self.best_alpha * Id) @ KbPcKa_inv @ (Kb @ Pc + self.best_alpha * Id)) @ Kb
+        KbPcKa_inv = np.linalg.pinv(Kb @ Pc @ Iw @ Ka)
+        M = Ka @ (Iw @ Pc + (Pd @ Ka + Iw @ Pc @ Iw @ Ka + self.best_alpha * Id) @ KbPcKa_inv @ (Kb @ Pc + self.best_alpha * Id)) @ Kb
         
         self.b = np.linalg.pinv(M) @ Ka @ Pd @ Y
         self.a = KbPcKa_inv @ (Kb @ Pc + self.best_alpha * Id) @ Kb @ self.b
@@ -262,7 +265,7 @@ class RKHS2IVL2(_BaseRKHS2IV):
         self.delta_scale = delta_scale  # worst-case critical value of RKHS spaces
         self.delta_exp = delta_exp
 
-    def fit(self, A, B, C, D, Y, subsetted=False, subset_ind1=None, subset_ind2=None):
+    def fit(self, A, B, C, D, Y, W=None, subsetted=False, subset_ind1=None, subset_ind2=None):
         if subsetted:
             if subset_ind1 is None:
                 raise ValueError("subset_ind1 must be provided when subsetted is True")
@@ -271,6 +274,7 @@ class RKHS2IVL2(_BaseRKHS2IV):
 
         n = Y.shape[0]  # number of samples
         Id = np.eye(n)
+        Iw = Id if W is None else np.diag(W)
 
         if subsetted:
             ind1 = np.where(subset_ind1==1)[0] 
@@ -291,9 +295,9 @@ class RKHS2IVL2(_BaseRKHS2IV):
         Pc = np.linalg.pinv(Kc) @ Kc if not subsetted else (n/q) * Iq.T @ np.linalg.pinv(Kc) @ Kc @ Iq
         Pd = np.linalg.pinv(Kd) @ Kd if not subsetted else (n/p) * Ip.T @ np.linalg.pinv(Kd) @ Kd @ Ip
 
-        KbPcKa_inv = np.linalg.pinv(Kb @ Pc @ Ka)
+        KbPcKa_inv = np.linalg.pinv(Kb @ Pc @ Iw @ Ka)
 
-        M = Ka @ (Pc + (Pd + Pc + alpha * Id) @ Ka @ KbPcKa_inv @ Kb @ (Pc + alpha * Id)) @ Kb
+        M = Ka @ (Iw @ Pc + (Pd + Iw @ Pc @ Iw + alpha * Id) @ Ka @ KbPcKa_inv @ Kb @ (Pc + alpha * Id)) @ Kb
         
         self.b = np.linalg.pinv(M) @ Ka @ Pd @ Y
         self.a = KbPcKa_inv @ Kb @ (Pc + alpha * Id) @ Kb @ self.b
@@ -343,7 +347,7 @@ class RKHS2IVL2CV(RKHS2IVL2):
         self.n_alphas = n_alphas
         self.cv = cv
 
-    def fit(self, A, B, C, D, Y, subsetted=False, subset_ind1=None, subset_ind2=None):
+    def fit(self, A, B, C, D, Y, W=None, subsetted=False, subset_ind1=None, subset_ind2=None):
         if subsetted:
             if subset_ind1 is None:
                 raise ValueError("subset_ind1 must be provided when subsetted is True")
@@ -352,6 +356,7 @@ class RKHS2IVL2CV(RKHS2IVL2):
 
         n = Y.shape[0]  # number of samples
         Id = np.eye(n)
+        Iw = Id if W is None else np.diag(W)
 
         if subsetted:
             ind1 = np.where(subset_ind1==1)[0] 
@@ -403,7 +408,8 @@ class RKHS2IVL2CV(RKHS2IVL2):
                 Pc_test = (n_test/q_test) * Iq_test.T @ np.linalg.pinv(Kc_test) @ Kc_test @ Iq_test
                 Pd_test = (n_test/p_test) * Ip_test.T @ np.linalg.pinv(Kd_test) @ Kd_test @ Ip_test
 
-            KbPcKa_inv = np.linalg.pinv(Kb_train @ Pc_train @ Ka_train)
+            Iw_train = Iw[np.ix_(train, train)]
+            KbPcKa_inv = np.linalg.pinv(Kb_train @ Pc_train @ Iw_train @ Ka_train)
             W = Ka_train @ KbPcKa_inv @ Kb_train
             B_train = Ka_train @ Pd_train @ Y[train]
             C_train = KbPcKa_inv @ Kb_train 
@@ -411,7 +417,7 @@ class RKHS2IVL2CV(RKHS2IVL2):
             scores.append([])
             for alpha_scale in alpha_scales:
                 alpha = alpha_scale * delta_train**4
-                M = Ka_train @ (Pc_train + (Pd_train + Pc_train + alpha * Id_train) @ W @ (Pc_train + alpha * Id_train)) @ Kb_train
+                M = Ka_train @ (Iw_train @ Pc_train + (Pd_train + Iw_train @ Pc_train @ Iw_train + alpha * Id_train) @ W @ (Pc_train + alpha * Id_train)) @ Kb_train
                 b = np.linalg.pinv(M) @ B_train
                 a = C_train @ (Pc_train + alpha * Id_train) @ Kb_train @ b
                 res1 = Y[test] - Ka[np.ix_(test, train)] @ a
@@ -428,8 +434,8 @@ class RKHS2IVL2CV(RKHS2IVL2):
         delta = self._get_delta(n)
         self.best_alpha = self.best_alpha_scale * delta**4
 
-        KbPcKa_inv = np.linalg.pinv(Kb @ Pc @ Ka)
-        M = Ka @ (Pc + (Pd + Pc + self.best_alpha * Id) @ Ka @ KbPcKa_inv @ Kb @ (Pc + self.best_alpha * Id)) @ Kb
+        KbPcKa_inv = np.linalg.pinv(Kb @ Pc @ Iw @ Ka)
+        M = Ka @ (Iw @ Pc + (Pd + Iw @ Pc @ Iw + self.best_alpha * Id) @ Ka @ KbPcKa_inv @ Kb @ (Pc + self.best_alpha * Id)) @ Kb
         
         self.b = np.linalg.pinv(M) @ Ka @ Pd @ Y
         self.a = KbPcKa_inv @ Kb @ (Pc + self.best_alpha * Id) @ Kb @ self.b
