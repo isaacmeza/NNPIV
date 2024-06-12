@@ -23,7 +23,7 @@ class Ensemble2IV:
         self.n_burn_in = n_burn_in
         return
 
-    def _check_input(self, A, B, C, D, Y):
+    def _check_input(self, A, B, C, D, Y, W):
         if len(A.shape) == 1:
             A = A.reshape(-1, 1)
         if len(B.shape) == 1:
@@ -32,7 +32,7 @@ class Ensemble2IV:
             C = C.reshape(-1, 1)
         if len(D.shape) == 1:
             D = D.reshape(-1, 1)
-        return A, B, C, D, Y.flatten()
+        return A, B, C, D, Y.flatten(), W.flatten()
 
     def _get_new_adversary(self):
         return RandomForestRegressor(n_estimators=40, max_depth=2,
@@ -46,8 +46,9 @@ class Ensemble2IV:
         return RandomForestClassifier(n_estimators=5, max_depth=2, criterion='gini',
                                       bootstrap=False, min_samples_leaf=40, min_impurity_decrease=0.001) if self.learnerh == 'auto' else clone(self.learnerh)
 
-    def fit(self, A, B, C, D, Y, subsetted=False, subset_ind1=None, subset_ind2=None):
-        A, B, C, D, Y = self._check_input(A, B, C, D, Y)
+    def fit(self, A, B, C, D, Y, W=None, subsetted=False, subset_ind1=None, subset_ind2=None):
+        W = np.ones(Y.shape) if W is None else W
+        A, B, C, D, Y, W = self._check_input(A, B, C, D, Y, W)
         if subsetted:
             if subset_ind1 is None:
                 raise ValueError("subset_ind1 must be provided when subsetted is True")
@@ -86,7 +87,7 @@ class Ensemble2IV:
                 :, -1] * learnersg[it].classes_[-1] - 1 / 2) / (it + 1)
             h += max_value * _mysign(learnersh[it].predict_proba(B)[
                 :, -1] * learnersh[it].classes_[-1] - 1 / 2) / (it + 1)
-            adversary2.fit(C, h - g)
+            adversary2.fit(C, h - g*W)
             adversary1.fit(D, g - Y)
 
         self.learnersg = learnersg[self.n_burn_in:]
@@ -142,7 +143,7 @@ class Ensemble2IVL2:
         return ([c for c in np.geomspace(0.1, 1e4, self.n_alphas)]
                 if self.alpha_scales == True else self.alpha_scales)
         
-    def _check_input(self, A, B, C, D, Y):
+    def _check_input(self, A, B, C, D, Y, W):
         if len(A.shape) == 1:
             A = A.reshape(-1, 1)
         if len(B.shape) == 1:
@@ -151,7 +152,7 @@ class Ensemble2IVL2:
             C = C.reshape(-1, 1)
         if len(D.shape) == 1:
             D = D.reshape(-1, 1)
-        return A, B, C, D, Y.flatten()
+        return A, B, C, D, Y.flatten(), W.flatten()
 
     def _get_new_adversary(self):
         return RandomForestRegressor(n_estimators=40, max_depth=2,
@@ -165,7 +166,7 @@ class Ensemble2IVL2:
         return RandomForestRegressor(n_estimators=40, max_depth=2, 
                                      bootstrap=True, min_samples_leaf=40, min_impurity_decrease=0.001) if self.learnerh == 'auto' else clone(self.learnerh)
 
-    def _cross_validate_alpha(self, A, B, C, D, Y):
+    def _cross_validate_alpha(self, A, B, C, D, Y, W):
 
         alpha_scales = self._get_alpha_scales()
         best_alpha = None
@@ -181,10 +182,11 @@ class Ensemble2IVL2:
                 C_train, C_test = C[train_index], C[test_index]
                 D_train, D_test = D[train_index], D[test_index]
                 Y_train, Y_test = Y[train_index], Y[test_index]
+                W_train, W_test = W[train_index], W[test_index]
                 
-                self.fit(A_train, B_train, C_train, D_train, Y_train, alpha=alpha)
+                self.fit(A_train, B_train, C_train, D_train, Y_train, W=W_train, alpha=alpha)
                 predictionB, predictionA = self.predict(B_test, A_test)
-                score = mean_squared_error(Y_test, predictionA) + mean_squared_error(Y_test, predictionB)
+                score = mean_squared_error(Y_test, predictionA) + mean_squared_error(predictionA*W_test, predictionB)
                 scores.append(score)
             
             avg_score = np.mean(scores)
@@ -194,11 +196,12 @@ class Ensemble2IVL2:
         
         return best_alpha
  
-    def fit(self, A, B, C, D, Y, alpha=1.0, cross_validating=False, subsetted=False, subset_ind1=None, subset_ind2=None): 
+    def fit(self, A, B, C, D, Y, W=None, alpha=1.0, cross_validating=False, subsetted=False, subset_ind1=None, subset_ind2=None): 
+        W = np.ones(Y.shape) if W is None else W
         if self.CV and not cross_validating:
-            alpha = self._cross_validate_alpha(A, B, C, D, Y)
+            alpha = self._cross_validate_alpha(A, B, C, D, Y, W)
 
-        A, B, C, D, Y = self._check_input(A, B, C, D, Y)
+        A, B, C, D, Y, W = self._check_input(A, B, C, D, Y, W)
         if subsetted:
             if subset_ind1 is None:
                 raise ValueError("subset_ind1 must be provided when subsetted is True")
@@ -231,7 +234,7 @@ class Ensemble2IVL2:
             h = h * it / (it + 1)
             g += learnersg[it].predict(A).flatten() / (it + 1)
             h += learnersh[it].predict(B).flatten() / (it + 1)
-            adversary2.fit(C, h - g)
+            adversary2.fit(C, h - g*W)
             adversary1.fit(D, g - Y)
 
         self.learnersg = learnersg[self.n_burn_in:]
