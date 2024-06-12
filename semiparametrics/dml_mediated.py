@@ -44,6 +44,7 @@ class DML_mediated:
                  loc_kernel='gau',
                  bw_loc='silverman',
                  estimator='MR',
+                 estimand='ATE',
                  model1=ApproxRKHSIVCV(kernel_approx='nystrom', n_components=100,
                            kernel='rbf', gamma=.1, delta_scale='auto',
                            delta_exp=.4, alpha_scales=np.geomspace(1, 10000, 10), cv=5), 
@@ -84,6 +85,7 @@ class DML_mediated:
         self.loc_kernel = loc_kernel
         self.bw_loc = bw_loc
         self.estimator = estimator
+        self.estimand = estimand
         self.model1 = copy.deepcopy(model1)
         self.model2 = copy.deepcopy(model2)
         self.modelq1 = copy.deepcopy(modelq1)
@@ -124,6 +126,14 @@ class DML_mediated:
             warnings.warn(f"Invalid estimator: {estimator}. Estimator must be one of ['MR', 'OR', 'hybrid', 'IPW']. Using MR instead.", UserWarning)
             self.estimator = 'MR'
 
+        if self.estimand not in ['ATE', 'Indirect', 'Direct', 'E[Y1]', 'E[Y0]', 'E[Y(1,M(0))]']:
+            warnings.warn(f"Invalid estimator: {estimator}. Estimator must be one of ['ATE', 'Indirect', 'Direct', 'E[Y1]', 'E[Y0]', 'E[Y(1,M(0))]']. Using ATE instead.", UserWarning)
+            self.estimand = 'ATE'
+
+        if self.estimand in ['ATE', 'E[Y1]', 'E[Y0]'] & self.estimator=='hybrid':
+            warnings.warn(f"Invalid estimator: {estimator}. Estimator must be one of ['MR', 'OR', 'IPW'] when estimand is {estimand}. Using MR instead.", UserWarning)
+            self.estimator = 'MR'                
+
         if self.loc_kernel not in list(kernel_switch.keys()):
             warnings.warn(f"Invalid kernel: {loc_kernel}. Kernel must be one of {list(kernel_switch.keys())}. Using gau instead.", UserWarning)
             self.loc_kernel = 'gau' 
@@ -161,7 +171,7 @@ class DML_mediated:
         ell = KK/omega
         return ell.reshape(-1,1)
     
-    def _nnpivfit_outcome(self, Y, D, M, W, X, Z):
+    def _nnpivfit_outcome_m(self, Y, D, M, W, X, Z):
 
         if self.estimator == 'MR' or self.estimator == 'OR' or self.estimator == 'hybrid':
             model_1 = copy.deepcopy(self.model1)
@@ -232,28 +242,50 @@ class DML_mediated:
         return bridge_1, bridge_2
 
 
-    def _propensity_score(self, M, X, W, D):
+    def _npivfit_outcome(self, Y, D, X, Z):
+        model_1 = copy.deepcopy(self.model1)
+
+        # First stage
+        if self.nn_1==True:
+            Y, X, Z = tuple(map(lambda x: torch.Tensor(x), [Y, X, Z]))
+        else:
+            X = _transform_poly(X, self.opts)
+            Z = _transform_poly(Z, self.opts)
+
+        ind = np.where(D==1)[0]
+        Y1 = Y[ind]
+        X1 = X[ind, :]
+        Z1 = Z[ind]
+
+        if self.fitargs1 is not None:
+            bridge_1 = model_1.fit(Z1, X1, Y1, **self.fitargs1)
+        else:
+            bridge_1 = model_1.fit(Z1, X1, Y1)
         
+        return bridge_1
+    
+
+    def _propensity_score(self, M, X, W, D):
         model_ps = copy.deepcopy(self.prop_score)
         X1 = np.column_stack((X,W))
         X0 = np.column_stack((M,X,W))
             
         #First stage
         model_ps.fit(X1, D.flatten())
-        ps_hat_1 = model_ps.predict_proba(X1)[:,0]
+        ps_hat_0 = model_ps.predict_proba(X1)[:,0]
 
-        #Second stage
-        model_ps.fit(X0, D.flatten())
-        ps_hat_00 = model_ps.predict_proba(X0)[:,0]
-        ps_hat_01 = 1 - ps_hat_00
+        if self.estimand in ['Indirect', 'Direct', 'E[Y(1,M(0))]']:
+            #Second stage
+            model_ps.fit(X0, D.flatten())
+            ps_hat_00 = model_ps.predict_proba(X0)[:,0] 
+        else:
+            ps_hat_00 = ps_hat_0
 
         # Overlap assumption
-        ps_hat_1 = np.where(ps_hat_1 == 1, 0.99, ps_hat_1)
-        ps_hat_1 = np.where(ps_hat_1 == 0, 0.01, ps_hat_1)
+        ps_hat_0 = np.where(ps_hat_0 == 1, 0.99, ps_hat_0)
+        ps_hat_0 = np.where(ps_hat_0 == 0, 0.01, ps_hat_0)
         ps_hat_00 = np.where(ps_hat_00 == 1, 0.99, ps_hat_00)
         ps_hat_00 = np.where(ps_hat_00 == 0, 0.01, ps_hat_00)
-        ps_hat_01 = np.where(ps_hat_01 == 1, 0.99, ps_hat_01)
-        ps_hat_01 = np.where(ps_hat_01 == 0, 0.01, ps_hat_01)
 
         if self.CHIM==True:
             # Dropping observations with extreme values of the propensity score - CHIM (2009)
@@ -264,7 +296,7 @@ class DML_mediated:
             # Equivalently the first value of alpha (in increasing order) such that the constraint is achieved by equality
             # (as the constraint is a monotone increasing function in alpha)
 
-            g_values = [1/(ps_hat_1*(1-ps_hat_1)), 1/(ps_hat_00*(1-ps_hat_00)), 1/(ps_hat_01*(1-ps_hat_01))]  
+            g_values = [1/(ps_hat_0*(1-ps_hat_0)), 1/(ps_hat_00*(1-ps_hat_00))]  
             optimized_alphas = []
 
             for g in g_values:
@@ -276,18 +308,18 @@ class DML_mediated:
         else:
             alfa = 0.0
 
-        return ps_hat_1.reshape(-1,1), ps_hat_00.reshape(-1,1), ps_hat_01.reshape(-1,1), alfa
+        return ps_hat_0.reshape(-1,1), ps_hat_00.reshape(-1,1), alfa
 
 
-    def _nnpivfit_action(self, ps_hat_1, ps_hat_00, ps_hat_01, D, M, W, X, Z, alfa=0.0):
+    def _nnpivfit_action_m(self, ps_hat_0, ps_hat_00, D, M, W, X, Z, alfa=0.0):
 
         if self.estimator == 'MR' or self.estimator == 'IPW' or self.estimator == 'hybrid':
-            mask = np.where((ps_hat_1 >= alfa) & (ps_hat_1 <= 1 - alfa) &
-                            (ps_hat_00 >= alfa) & (ps_hat_00 <= 1 - alfa) &
-                            (ps_hat_01 >= alfa) & (ps_hat_01 <= 1 - alfa))[0]
-            ps_hat_1 = ps_hat_1[mask]
+            mask = np.where((ps_hat_0 >= alfa) & (ps_hat_0 <= 1 - alfa) &
+                            (ps_hat_00 >= alfa) & (ps_hat_00 <= 1 - alfa))[0]
+            ps_hat_0 = ps_hat_0[mask]
             ps_hat_00 = ps_hat_00[mask]
-            ps_hat_01 = ps_hat_01[mask]
+            ps_hat_01 = 1 - ps_hat_00
+
             D = D[mask]
             M = M[mask]
             W = W[mask]
@@ -299,10 +331,10 @@ class DML_mediated:
 
             #First stage
             if self.nn_q1==True:
-                ps_hat_1, ps_hat_00, ps_hat_01, D, M, W, X, Z = map(lambda x: torch.Tensor(x), [ps_hat_1, ps_hat_00, ps_hat_01, D, M, W, X, Z]) 
+                ps_hat_0, ps_hat_00, ps_hat_01, D, M, W, X, Z = map(lambda x: torch.Tensor(x), [ps_hat_0, ps_hat_00, ps_hat_01, D, M, W, X, Z]) 
 
             ind = np.where(D==0)[0]
-            ps_hat_1 = ps_hat_1[ind]
+            ps_hat_0 = ps_hat_0[ind]
             W1 = W[ind]
             X1 = X[ind,:]
             Z1 = Z[ind]
@@ -315,9 +347,9 @@ class DML_mediated:
                 A1 = _transform_poly(np.column_stack((X1,Z1)),self.opts)
 
             if self.fitargsq1 is not None:
-                bridge_1 = model_q1.fit(A2, A1, 1/ps_hat_1, **self.fitargsq1)
+                bridge_1 = model_q1.fit(A2, A1, 1/ps_hat_0, **self.fitargsq1)
             else:
-                bridge_1 = model_q1.fit(A2, A1, 1/ps_hat_1)
+                bridge_1 = model_q1.fit(A2, A1, 1/ps_hat_0)
 
             if self.nn_q1==True:
                 A1 = torch.cat((X,Z),1)
@@ -326,7 +358,7 @@ class DML_mediated:
             else:    
                 A1 = _transform_poly(np.column_stack((X,Z)),self.opts)    
                 bridge_1_hat = bridge_1.predict(A1)
-                bridge_1_hat = bridge_1_hat.reshape(A1.shape[:1] + ps_hat_1.shape[1:])
+                bridge_1_hat = bridge_1_hat.reshape(A1.shape[:1] + ps_hat_0.shape[1:])
         else:
             bridge_1 = None
            
@@ -362,21 +394,41 @@ class DML_mediated:
             bridge_2 = None
 
         return bridge_1, bridge_2
+    
 
-    def _process_fold(self, fold_idx, train_data, test_data):
-        train_Y, test_Y = train_data[0], test_data[0]
-        train_D, test_D = train_data[1], test_data[1]
-        train_M, test_M = train_data[2], test_data[2]
-        train_W, test_W = train_data[3], test_data[3]
-        train_X, test_X = train_data[4], test_data[4]
-        train_Z, test_Z = train_data[5], test_data[5]
-        if self.V is not None:
-            train_V, test_V = train_data[6], test_data[6]
+    def _npivfit_action(self, ps_hat_1, W, X, Z, alfa=0.0):
+        mask = np.where((ps_hat_1 >= alfa) & (ps_hat_1 <= 1 - alfa))[0]
+        ps_hat_1 = ps_hat_1[mask]
+        W = W[mask]
+        X = X[mask, :]
+        Z = Z[mask]
 
-        gamma_1, gamma_0 = self._nnpivfit_outcome(train_Y, train_D, train_M, train_W, train_X, train_Z)
+        model_q1 = copy.deepcopy(self.modelq1)
+
+        # First stage
+        if self.nn_q1==True:
+            ps_hat_1, W, X, Z = tuple(map(lambda x: torch.Tensor(x), [ps_hat_1, W, X, Z]))
+            A2 = torch.cat((X, W), 1)
+            A1 = torch.cat((X, Z), 1)
+        else:
+            A2 = _transform_poly(np.column_stack((X, W)), self.opts)
+            A1 = _transform_poly(np.column_stack((X, Z)), self.opts)
+
+        if self.fitargsq1 is not None:
+            bridge_1 = model_q1.fit(A2, A1, 1 / ps_hat_1, **self.fitargsq1)
+        else:
+            bridge_1 = model_q1.fit(A2, A1, 1 / ps_hat_1)
+
+        return bridge_1
+
+    def _scores_mediated(self, train_Y, train_D, train_M, train_W, train_X, train_Z, 
+                         test_Y, test_D, test_M, test_W, test_X, test_Z):
+        
+        if self.estimator == 'MR' or self.estimator == 'OR' or self.estimator == 'hybrid':
+            gamma_1, gamma_0 = self._nnpivfit_outcome_m(train_Y, train_D, train_M, train_W, train_X, train_Z)
         if self.estimator == 'MR' or self.estimator == 'hybrid' or self.estimator == 'IPW':
-            ps_hat_1, ps_hat_00, ps_hat_01, alfa = self._propensity_score(train_M, train_X, train_W, train_D)
-            q_0, q_1 = self._nnpivfit_action(ps_hat_1, ps_hat_00, ps_hat_01, train_D, train_M, train_W, train_X, train_Z, alfa=alfa)
+            ps_hat_0, ps_hat_00, alfa = self._propensity_score(train_M, train_X, train_W, train_D)
+            q_0, q_1 = self._nnpivfit_action_m(ps_hat_0, ps_hat_00, train_D, train_M, train_W, train_X, train_Z, alfa=alfa)
 
         # Evaluate the estimated moment functions using test_data
         if self.estimator == 'MR' or self.estimator == 'hybrid':
@@ -421,7 +473,83 @@ class DML_mediated:
         if self.estimator == 'hybrid':
             psi_hat = (1 - test_D) * q_0_hat * gamma_1_hat
         if self.estimator == 'IPW':
+            psi_hat = test_D * q_1_hat * test_Y
+        return psi_hat
+
+    def _scores_Y1(self, train_Y, train_D, train_M, train_W, train_X, train_Z, 
+                         test_Y, test_D, test_X, test_Z):
+        
+        if self.estimator == 'MR' or self.estimator == 'OR':
+            gamma_1 = self._npivfit_outcome(train_Y, train_D, train_X, train_Z)
+
+        if self.estimator == 'MR' or self.estimator == 'IPW' or self.estimator == 'hybrid':
+            ps_hat_0, _, alfa = self._propensity_score(train_M, train_X, train_W, train_D)
+            q_1 = self._npivfit_action(1-ps_hat_0, train_W, train_X, train_Z, alfa=alfa)
+
+        # Evaluate the estimated moment functions using test_data
+        if self.estimator == 'MR' or self.estimator == 'OR':
+            if self.nn_1 == True:
+                test_X = torch.Tensor(test_X)
+                gamma_1_hat = gamma_1.predict(test_X.to(device),
+                                            model='avg', burn_in=_get(self.opts, 'burnin', 0)).reshape(-1, 1)
+            else:
+                gamma_1_hat = gamma_1.predict(_transform_poly(test_X, opts=self.opts)).reshape(-1, 1)
+
+        if self.estimator == 'MR' or self.estimator == 'IPW' or self.estimator == 'hybrid':
+            if self.nn_q1 == True:
+                test_X, test_Z = tuple(map(lambda x: torch.Tensor(x), [test_X, test_Z]))
+                q_1_hat = q_1.predict(torch.cat((test_X, test_Z), 1).to(device),
+                                    model='avg', burn_in=_get(self.opts, 'burnin', 0)).reshape(-1, 1)
+            else:
+                q_1_hat = q_1.predict(_transform_poly(np.column_stack((test_X, test_Z)), opts=self.opts)).reshape(-1, 1)
+
+        # Calculate the score function depending on the estimator
+        if self.estimator == 'MR':
+            psi_hat = gamma_1_hat + test_D * q_1_hat * (test_Y - gamma_1_hat) 
+        if self.estimator == 'OR':
+            psi_hat = gamma_1_hat
+        if self.estimator == 'IPW' or self.estimator == 'hybrid':
             psi_hat = test_D * q_1_hat * test_Y 
+        return psi_hat
+    
+    def _process_fold(self, fold_idx, train_data, test_data):
+        train_Y, test_Y = train_data[0], test_data[0]
+        train_D, test_D = train_data[1], test_data[1]
+        train_M, test_M = train_data[2], test_data[2]
+        train_W, test_W = train_data[3], test_data[3]
+        train_X, test_X = train_data[4], test_data[4]
+        train_Z, test_Z = train_data[5], test_data[5]
+        if self.V is not None:
+            train_V, test_V = train_data[6], test_data[6]
+
+        if self.estimand == 'ATE':
+            psi_hat_1 = self._scores_Y1(train_Y, train_D, train_M, train_W, train_X, train_Z,
+                                        test_Y, test_D, test_X, test_Z)
+            psi_hat_0 = self._scores_Y1(train_Y, 1-train_D, train_M, train_W, train_X, train_Z,
+                                        test_Y, 1-test_D, test_X, test_Z)
+            psi_hat = psi_hat_1 - psi_hat_0
+        if self.estimand == 'Indirect':
+            psi_hat_mediated = self._scores_mediated(train_Y, train_D, train_M, train_W, train_X, train_Z, 
+                                            test_Y, test_D, test_M, test_W, test_X, test_Z)
+            psi_hat_1 = self._scores_Y1(train_Y, train_D, train_M, train_W, train_X, train_Z,
+                                        test_Y, test_D, test_X, test_Z)
+            psi_hat = psi_hat_1 - psi_hat_mediated 
+        if self.estimand == 'Direct':
+            psi_hat_mediated = self._scores_mediated(train_Y, train_D, train_M, train_W, train_X, train_Z, 
+                                            test_Y, test_D, test_M, test_W, test_X, test_Z)
+            psi_hat_0 = self._scores_Y1(train_Y, 1-train_D, train_M, train_W, train_X, train_Z,
+                                        test_Y, 1-test_D, test_X, test_Z)
+            psi_hat = psi_hat_mediated - psi_hat_0
+        if self.estimand == 'E[Y1]':
+            psi_hat = self._scores_Y1(train_Y, train_D, train_M, train_W, train_X, train_Z,
+                                        test_Y, test_D, test_X, test_Z)
+        if self.estimand == 'E[Y0]':
+            psi_hat = self._scores_Y1(train_Y, 1-train_D, train_M, train_W, train_X, train_Z,
+                                        test_Y, 1-test_D, test_X, test_Z)
+        if self.estimand == 'E[Y(1,M(0))]':
+            psi_hat = self._scores_mediated(train_Y, train_D, train_M, train_W, train_X, train_Z, 
+                                            test_Y, test_D, test_M, test_W, test_X, test_Z)            
+        
 
         # Localization 
         if self.V is not None:
