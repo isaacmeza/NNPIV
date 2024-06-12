@@ -66,7 +66,7 @@ class Ensemble2IV:
         g = 0
 
         for it in range(self.n_iter + self.n_burn_in):
-            v = -adversary2.predict(C).flatten() if not subsetted else -adversary2.predict(C).flatten() * subset_ind2
+            v = -adversary2.predict(C).flatten()* W if not subsetted else -adversary2.predict(C).flatten()* W * subset_ind2
             v_ = -adversary1.predict(D).flatten() - v if not subsetted else -adversary1.predict(D).flatten() * subset_ind1 - v
             aug_A = np.vstack([np.zeros((2, A.shape[1])), A])
             aug_B = np.vstack([np.zeros((2, B.shape[1])), B])
@@ -220,13 +220,13 @@ class Ensemble2IVL2:
         g = 0
         for it in range(self.n_iter + self.n_burn_in):
             if it < self.n_burn_in:
-                v = -adversary2.predict(C).flatten() if not subsetted else -adversary2.predict(C).flatten() * subset_ind2
+                v = -adversary2.predict(C).flatten()* W if not subsetted else -adversary2.predict(C).flatten()*W * subset_ind2
                 v_ = -adversary1.predict(D).flatten() - v if not subsetted else -adversary1.predict(D).flatten() * subset_ind1 - v
             else:
                 iter = it - self.n_burn_in
                 v = v * iter / (iter + 1)
                 v_ = v_ * iter / (iter + 1)
-                v += -adversary2.predict(C).flatten()/ (alpha * delta ** 2) if not subsetted else -adversary2.predict(C).flatten() * subset_ind2 / (alpha * delta ** 2)
+                v += -adversary2.predict(C).flatten()* W / (alpha * delta ** 2) if not subsetted else -adversary2.predict(C).flatten()*W * subset_ind2 / (alpha * delta ** 2)
                 v_ += -adversary1.predict(D).flatten()/ (alpha * delta ** 2) - v if not subsetted else -adversary1.predict(D).flatten() * subset_ind1 / (alpha * delta ** 2) - v
             learnersg.append(self._get_new_learnerg().fit(A, v_))
             learnersh.append(self._get_new_learnerh().fit(B, v))
