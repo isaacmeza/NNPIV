@@ -130,7 +130,7 @@ class DML_mediated:
             warnings.warn(f"Invalid estimator: {estimator}. Estimator must be one of ['ATE', 'Indirect', 'Direct', 'E[Y1]', 'E[Y0]', 'E[Y(1,M(0))]']. Using ATE instead.", UserWarning)
             self.estimand = 'ATE'
 
-        if self.estimand in ['ATE', 'E[Y1]', 'E[Y0]'] & self.estimator=='hybrid':
+        if self.estimand in ['ATE', 'E[Y1]', 'E[Y0]'] and self.estimator=='hybrid':
             warnings.warn(f"Invalid estimator: {estimator}. Estimator must be one of ['MR', 'OR', 'IPW'] when estimand is {estimand}. Using MR instead.", UserWarning)
             self.estimator = 'MR'                
 

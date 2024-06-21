@@ -42,7 +42,7 @@ class _SparseLinear2AdversarialGMM:
             B = np.hstack([np.ones((B.shape[0], 1)), B])
             C = np.hstack([np.ones((C.shape[0], 1)), C])
             D = np.hstack([np.ones((D.shape[0], 1)), D])
-        return A, B, C, D, Y.flatten(), W.flatten()
+        return A, B, C, D, Y.flatten(), W.reshape(-1,1)
 
     def predict(self, B, *args):
         if len(args) == 0:
@@ -73,7 +73,7 @@ class sparse2_l1vsl1(_SparseLinear2AdversarialGMM):
 
     def _check_duality_gap(self, A, B, C, D, Y, W):
         self.max_response_loss_ = np.linalg.norm(self.weighted_mean(D * (Y - np.dot(A, self.alpha_)).reshape(-1, 1), self.weights1, axis=0), ord=np.inf)\
-            + np.linalg.norm(self.weighted_mean(C * (np.dot(A, self.alpha_) * W - np.dot(B, self.beta_)).reshape(-1, 1), self.weights2, axis=0), ord=np.inf)\
+            + np.linalg.norm(self.weighted_mean(C * (np.dot(W * A, self.alpha_)  - np.dot(B, self.beta_)).reshape(-1, 1), self.weights2, axis=0), ord=np.inf)\
             + self.mu * np.linalg.norm(self.alpha_, ord=1) + self.mu * np.linalg.norm(self.beta_, ord=1)
               
         self.min_response_loss_ = self.weighted_mean(Y * np.dot(D, self.w1_), self.weights1)\
@@ -136,7 +136,7 @@ class sparse2_l1vsl1(_SparseLinear2AdversarialGMM):
             ad = self.weighted_mean(cross_product(A, D), self.weights1,
                          axis=0).reshape(d_d, d_a).T
         if d_a * d_c < n**2:
-            ac = self.weighted_mean(cross_product(A, C), self.weights2,
+            ac = self.weighted_mean(cross_product(W*A, C), self.weights2,
                          axis=0).reshape(d_c, d_a).T
         if d_b * d_c < n**2:
             bc = self.weighted_mean(cross_product(B, C), self.weights2,
@@ -170,7 +170,7 @@ class sparse2_l1vsl1(_SparseLinear2AdversarialGMM):
                 test_fn = np.dot(D, w1[:d_d] - w1[d_d:]).reshape(-1, 1)
                 cors1_t = - self.weighted_mean(test_fn * A, self.weights1, axis=0)
             if d_a * d_c < n**2:
-                cors1_t += W * ac @ (w2[:d_c] - w2[d_c:])
+                cors1_t += ac @ (w2[:d_c] - w2[d_c:])
             else:
                 test_fn = np.dot(C, w2[:d_c] - w2[d_c:]).reshape(-1, 1)
                 cors1_t += self.weighted_mean(test_fn * A * W, self.weights2, axis=0)
@@ -194,7 +194,7 @@ class sparse2_l1vsl1(_SparseLinear2AdversarialGMM):
 
             # quantities for updating w2
             if d_c * d_a < n**2:
-                res2[:d_c] = (alpha[:d_a] - alpha[d_a:]).T @ ac * W
+                res2[:d_c] = (alpha[:d_a] - alpha[d_a:]).T @ ac 
             else:
                 pred_fn = np.dot(A * W, alpha[:d_a] - alpha[d_a:]).reshape(-1, 1)
                 res2[:d_c] = self.weighted_mean(C * pred_fn, self.weights2, axis=0)
@@ -274,7 +274,7 @@ class sparse2_ridge_l1vsl1(_SparseLinear2AdversarialGMM):
 
     def _check_duality_gap(self, A, B, C, D, Y, W):
         self.max_response_loss_ = np.linalg.norm(self.weighted_mean(D * (Y - np.dot(A, self.alpha_)).reshape(-1, 1), self.weights1, axis=0), ord=np.inf)\
-            + np.linalg.norm(self.weighted_mean(C * (np.dot(A, self.alpha_) * W - np.dot(B, self.beta_)).reshape(-1, 1), self.weights2, axis=0), ord=np.inf)\
+            + np.linalg.norm(self.weighted_mean(C * (np.dot(A * W, self.alpha_) - np.dot(B, self.beta_)).reshape(-1, 1), self.weights2, axis=0), ord=np.inf)\
             + self.mu * self.alpha_.T @ self.aa @ self.alpha_ + self.mu * self.beta_.T @ self.bb @ self.beta_
             
         self.min_response_loss_ = 2 * self.weighted_mean(Y * np.dot(D, self.w1_), self.weights1)\
@@ -346,7 +346,7 @@ class sparse2_ridge_l1vsl1(_SparseLinear2AdversarialGMM):
             ad = self.weighted_mean(cross_product(A, D), self.weights1,
                          axis=0).reshape(d_d, d_a).T
         if d_a * d_c < n**2:
-            ac = self.weighted_mean(cross_product(A, C), self.weights2,
+            ac = self.weighted_mean(cross_product(W*A, C), self.weights2,
                          axis=0).reshape(d_c, d_a).T
         if d_b * d_c < n**2:
             bc = self.weighted_mean(cross_product(B, C), self.weights2,
@@ -380,7 +380,7 @@ class sparse2_ridge_l1vsl1(_SparseLinear2AdversarialGMM):
                 test_fn = np.dot(D, w1[:d_d] - w1[d_d:]).reshape(-1, 1)
                 cors1_t = - self.weighted_mean(test_fn * A, self.weights1, axis=0) + mu * aa @ (alpha[:d_a] - alpha[d_a:])
             if d_a * d_c < n**2:
-                cors1_t += W * ac @ (w2[:d_c] - w2[d_c:])
+                cors1_t += ac @ (w2[:d_c] - w2[d_c:])
             else:
                 test_fn = np.dot(C, w2[:d_c] - w2[d_c:]).reshape(-1, 1)
                 cors1_t += self.weighted_mean(test_fn * A * W, self.weights2, axis=0)
@@ -404,7 +404,7 @@ class sparse2_ridge_l1vsl1(_SparseLinear2AdversarialGMM):
 
             # quantities for updating w2
             if d_c * d_a < n**2:
-                res2[:d_c] = (alpha[:d_a] - alpha[d_a:]).T @ ac * W
+                res2[:d_c] = (alpha[:d_a] - alpha[d_a:]).T @ ac 
             else:
                 pred_fn = np.dot(A * W, alpha[:d_a] - alpha[d_a:]).reshape(-1, 1)
                 res2[:d_c] = self.weighted_mean(C * pred_fn, self.weights2, axis=0)
