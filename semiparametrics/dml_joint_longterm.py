@@ -36,7 +36,7 @@ def _fun_threshold_alpha(alpha, g):
     return result
 
 
-class DML_longterm:
+class DML_joint_longterm:
 
     def __init__(self, Y, D, S, G, X1=None, 
                  V=None, 
