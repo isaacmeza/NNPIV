@@ -251,6 +251,7 @@ class DML_joint_mediated:
         model_1 = copy.deepcopy(self.model1)
         model_q1 = copy.deepcopy(self.modelq1)
 
+        # Outcome model
         if self.estimator == 'MR' or self.estimator == 'OR' or self.estimator == 'hybrid':
             A_train = np.column_stack((train_M, train_X, train_W))
             E_train = np.column_stack((train_M, train_X, train_Z))
@@ -284,6 +285,7 @@ class DML_joint_mediated:
                 gamma_0_hat = gamma_0_hat.reshape(-1, 1)
                 gamma_1_hat = gamma_1_hat.reshape(-1, 1)
 
+        # Action model
         if self.estimator == 'MR' or self.estimator == 'IPW' or self.estimator == 'hybrid':
             A_train = np.column_stack((train_X, train_Z))
             E_train = np.column_stack((train_X, train_W))
