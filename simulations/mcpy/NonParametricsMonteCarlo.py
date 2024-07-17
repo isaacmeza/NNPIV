@@ -9,7 +9,6 @@ from itertools import product
 import collections
 from copy import deepcopy
 from mcpy.utils import filesafe
-from mcpy import plotting
 
 
 def _get(opts, key, default):
@@ -99,16 +98,12 @@ class MonteCarlo:
                                                                                    for i in range(self.config['mc_opts']['n_experiments'])])
 
         for plot_name, plot_fn in self.config['plots'].items():
-            if isinstance(plot_fn, dict):
-                plotting.instance_plot(
-                    plot_name, param_estimates, metric_results, self.config, plot_fn)
-            else:
-                plot_fn(param_estimates, metric_results, self.config)
+            plot_fn(param_estimates, metric_results, self.config)
 
         return param_estimates, metric_results
 
 
-class MonteCarloSweep:
+class NonParametricsMonteCarlo:
 
     def __init__(self, config):
         self.config = config
@@ -167,17 +162,13 @@ class MonteCarloSweep:
 
         if node_id == n_nodes - 1:
             for plot_key, plot_fn in self.config['sweep_plots'].items():
-                if isinstance(plot_fn, dict):
-                    plotting.sweep_plot(
-                        plot_key, sweep_keys, sweep_params, sweep_metrics, self.config, plot_fn)
-                else:
-                    plot_fn(plot_key, sweep_keys, sweep_params,
+                plot_fn(plot_key, sweep_keys, sweep_params,
                             sweep_metrics, self.config)
 
         return sweep_keys, sweep_params, sweep_metrics
 
 
-def monte_carlo_main():
+def nonparametrics_main():
     parser = argparse.ArgumentParser(description='Process some integers.')
     parser.add_argument('--config', type=str, help='config file')
     args = parser.parse_args(sys.argv[1:])
@@ -187,4 +178,4 @@ def monte_carlo_main():
 
 
 if __name__ == "__main__":
-    monte_carlo_main()
+    nonparametrics_main()

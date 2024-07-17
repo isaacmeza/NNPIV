@@ -2,11 +2,9 @@
 # Licensed under the MIT License.
 
 import ivfunctions_nested_nn
-from mcpy import metrics
-from mcpy import plotting
-from mliv.dgps_nested import fn_dict 
-from raw_plots import raw_metric, plot_raw, plot_raw_ind
-import papertables_nested
+from simulations.dgps_nested import fn_dict 
+from simulations.printplots import raw_metric, plot_ind
+import printtable
 
 
 CONFIG = {
@@ -37,8 +35,8 @@ CONFIG = {
         'raw': raw_metric
     },
     "plots": {
-        'est': plot_raw_ind,
-        'print_metrics': lambda x, y, z: papertables_nested.paper_table(x, y, z,
+        'est': plot_ind,
+        'print_metrics': lambda x, y, z: printtable.print_table(x, y, z,
                                                                  filename='nested_md_nn_dgp2.csv',
                                                                  nn=True)
     },

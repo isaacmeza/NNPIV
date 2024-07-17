@@ -2,11 +2,9 @@
 # Licensed under the MIT License.
 
 import ivfunctions_nested
-from mcpy import metrics
-from mcpy import plotting
-from mliv.dgps_nested import fn_dict 
-from raw_plots import raw_metric, plot_raw, plot_raw_ind
-import papertables_nested
+from simulations.dgps_nested import fn_dict 
+from simulations.printplots import raw_metric, plot_ind
+import printtable
 
 
 CONFIG = {
@@ -17,20 +15,16 @@ CONFIG = {
     },
     "dgp_opts": {
         'dgp_num': 2,
-        'fn': list(iter(fn_dict.values())),
-        'n_samples': 2000,
-        'n_a': 10,
-        'n_b': 10,
+        'fn': [0,1],
+        'n_samples': 1000,
+        'n_a': 1,
+        'n_b': 1,
         'n_test': 1000,
         'gridtest': 1
     },
     "methods": {
         "2SLS": ivfunctions_nested.tsls,
-        "Reg2SLS": ivfunctions_nested.regtsls,
-        "NystromRKHS": ivfunctions_nested.nystromrkhsfit,        
-        "SpLinL1": ivfunctions_nested.l1sparselinear,
-        "StSpLinL1": ivfunctions_nested.stochasticl1sparselinear,        
-        "RFIV": ivfunctions_nested.ensembleiv     
+        "Reg2SLS": ivfunctions_nested.regtsls    
     },
     "method_opts": {
         'nstrm_n_comp': 100,
@@ -41,9 +35,9 @@ CONFIG = {
         'raw': raw_metric
     },
     "plots": {
-        'est': plot_raw_ind,
-        'print_metrics': lambda x, y, z: papertables_nested.paper_table(x, y, z,
-                                                                 filename='nested_sims_md_dgp2.csv',
+        'est': plot_ind,
+        'print_metrics': lambda x, y, z: printtable.print_table(x, y, z,
+                                                                 filename='nested_md_2/nested_sims_md_dgp2.csv',
                                                                  nn=False)
     },
     "subplots": {
@@ -52,7 +46,7 @@ CONFIG = {
     "sweep_plots": {
     },
     "mc_opts": {
-        'n_experiments': 100,  # number of monte carlo experiments
+        'n_experiments': 2,  # number of monte carlo experiments
         "seed": 123,
     },
     "cluster_opts": {

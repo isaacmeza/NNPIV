@@ -1,6 +1,6 @@
 import sys
 import argparse
-from mcpy.SemiParametricsMonteCarlo import SemiParametricsMonteCarlo
+from simulations.mcpy.SemiParametricsMonteCarlo import SemiParametricsMonteCarlo
 import importlib
 
 def semiparametrics_main():

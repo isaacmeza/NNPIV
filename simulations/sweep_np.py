@@ -1,6 +1,6 @@
 import sys
 import argparse
-from mcpy.monte_carlo import MonteCarloSweep
+from simulations.mcpy.NonParametricsMonteCarlo import NonParametricsMonteCarlo
 import importlib
 
 def monte_carlo_main():
@@ -9,7 +9,7 @@ def monte_carlo_main():
     args = parser.parse_args(sys.argv[1:])
 
     config = importlib.import_module(args.config, __name__)
-    MonteCarloSweep(config.CONFIG).run()
+    NonParametricsMonteCarlo(config.CONFIG).run()
     
 if __name__=="__main__":
     monte_carlo_main()

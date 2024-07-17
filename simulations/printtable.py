@@ -2,11 +2,11 @@
 # Licensed under the MIT License.
 
 import numpy as np
-import mliv.dgps_nested as dgps
+import simulations.dgps_nested as dgps
 import ivfunctions_nested
 
 
-def paper_table(param_estimates, metric_results, config, filename="", nn=False):
+def print_table(param_estimates, metric_results, config, filename="", nn=False):
     out = open(filename, 'a')
     if nn:
         method_list = ["AGMM", "KLayerFixed",

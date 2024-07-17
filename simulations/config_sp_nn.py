@@ -1,15 +1,14 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
 
-from mliv.dgps_mediated import fn_dict, fn_dict_test 
+from simulations.dgps_mediated import fn_dict, fn_dict_test 
 
 import numpy as np
 from pathlib import Path
 import torch
 import torch.nn as nn
-#from mliv.neuralnet.deepiv_fit import deep_iv_fit
-from mliv.neuralnet.rbflayer import gaussian, inverse_multiquadric
-from mliv.neuralnet import AGMM, KernelLayerMMDGMM, CentroidMMDGMM, KernelLossAGMM, MMDGMM
+from nnpiv.neuralnet.rbflayer import gaussian, inverse_multiquadric
+from nnpiv.neuralnet import AGMM, KernelLayerMMDGMM, CentroidMMDGMM, KernelLossAGMM, MMDGMM
 
 p = 0.1  # dropout prob of dropout layers throughout notebook
 n_hidden = 100  # width of hidden layers throughout notebook

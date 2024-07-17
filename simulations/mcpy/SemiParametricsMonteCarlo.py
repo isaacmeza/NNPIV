@@ -1,5 +1,9 @@
-import os
 import sys
+import os
+
+# Add the simulations/mcpy directory to the Python path
+sys.path.append(os.path.abspath(os.path.join(os.getcwd(), '../../simulations')))
+
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -12,8 +16,8 @@ from itertools import product
 import collections
 from copy import deepcopy
 from mcpy.utils import filesafe
-import mliv.dgps_mediated as dgps
-from dml_mediated import DML_mediated
+import simulations.dgps_mediated as dgps
+from nnpiv.semiparametrics import DML_mediated
 import time
 
 def _get(opts, key, default):
@@ -269,7 +273,8 @@ class SemiParametricsMonteCarlo:
         df = self.config['mc_opts']['n_experiments'] - 1
         x = np.linspace(t.ppf(0.01, df), t.ppf(0.99, df), 100)
 
-        folder_plots = os.path.join(self.config['target_dir'], self.config['dgp_opts']['dgp_name'])
+        dgp_name = self.config['dgp_opts']['dgp_name']
+        folder_plots = os.path.join(self.config['target_dir'], f'plots_{dgp_name}')
         os.makedirs(folder_plots, exist_ok=True)
 
         i = 0
