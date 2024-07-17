@@ -1,3 +1,14 @@
+"""
+This module provides implementations of ensemble instrumental variable (IV) estimators using RandomForest models.
+
+Classes:
+    EnsembleIV: Implements an ensemble learning IV method with adversarial and learner components.
+    EnsembleIVStar: Similar to EnsembleIV but with a different method for updating the test predictions.
+    EnsembleIVL2: An extension of EnsembleIV with L2 regularization and optional cross-validation for regularization parameter selection.
+
+Functions:
+    _mysign: A helper function that returns 2 if the input is non-negative and -1 otherwise.
+"""
 # Copyright (c) Microsoft Corporation.
 # Licensed under the MIT License.
 
@@ -12,7 +23,16 @@ def _mysign(x):
 
 
 class EnsembleIV:
-
+    """
+    Implements an ensemble learning IV method with adversarial and learner components.
+    
+    Parameters:
+        adversary (str or estimator): Adversary model. If 'auto', a default RandomForestRegressor is used.
+        learner (str or estimator): Learner model. If 'auto', a default RandomForestClassifier is used.
+        max_abs_value (float): Maximum absolute value for the predictions.
+        n_iter (int): Number of iterations for the ensemble.
+    """
+    
     def __init__(self, adversary='auto', learner='auto',
                  max_abs_value=4, n_iter=100):
         self.adversary = adversary
@@ -37,6 +57,17 @@ class EnsembleIV:
                                       bootstrap=False, min_samples_leaf=40, min_impurity_decrease=0.001) if self.learner == 'auto' else clone(self.learner)
 
     def fit(self, Z, T, Y):
+        """
+        Fits the ensemble IV model to the provided data.
+        
+        Parameters:
+            Z (array-like): Instrumental variables.
+            T (array-like): Treatment variables.
+            Y (array-like): Outcome variables.
+        
+        Returns:
+            self: Fitted ensemble IV model.
+        """
         Z, T, Y = self._check_input(Z, T, Y)
         max_value = self.max_abs_value
         adversary = self._get_new_adversary().fit(Z, Y.flatten())
@@ -58,12 +89,30 @@ class EnsembleIV:
         return self
 
     def predict(self, T):
+        """
+        Predicts outcomes for new data using the fitted ensemble IV model.
+        
+        Parameters:
+            T (array-like): Treatment variables.
+        
+        Returns:
+            array: Predicted outcomes.
+        """
         return np.mean([self.max_abs_value * _mysign(l.predict_proba(T)
                                                      [:, -1] * l.classes_[-1] - 1 / 2) for l in self.learners], axis=0)
 
 
 class EnsembleIVStar:
-
+    """
+    Similar to EnsembleIV but with a different method for updating the test predictions using a linear combination approach.
+    
+    Parameters:
+        adversary (str or estimator): Adversary model. If 'auto', a default RandomForestRegressor is used.
+        learner (str or estimator): Learner model. If 'auto', a default RandomForestClassifier is used.
+        max_abs_value (float): Maximum absolute value for the predictions.
+        n_iter (int): Number of iterations for the ensemble.
+    """
+    
     def __init__(self, adversary='auto', learner='auto',
                  max_abs_value=4, n_iter=100):
         self.adversary = adversary
@@ -101,6 +150,17 @@ class EnsembleIVStar:
         return pred_new
 
     def fit(self, Z, T, Y):
+        """
+        Fits the ensemble IV model to the provided data.
+        
+        Parameters:
+            Z (array-like): Instrumental variables.
+            T (array-like): Treatment variables.
+            Y (array-like): Outcome variables.
+        
+        Returns:
+            self: Fitted ensemble IV model.
+        """
         Z, T, Y = self._check_input(Z, T, Y)
         max_value = self.max_abs_value
         adversary = self._get_new_adversary()
@@ -122,14 +182,37 @@ class EnsembleIVStar:
         return self
 
     def predict(self, T):
+        """
+        Predicts outcomes for new data using the fitted ensemble IV model.
+        
+        Parameters:
+            T (array-like): Treatment variables.
+        
+        Returns:
+            array: Predicted outcomes.
+        """
         return np.mean([self.max_abs_value * _mysign(l.predict_proba(T)
                                                      [:, -1] * l.classes_[-1] - 1 / 2) for l in self.learners], axis=0)
 
 
 class EnsembleIVL2:
-
+    """
+    An extension of EnsembleIV with L2 regularization and optional cross-validation to select the best regularization parameter.
+    
+    Parameters:
+        adversary (str or estimator): Adversary model. If 'auto', a default RandomForestRegressor is used.
+        learner (str or estimator): Learner model. If 'auto', a default RandomForestRegressor is used.
+        n_iter (int): Number of iterations for the ensemble.
+        delta_scale (str or float): Scale factor for the critical radius delta. Default is 'auto'.
+        delta_exp (str or float): Exponent for the critical radius delta. Default is 'auto'.
+        CV (bool): Whether to perform cross-validation to select the best alpha value.
+        alpha_scales (str or list): Scales for alpha in cross-validation. Default is 'auto'.
+        n_alphas (int): Number of alpha values to test in cross-validation.
+        n_folds (int): Number of folds for cross-validation.
+    """
+    
     def __init__(self, adversary='auto', learner='auto',
-                 n_iter=100, delta_scale='auto', delta_exp='auto', CV = False, 
+                 n_iter=100, delta_scale='auto', delta_exp='auto', CV=False, 
                  alpha_scales='auto', n_alphas=30, n_folds=5):
         self.adversary = adversary
         self.learner = learner
@@ -144,7 +227,13 @@ class EnsembleIVL2:
 
     def _get_delta(self, n):
         '''
-        delta -> Critical radius
+        Computes the critical radius delta based on the sample size.
+        
+        Parameters:
+            n (int): Sample size.
+        
+        Returns:
+            float: Critical radius delta.
         '''
         delta_scale = 5 if self.delta_scale == 'auto' else self.delta_scale
         delta_exp = .4 if self.delta_exp == 'auto' else self.delta_exp
@@ -152,7 +241,7 @@ class EnsembleIVL2:
     
     def _get_alpha_scales(self):
         return ([c for c in np.geomspace(0.1, 1e4, self.n_alphas)]
-                if self.alpha_scales == True else self.alpha_scales)
+                if self.alpha_scales == 'auto' else self.alpha_scales)
         
     def _check_input(self, Z, T, Y):
         if len(T.shape) == 1:
@@ -170,7 +259,17 @@ class EnsembleIVL2:
                                      bootstrap=True, min_samples_leaf=40, min_impurity_decrease=0.001) if self.learner == 'auto' else clone(self.learner)
 
     def _cross_validate_alpha(self, Z, T, Y):
-
+        """
+        Performs cross-validation to select the best alpha value.
+        
+        Parameters:
+            Z (array-like): Instrumental variables.
+            T (array-like): Treatment variables.
+            Y (array-like): Outcome variables.
+        
+        Returns:
+            float: Best alpha value.
+        """
         alpha_scales = self._get_alpha_scales()
         best_alpha = None
         best_score = float('inf')
@@ -197,6 +296,19 @@ class EnsembleIVL2:
         return best_alpha
  
     def fit(self, Z, T, Y, alpha=1.0, cross_validating=False):
+        """
+        Fits the ensemble IV model with L2 regularization to the provided data.
+        
+        Parameters:
+            Z (array-like): Instrumental variables.
+            T (array-like): Treatment variables.
+            Y (array-like): Outcome variables.
+            alpha (float): Regularization parameter.
+            cross_validating (bool): Whether the function is called during cross-validation.
+        
+        Returns:
+            self: Fitted ensemble IV model.
+        """
         if self.CV and not cross_validating:
             alpha = self._cross_validate_alpha(Z, T, Y)
 
@@ -216,9 +328,17 @@ class EnsembleIVL2:
             h += learners[it].predict(T).flatten() / (it + 1)
             adversary.append(self._get_new_adversary().fit(Z, Y - h))
 
-
         self.learners = learners
         return self
 
     def predict(self, T):
+        """
+        Predicts outcomes for new data using the fitted ensemble IV model with L2 regularization.
+        
+        Parameters:
+            T (array-like): Treatment variables.
+        
+        Returns:
+            array: Predicted outcomes.
+        """
         return np.mean([l.predict(T) for l in self.learners], axis=0)

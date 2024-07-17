@@ -1,3 +1,13 @@
+"""
+This module provides implementations of joint estimation for nested nonparametric instrumental variables (NPIV) using neural networks.
+
+Classes:
+    _BaseAGMM2: Base class for joint estimation of nested NPIV models.
+    _BaseSupLossAGMM2: Base class for joint estimation of nested NPIV models with supervised loss.
+    AGMM2: Adversarial Generalized Method of Moments estimator for nested NPIV.
+    _BaseSupLossAGMM2L2: Base class for joint estimation of nested NPIV models with L2 regularization.
+    AGMM2L2: Adversarial Generalized Method of Moments estimator for nested NPIV with L2 regularization.
+"""
 # Copyright (c) Microsoft Corporation.
 # Licensed under the MIT License.
 
@@ -9,8 +19,8 @@ import torch.nn as nn
 from torch.utils.data import DataLoader, TensorDataset
 from torch import optim
 from torch.utils.tensorboard import SummaryWriter
-from .oadam import OAdam
-from .rbflayer import RBF
+from nnpiv.neuralnet.oadam import OAdam
+from nnpiv.neuralnet.rbflayer import RBF
 
 # TODO. This epsilon is used only because pytorch 1.5 has an instability in torch.cdist
 # when the input distance is close to zero, due to instability of the square root in
@@ -32,6 +42,13 @@ def add_weight_decay(net, l2_value, skip_list=()):
 
 
 class _BaseAGMM2:
+    """
+    Base class for joint estimation of nested NPIV models.
+
+    Methods:
+        _pretrain: Prepares the variables required to begin training.
+        predict: Predicts outcomes using the fitted AGMM model.
+    """
 
     def _pretrain(self, A, B, C, D, Y, W, 
                   learner_l2, adversary_l2, adversary_norm_reg, learner_norm_reg,
@@ -123,6 +140,12 @@ class _BaseAGMM2:
 
 
 class _BaseSupLossAGMM2(_BaseAGMM2):
+    """
+    Base class for joint estimation of nested NPIV models with supervised loss.
+
+    Methods:
+        fit: Fits the AGMM model with supervised loss to the provided data.
+    """
 
     def fit(self, A, B, C, D, Y, W=None,
             learner_l2=1e-3, adversary_l2=1e-4, adversary_norm_reg=1e-3, learner_norm_reg=1e-3,
@@ -245,14 +268,17 @@ class _BaseSupLossAGMM2(_BaseAGMM2):
 
 
 class AGMM2(_BaseSupLossAGMM2):
+    """
+    Adversarial Generalized Method of Moments estimator for nested NPIV.
+
+    Parameters:
+        learnerh : a pytorch neural net module for the second stage learner.
+        learnerg : a pytorch neural net module for the first stage learner.
+        adversary1 : a pytorch neural net module for the first stage adversary.
+        adversary2 : a pytorch neural net module for the second stage adversary.
+    """
 
     def __init__(self, learnerh, learnerg, adversary1, adversary2):
-        """
-        Parameters
-        ----------
-        learner : a pytorch neural net module
-        adversary : a pytorch neural net module
-        """
         self.learnerh = learnerh
         self.learnerg = learnerg
         self.adversary1 = adversary1
@@ -263,6 +289,12 @@ class AGMM2(_BaseSupLossAGMM2):
 
 
 class _BaseSupLossAGMM2L2(_BaseAGMM2):
+    """
+    Base class for joint estimation of nested NPIV models with L2 regularization.
+
+    Methods:
+        fit: Fits the AGMM model with L2 regularization to the provided data.
+    """
 
     def fit(self, A, B, C, D, Y, W=None,
             learner_l2=1e-3, adversary_l2=1e-4, adversary_norm_reg=1e-3, learner_norm_reg=1e-3,
@@ -385,14 +417,17 @@ class _BaseSupLossAGMM2L2(_BaseAGMM2):
     
 
 class AGMM2L2(_BaseSupLossAGMM2L2):
+    """
+    Adversarial Generalized Method of Moments estimator for nested NPIV with L2 regularization.
+
+    Parameters:
+        learnerh : a pytorch neural net module for the second stage learner.
+        learnerg : a pytorch neural net module for the first stage learner.
+        adversary1 : a pytorch neural net module for the first stage adversary.
+        adversary2 : a pytorch neural net module for the second stage adversary.
+    """
 
     def __init__(self, learnerh, learnerg, adversary1, adversary2):
-        """
-        Parameters
-        ----------
-        learner : a pytorch neural net module
-        adversary : a pytorch neural net module
-        """
         self.learnerh = learnerh
         self.learnerg = learnerg
         self.adversary1 = adversary1

@@ -1,8 +1,13 @@
+"""
+Debiased Machine Learning for long-term causal analysis with a joint estimator (DML-joint-longterm) class.
+The estimand can be either for a model with a surrogacy assumption (Athey et al., 2020b. [Estimating treatment effects using multiple surrogates: the role of the surrogate score and the surrogate index](https://arxiv.org/abs/1603.09326)) or with a latent unconfounded model (Athey et al., 2020a. [Combining experimental and observational data to estimate treatment effects on long-term outcomes](https://arxiv.org/abs/2006.09676)). 
+The semiparametric efficiency is derived in Chen and Ritzwoller (2023. [Semiparametric estimation of long-term treatment effects](https://doi.org/10.1016/j.jeconom.2023.105545)).
+"""
+
 import numpy as np
 from scipy.stats import norm 
 from sklearn.model_selection import KFold
 from sklearn.linear_model import LogisticRegression
-from sklearn.cluster import KMeans
 from sklearn.preprocessing import PolynomialFeatures
 from statsmodels.nonparametric.kde import kernel_switch
 import warnings
@@ -10,16 +15,48 @@ import warnings
 from tqdm import tqdm  # Import tqdm
 import copy
 import torch
-from mliv.rkhs import ApproxRKHSIVCV
+from nnpiv.rkhs import RKHS2IVCV
 from joblib import Parallel, delayed
 from scipy.optimize import minimize_scalar
 
 device = torch.cuda.current_device() if torch.cuda.is_available() else None
 
 def _get(opts, key, default):
+    """
+    Retrieve the value associated with 'key' in 'opts', or return 'default' if not present.
+
+    Parameters
+    ----------
+    opts : dict
+        Dictionary of options.
+    key : str
+        Key to look up in 'opts'.
+    default : any
+        Default value to return if 'key' is not found.
+
+    Returns
+    -------
+    any
+        Value associated with 'key' or 'default'.
+    """
     return opts[key] if (opts is not None and key in opts) else default
 
 def _transform_poly(X, opts):
+    """
+    Transform the input data X using polynomial features.
+
+    Parameters
+    ----------
+    X : array-like
+        Input data.
+    opts : dict
+        Options dictionary containing the polynomial degree ('lin_degree').
+
+    Returns
+    -------
+    array-like
+        Transformed data.
+    """
     degree = _get(opts, 'lin_degree', 1)
     if degree == 1:
         return X
@@ -28,6 +65,22 @@ def _transform_poly(X, opts):
         return trans.fit_transform(X)
 
 def _fun_threshold_alpha(alpha, g):
+    """
+    Auxiliary function for computation of optimal alpha for improvement in overlap: CHIM 
+    (Dealing with limited overlap in estimation of average treatment effects, Crump et al., Biometrika, 2009).
+
+    Parameters
+    ----------
+    alpha : float
+        Alpha value.
+    g : array-like
+        Input array.
+
+    Returns
+    -------
+    float
+        Result of the threshold function.
+    """
     lambda_val = 1 / (alpha * (1 - alpha))
     ind = (g <= lambda_val)
     den = sum(ind)
@@ -37,7 +90,62 @@ def _fun_threshold_alpha(alpha, g):
 
 
 class DML_joint_longterm:
+    """
+    Debiased Machine Learning for long-term causal analysis (DML-longterm) class with joint model fitting.
 
+    Parameters
+    ----------
+    Y : array-like
+        Outcome variable.
+    D : array-like
+        Treatment variable.
+    S : array-like
+        Surrogate variable.
+    G : array-like
+        Group variable.
+    X1 : array-like, optional
+        Additional covariates.
+    V : array-like, optional
+        Localization covariates.
+    v_values : array-like, optional
+        Values for localization.
+    loc_kernel : str, optional
+        Kernel for localization. Options are ['gau', 'epa', 'uni'].
+    bw_loc : str, optional
+        Bandwidth for localization.
+    estimator : str, optional
+        Estimator type ('MR', 'OR', 'hybrid', 'IPW').
+    longterm_model : str, optional
+        Model type for long-term analysis ('surrogacy', 'latent_unconfounded').
+    model1 : estimator, optional
+        Model for the first stage.
+    nn_1 : bool, optional
+        Use neural network for the first stage.
+    model2 : estimator, optional
+        Model for the second stage.
+    nn_2 : bool, optional
+        Use neural network for the second stage.
+    alpha : float, optional
+        Significance level for confidence intervals.
+    n_folds : int, optional
+        Number of folds for estimation.
+    n_rep : int, optional
+        Number of repetitions for estimation.
+    random_seed : int, optional
+        Seed for random number generator.
+    prop_score : estimator, optional
+        Model for propensity score.
+    CHIM : bool, optional
+        Use CHIM method for dealing with limited overlap.
+    verbose : bool, optional
+        Print progress information.
+    fitargs1 : dict, optional
+        Arguments for fitting the first stage model.
+    fitargs2 : dict, optional
+        Arguments for fitting the second stage model.
+    opts : dict, optional
+        Additional options.
+    """
     def __init__(self, Y, D, S, G, X1=None, 
                  V=None, 
                  v_values=None,
@@ -45,13 +153,11 @@ class DML_joint_longterm:
                  bw_loc='silverman',
                  estimator='MR',
                  longterm_model='surrogacy',
-                 model1=ApproxRKHSIVCV(kernel_approx='nystrom', n_components=100,
-                           kernel='rbf', gamma=.1, delta_scale='auto',
-                           delta_exp=.4, alpha_scales=np.geomspace(1, 10000, 10), cv=5), 
+                 model1=RKHS2IVCV(kernel='rbf', gamma=.1, delta_scale='auto', 
+                                  delta_exp=.4, alpha_scales=np.geomspace(1, 10000, 10), cv=5), 
                  nn_1=False,
-                 model2=ApproxRKHSIVCV(kernel_approx='nystrom', n_components=100,
-                           kernel='rbf', gamma=.1, delta_scale='auto',
-                           delta_exp=.4, alpha_scales=np.geomspace(1, 10000, 10), cv=5), 
+                 model2=RKHS2IVCV(kernel='rbf', gamma=.1, delta_scale='auto', 
+                                  delta_exp=.4, alpha_scales=np.geomspace(1, 10000, 10), cv=5), 
                  nn_2=False,
                  alpha=0.05,
                  n_folds=5,
@@ -135,6 +241,21 @@ class DML_joint_longterm:
                 self.v_values = np.mean(self.V, axis=0)    
 
     def _calculate_confidence_interval(self, theta, theta_var):
+        """
+        Calculate the confidence interval for the given estimates.
+
+        Parameters
+        ----------
+        theta : array-like
+            Estimated values.
+        theta_var : array-like
+            Variance of the estimates.
+
+        Returns
+        -------
+        array-like
+            Lower and upper bounds of the confidence intervals.
+        """
         z_alpha_half = norm.ppf(1 - self.alpha / 2)
         n = self.Y.shape[0]
         margin_of_error = z_alpha_half * np.sqrt(theta_var) * np.sqrt(1 / n)
@@ -143,6 +264,23 @@ class DML_joint_longterm:
         return np.column_stack((lower_bound, upper_bound))
 
     def _localization(self, V, v_val, bw):
+        """
+        Perform localization using kernel density estimation.
+
+        Parameters
+        ----------
+        V : array-like
+            Localization covariates.
+        v_val : array-like
+            Values for localization.
+        bw : float
+            Bandwidth for localization.
+
+        Returns
+        -------
+        array-like
+            Weights for localization.
+        """
         if kernel_switch[self.loc_kernel]().domain is None:
             def K(x):
                 return kernel_switch[self.loc_kernel]()(x)
@@ -159,7 +297,31 @@ class DML_joint_longterm:
 
     def _nnpivfit_outcome_latent(self, train_Y, train_D, train_S, train_X, train_G,
                                  test_X, test_S):
-        
+        """
+        Fit the outcome model using nonparametric instrumental variables for the latent unconfounded model.
+
+        Parameters
+        ----------
+        train_Y : array-like
+            Training outcome variable.
+        train_D : array-like
+            Training treatment variable.
+        train_S : array-like
+            Training surrogate variable.
+        train_X : array-like
+            Training covariates.
+        train_G : array-like
+            Training group variable.
+        test_X : array-like
+            Testing covariates.
+        test_S : array-like
+            Testing surrogate variable.
+
+        Returns
+        -------
+        tuple
+            Estimated values for delta_d1_hat, delta_d0_hat, nu_1_hat, nu_0_hat.
+        """
         model_1_d1 = copy.deepcopy(self.model1)
         model_1_d0 = copy.deepcopy(self.model1)
 
@@ -233,7 +395,31 @@ class DML_joint_longterm:
 
     def _nnpivfit_outcome_surrogacy(self, train_Y, train_D, train_S, train_X, train_G,
                                     test_X, test_S):
+        """
+        Fit the outcome model using nonparametric instrumental variables for the surrogacy model.
 
+        Parameters
+        ----------
+        train_Y : array-like
+            Training outcome variable.
+        train_D : array-like
+            Training treatment variable.
+        train_S : array-like
+            Training surrogate variable.
+        train_X : array-like
+            Training covariates.
+        train_G : array-like
+            Training group variable.
+        test_X : array-like
+            Testing covariates.
+        test_S : array-like
+            Testing surrogate variable.
+
+        Returns
+        -------
+        tuple
+            Estimated values for delta_d1_hat, delta_d0_hat, nu_1_hat, nu_0_hat.
+        """
         model_1_d1 = copy.deepcopy(self.model1)
         model_1_d0 = copy.deepcopy(self.model1)
 
@@ -291,7 +477,29 @@ class DML_joint_longterm:
 
     def _propensity_score_latent(self, S_train, X_train, D_train, G_train,
                            S_test, X_test):
-        
+        """
+        Estimate the propensity score for the latent unconfounded model.
+
+        Parameters
+        ----------
+        S_train : array-like
+            Training surrogate variable.
+        X_train : array-like
+            Training covariates.
+        D_train : array-like
+            Training treatment variable.
+        G_train : array-like
+            Training group variable.
+        S_test : array-like
+            Testing surrogate variable.
+        X_test : array-like
+            Testing covariates.
+
+        Returns
+        -------
+        tuple
+            Estimated propensity scores and threshold alpha.
+        """
         model_ps = copy.deepcopy(self.prop_score)
         ind = np.where(G_train==0)[0]
         X_g0_train = X_train[ind,:]
@@ -331,14 +539,6 @@ class DML_joint_longterm:
         pr_g1_x = np.where(pr_g1_x == 0, 0.01, pr_g1_x)
 
         if self.CHIM==True:
-            # Dropping observations with extreme values of the propensity score - CHIM (2009)
-            # One finds the smallest value of \alpha\in [0,0.5] s.t.
-            # $\lambda:=\frac{1}{\alpha(1-\alpha)}$
-            # $2\frac{\sum 1(g(X)\leq\lambda)*g(X)}{\sum 1(g(X)\leq\lambda)}-\lambda\geq 0$
-            # 
-            # Equivalently the first value of alpha (in increasing order) such that the constraint is achieved by equality
-            # (as the constraint is a monotone increasing function in alpha)
-
             g_values = [1/(pr_d1_g0_x*(1-pr_d1_g0_x)), 1/(pr_g1_d1_sx*(1-pr_g1_d1_sx)), 1/(pr_g1_d0_sx*(1-pr_g1_d0_sx)), 1/(pr_g1_x*(1-pr_g1_x))]
             optimized_alphas = []
 
@@ -356,7 +556,29 @@ class DML_joint_longterm:
 
     def _propensity_score_surrogacy(self, S_train, X_train, D_train, G_train,
                            S_test, X_test):
-        
+        """
+        Estimate the propensity score for the surrogacy model.
+
+        Parameters
+        ----------
+        S_train : array-like
+            Training surrogate variable.
+        X_train : array-like
+            Training covariates.
+        D_train : array-like
+            Training treatment variable.
+        G_train : array-like
+            Training group variable.
+        S_test : array-like
+            Testing surrogate variable.
+        X_test : array-like
+            Testing covariates.
+
+        Returns
+        -------
+        tuple
+            Estimated propensity scores and threshold alpha.
+        """
         model_ps = copy.deepcopy(self.prop_score)
         SX_train = np.column_stack((S_train,X_train))
         ind = np.where(G_train==0)[0]
@@ -389,14 +611,6 @@ class DML_joint_longterm:
         pr_g1_x = np.where(pr_g1_x == 0, 0.01, pr_g1_x)
 
         if self.CHIM==True:
-            # Dropping observations with extreme values of the propensity score - CHIM (2009)
-            # One finds the smallest value of \alpha\in [0,0.5] s.t.
-            # $\lambda:=\frac{1}{\alpha(1-\alpha)}$
-            # $2\frac{\sum 1(g(X)\leq\lambda)*g(X)}{\sum 1(g(X)\leq\lambda)}-\lambda\geq 0$
-            # 
-            # Equivalently the first value of alpha (in increasing order) such that the constraint is achieved by equality
-            # (as the constraint is a monotone increasing function in alpha)
-
             g_values = [1/(pr_d1_g0_sx*(1-pr_d1_g0_sx)), 1/(pr_d1_g0_x*(1-pr_d1_g0_x)), 1/(pr_g1_sx*(1-pr_g1_sx)), 1/(pr_g1_x*(1-pr_g1_x))]
             optimized_alphas = []
 
@@ -413,6 +627,23 @@ class DML_joint_longterm:
 
 
     def _process_fold(self, fold_idx, train_data, test_data):
+        """
+        Process a single fold for cross-validation.
+
+        Parameters
+        ----------
+        fold_idx : int
+            Fold index.
+        train_data : tuple
+            Training data for the fold.
+        test_data : tuple
+            Testing data for the fold.
+
+        Returns
+        -------
+        array-like
+            Estimated moment functions for the test data.
+        """
         train_Y, test_Y = train_data[0], test_data[0]
         train_D, test_D = train_data[1], test_data[1]
         train_S, test_S = train_data[2], test_data[2]
@@ -430,7 +661,6 @@ class DML_joint_longterm:
                                                                             test_X, test_S)
 
         if self.estimator == 'MR' or self.estimator == 'hybrid' or self.estimator == 'IPW':
-            # Obtain propensity score for action bridges
             if self.longterm_model == 'surrogacy':
                 pr_d1_g0_sx, pr_d1_g0_x, pr_g1_sx, pr_g1_x, alfa = self._propensity_score_surrogacy(train_S, train_X, train_D, train_G, 
                                                                   test_S, test_X)
@@ -439,11 +669,9 @@ class DML_joint_longterm:
                                 (pr_g1_sx >= alfa) & (pr_g1_sx <= 1 - alfa) &
                                 (pr_g1_x >= alfa) & (pr_g1_x <= 1 - alfa))[0]
                                 
-                #IPW to residuals of approximation of first outcome bridge 
                 alfa_1_hat = (test_G * pr_d1_g0_sx * (1-pr_g1_sx)) / (pr_g1_sx * pr_d1_g0_x * (1-pr_g1_x))
                 alfa_0_hat = (test_G * (1-pr_d1_g0_sx) * (1-pr_g1_sx)) / (pr_g1_sx * (1-pr_d1_g0_x) * (1-pr_g1_x))
 
-                #IPW to residuals of approximation of second outcome bridge
                 eta_1_hat = ((1-test_G) * test_D ) / (pr_d1_g0_x * (1-pr_g1_x))
                 eta_0_hat = ((1-test_G) * (1-test_D) ) / ((1-pr_d1_g0_x) * (1-pr_g1_x))
             else:
@@ -454,15 +682,12 @@ class DML_joint_longterm:
                                 (pr_g1_d0_sx >= alfa) & (pr_g1_d0_sx <= 1 - alfa) &
                                 (pr_g1_x >= alfa) & (pr_g1_x <= 1 - alfa))[0]
 
-                #IPW to residuals of approximation of first outcome bridge
                 alfa_1_hat = (test_G * test_D * (1-pr_g1_d1_sx)) / (pr_g1_d1_sx * pr_d1_g0_x * (1-pr_g1_x))
                 alfa_0_hat = (test_G * (1-test_D) * (1-pr_g1_d0_sx)) / (pr_g1_d0_sx * (1-pr_d1_g0_x) * (1-pr_g1_x))
 
-                #IPW to residuals of approximation of second outcome bridge
                 eta_1_hat = ((1-test_G) * test_D ) / (pr_d1_g0_x * (1-pr_g1_x))
                 eta_0_hat = ((1-test_G) * (1-test_D) ) / ((1-pr_d1_g0_x) * (1-pr_g1_x))
         
-        # Calculate the score function depending on the estimator
         if self.estimator == 'MR':
             y1_hat = nu_1_hat + alfa_1_hat * (test_Y - delta_d1_hat) + eta_1_hat * (delta_d1_hat - nu_1_hat)
             y0_hat = nu_0_hat + alfa_0_hat * (test_Y - delta_d0_hat) + eta_0_hat * (delta_d0_hat - nu_0_hat)
@@ -474,8 +699,6 @@ class DML_joint_longterm:
         if self.estimator == 'IPW':
             psi_hat = (alfa_1_hat - alfa_0_hat) * test_Y 
 
-
-        # Localization 
         if self.V is not None:
             if isinstance(self.bw_loc, str):
                 if self.bw_loc == 'silverman':
@@ -500,7 +723,6 @@ class DML_joint_longterm:
         if self.estimator == 'MR' or self.estimator == 'hybrid' or self.estimator == 'IPW':
             psi_hat = psi_hat[mask]
             
-        # Print progress bar using tqdm
         if self.verbose==True:
             self.progress_bar.update(1)
 
@@ -508,7 +730,14 @@ class DML_joint_longterm:
 
 
     def _split_and_estimate(self):
-        
+        """
+        Split the data and estimate the model for each fold.
+
+        Returns
+        -------
+        tuple
+            Estimated values, variances, and confidence intervals.
+        """
         theta = []
         theta_var = []
 
@@ -538,30 +767,32 @@ class DML_joint_longterm:
             if self.verbose==True:       
                 self.progress_bar.close()
 
-            # Calculate the average of psi_hat_array for each rep
             psi_hat_array = np.concatenate(fold_results, axis=0)
             theta_rep = np.mean(psi_hat_array, axis=0)
             theta_var_rep = np.var(psi_hat_array, axis=0)
 
-            # Store results for each rep
             theta.append(theta_rep)
             theta_var.append(theta_var_rep)
 
-        # Calculate the overall average of theta and theta_var
         theta_hat = np.mean(np.stack(theta, axis=0), axis=0)
         theta_var_hat = np.mean(np.stack(theta_var, axis=0), axis=0)
         
-        # Calculate the confidence interval
         confidence_interval = self._calculate_confidence_interval(theta_hat, theta_var_hat)
 
         return theta_hat, theta_var_hat, confidence_interval
     
 
     def dml(self):
+        """
+        Perform Debiased Machine Learning for Nonparametric Instrumental Variables.
+
+        Returns
+        -------
+        tuple
+            Estimated values, variances, and confidence intervals.
+        """
         theta, theta_var, confidence_interval = self._split_and_estimate()
         if self.V is None:
             return theta[0], theta_var[0], confidence_interval[0]
         else:
             return theta, theta_var, confidence_interval
-        
-    

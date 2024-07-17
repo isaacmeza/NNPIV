@@ -1,3 +1,15 @@
+"""
+This module provides implementations of adversarial generalized method of moments (AGMM) estimators using neural networks.
+
+Classes:
+    _BaseAGMM: Base class for AGMM models.
+    _BaseSupLossAGMM: Base class for AGMM models with supervised loss.
+    AGMM: Adversarial Generalized Method of Moments estimator.
+    KernelLayerMMDGMM: AGMM with kernel layer using Maximum Mean Discrepancy.
+    CentroidMMDGMM: AGMM with centroid-based Maximum Mean Discrepancy.
+    KernelLossAGMM: AGMM with kernel loss.
+    MMDGMM: AGMM with Maximum Mean Discrepancy.
+"""
 # Copyright (c) Microsoft Corporation.
 # Licensed under the MIT License.
 
@@ -9,8 +21,8 @@ import torch.nn as nn
 from torch.utils.data import DataLoader, TensorDataset
 from torch import optim
 from torch.utils.tensorboard import SummaryWriter
-from .oadam import OAdam
-from .rbflayer import RBF
+from nnpiv.neuralnet.oadam import OAdam
+from nnpiv.neuralnet.rbflayer import RBF
 
 # TODO. This epsilon is used only because pytorch 1.5 has an instability in torch.cdist
 # when the input distance is close to zero, due to instability of the square root in
@@ -36,6 +48,13 @@ def _kernel(x, y, basis_func, sigma):
 
 
 class _BaseAGMM:
+    """
+    Base class for AGMM models.
+
+    Methods:
+        _pretrain: Prepares the variables required to begin training.
+        predict: Predicts outcomes using the fitted AGMM model.
+    """
 
     def _pretrain(self, Z, T, Y,
                   learner_l2, adversary_l2, adversary_norm_reg,
@@ -108,6 +127,12 @@ class _BaseAGMM:
 
 
 class _BaseSupLossAGMM(_BaseAGMM):
+    """
+    Base class for AGMM models with supervised loss.
+
+    Methods:
+        fit: Fits the AGMM model with supervised loss to the provided data.
+    """
 
     def fit(self, Z, T, Y,
             learner_l2=1e-3, adversary_l2=1e-4, adversary_norm_reg=1e-3,
@@ -189,14 +214,15 @@ class _BaseSupLossAGMM(_BaseAGMM):
 
 
 class AGMM(_BaseSupLossAGMM):
+    """
+    Adversarial Generalized Method of Moments estimator.
+
+    Parameters:
+        learner : a pytorch neural net module for the learner.
+        adversary : a pytorch neural net module for the adversary.
+    """
 
     def __init__(self, learner, adversary):
-        """
-        Parameters
-        ----------
-        learner : a pytorch neural net module
-        adversary : a pytorch neural net module
-        """
         self.learner = learner
         self.adversary = adversary
         # whether we have a norm penalty for the adversary
@@ -206,22 +232,22 @@ class AGMM(_BaseSupLossAGMM):
 
 
 class KernelLayerMMDGMM(_BaseSupLossAGMM):
+    """
+    AGMM with kernel layer using Maximum Mean Discrepancy.
+
+    Parameters:
+        learner : a pytorch neural net module for the learner.
+        adversary_g : a pytorch neural net module for the g function of the adversary.
+        g_features : the number of output features of g.
+        n_centers : the number of centers to use in the kernel layer.
+        kernel : the kernel function.
+        centers : numpy array containing the initial value of the centers in the g(Z) space.
+        sigmas : numpy array containing the initial value of the sigma for each center.
+        trainable : whether to train the centers and the sigmas.
+    """
 
     def __init__(self, learner, adversary_g, g_features,
                  n_centers, kernel, centers=None, sigmas=None, trainable=True):
-        """
-        Parameters
-        ----------
-        learner : a pytorch neural net module for the learner
-        adversary_g : a pytorch neural net module for the g function of the adversary
-        g_features : what is the output number of features of g
-        n_centers : how many centers to use in the kernel layer
-        kernel : the kernel function
-        centers : numpy array that contains the inital value of the centers in the g(Z) space
-        sigmas : numpy arra that contains the initial value of the sigma for each center
-            (e.g. the precition of the kernel)
-        trainable : whether to train the centers and the sigmas
-        """
         class Adversary(torch.nn.Module):
 
             def __init__(self, g, g_features, n_centers, basis_func,
@@ -253,18 +279,19 @@ class KernelLayerMMDGMM(_BaseSupLossAGMM):
 
 
 class CentroidMMDGMM(_BaseSupLossAGMM):
+    """
+    AGMM with centroid-based Maximum Mean Discrepancy.
+
+    Parameters:
+        learner : a pytorch neural net module for the learner.
+        adversary_g : a pytorch neural net module for the g function of the adversary.
+        kernel : the kernel function.
+        centers : numpy array containing the initial value of the centers in the Z space.
+        sigma : float corresponding to the precision of the kernel.
+    """
 
     def __init__(self, learner, adversary_g,
                  kernel, centers, sigma):
-        """
-        Parameters
-        ----------
-        learner : a pytorch neural net module for the learner
-        adversary_g : a pytorch neural net module for the g function of the adversary
-        kernel : the kernel function
-        centers : numpy array that contains the inital value of the centers in the Z space
-        sigma : float that corresponds to the precition of the kernel
-        """
         class Adversary(torch.nn.Module):
 
             def __init__(self, g, basis_func, centers, sigma):
@@ -311,16 +338,17 @@ class CentroidMMDGMM(_BaseSupLossAGMM):
 
 
 class KernelLossAGMM(_BaseAGMM):
+    """
+    AGMM with kernel loss.
+
+    Parameters:
+        learner : a pytorch neural net module for the learner.
+        adversary_g : a pytorch neural net module for the g function of the adversary.
+        kernel : the kernel function.
+        sigma : float corresponding to the precision of the kernel.
+    """
 
     def __init__(self, learner, adversary_g, kernel, sigma):
-        """
-        Parameters
-        ----------
-        learner : a pytorch neural net module for the learner
-        adversary_g : a pytorch neural net module for the g function of the adversary
-        kernel : the kernel function
-        sigma : float that corresponds to the precition of the kernel
-        """
         class Adversary(torch.nn.Module):
 
             def __init__(self, g, basis_func, sigma):
@@ -367,7 +395,7 @@ class KernelLossAGMM(_BaseAGMM):
         bs : batch size
         train_learner_every : after how many training iterations of the adversary should we train the learner
         ols_weight : weight on OLS (square loss) objective
-        warm_start : whehter to reset weights or not
+        warm_start : whether to reset weights or not
         logger : a function that takes as input (learner, adversary, epoch, writer) and is called after every epoch
             Supposed to be used to log the state of the learning.
         model_dir : folder where to store the learned models after every epoch
@@ -425,16 +453,18 @@ class KernelLossAGMM(_BaseAGMM):
 
 
 class MMDGMM(_BaseAGMM):
+    """
+    AGMM with Maximum Mean Discrepancy.
+
+    Parameters:
+        learner : a pytorch neural net module for the learner.
+        adversary_g : a pytorch neural net module for the g function of the adversary.
+        n_samples : number of samples.
+        kernel : the kernel function.
+        sigma : float corresponding to the precision of the kernel.
+    """
 
     def __init__(self, learner, adversary_g, n_samples, kernel, sigma):
-        """
-        Parameters
-        ----------
-        learner : a pytorch neural net module for the learner
-        adversary_g : a pytorch neural net module for the g function of the adversary
-        kernel : the kernel function
-        sigma : float that corresponds to the precition of the kernel
-        """
         class Adversary(torch.nn.Module):
 
             def __init__(self, g, n_samples, basis_func, sigma):
@@ -506,7 +536,7 @@ class MMDGMM(_BaseAGMM):
         bs : batch size
         train_learner_every : after how many training iterations of the adversary should we train the learner
         ols_weight : weight on OLS (square loss) objective
-        warm_start : whehter to reset weights or not
+        warm_start : whether to reset weights or not
         logger : a function that takes as input (learner, adversary, epoch, writer) and is called after every epoch
             Supposed to be used to log the state of the learning.
         model_dir : folder where to store the learned models after every epoch

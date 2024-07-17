@@ -1,3 +1,15 @@
+"""
+This module provides implementations of RKHS Instrumental Variable (IV) estimators.
+
+Classes:
+    _BaseRKHSIV: Base class for RKHS IV methods.
+    RKHSIV: RKHS IV estimator.
+    RKHSIVCV: RKHS IV estimator with cross-validation.
+    RKHSIVL2: RKHS IV estimator with L2 regularization.
+    RKHSIVL2CV: RKHS IV estimator with L2 regularization and cross-validation.
+    ApproxRKHSIV: Approximate RKHS IV estimator using kernel approximations.
+    ApproxRKHSIVCV: Approximate RKHS IV estimator with cross-validation using kernel approximations.
+"""
 # Copyright (c) Microsoft Corporation.
 # Licensed under the MIT License.
 
@@ -13,14 +25,35 @@ def _check_auto(param):
 
 
 class _BaseRKHSIV:
+    """
+    Base class for RKHS IV methods.
+
+    This class provides common functionality for RKHS IV estimators.
+
+    Parameters:
+        kernel (str or callable): Kernel function or string identifier.
+        gamma (float): Gamma parameter for the kernel.
+        degree (int): Degree for polynomial kernels.
+        coef0 (float): Zero coefficient for polynomial kernels.
+        delta_scale (str or float): Scale of the critical radius.
+        delta_exp (str or float): Exponent of the critical radius.
+        alpha_scale (str or float): Scale of the regularization parameter.
+        kernel_params (dict): Additional parameters for the kernel.
+    """
 
     def __init__(self, *args, **kwargs):
         return
 
     def _get_delta(self, n):
-        '''
-        delta -> Critical radius
-        '''
+        """
+        Compute the critical radius.
+
+        Parameters:
+            n (int): Number of samples.
+
+        Returns:
+            float: Critical radius.
+        """
         delta_scale = 5 if _check_auto(self.delta_scale) else self.delta_scale
         delta_exp = .4 if _check_auto(self.delta_exp) else self.delta_exp
         return delta_scale / (n**(delta_exp))
@@ -47,32 +80,47 @@ class _BaseRKHSIV:
 
 
 class RKHSIV(_BaseRKHSIV):
+    """
+    RKHS IV estimator.
+
+    This class implements an RKHS IV estimator.
+
+    Parameters:
+        kernel (str or callable): Kernel function or string identifier.
+        gamma (float): Gamma parameter for the kernel.
+        degree (int): Degree for polynomial kernels.
+        coef0 (float): Zero coefficient for polynomial kernels.
+        delta_scale (str or float): Scale of the critical radius.
+        delta_exp (str or float): Exponent of the critical radius.
+        alpha_scale (str or float): Scale of the regularization parameter.
+        kernel_params (dict): Additional parameters for the kernel.
+    """
 
     def __init__(self, kernel='rbf', gamma=2, degree=3, coef0=1,
                  delta_scale='auto', delta_exp='auto', alpha_scale='auto',
                  kernel_params=None):
-        """
-        Parameters:
-            kernel : a pairwise kernel function or a string; similar interface with KernelRidge in sklearn
-            gamma : the gamma parameter for the kernel
-            degree : the degree of a polynomial kernel
-            coef0 : the zero coef for a polynomia kernel
-            delta_scale : the scale of the critical radius; delta_n = delta_scal / n**(delta_exp)
-            delta_exp : the exponent of the critical radius; delta_n = delta_scal / n**(delta_exp)
-            alpha_scale : the scale of the regularization; alpha = alpha_scale * (delta**4)
-            kernel_params : other kernel params passed to the kernel
-        """
         self.kernel = kernel
         self.degree = degree
         self.coef0 = coef0
         self.gamma = gamma
         self.kernel_params = kernel_params
-        self.delta_scale = delta_scale  # worst-case critical value of RKHS spaces
+        self.delta_scale = delta_scale
         self.delta_exp = delta_exp
-        self.alpha_scale = alpha_scale  # regularization strength from Theorem 5
+        self.alpha_scale = alpha_scale
 
     def fit(self, Z, T, Y):
-        n = Y.shape[0]  # number of samples
+        """
+        Fit the RKHS IV estimator.
+
+        Parameters:
+            Z (array-like): Instrumental variables.
+            T (array-like): Treatments.
+            Y (array-like): Outcomes.
+
+        Returns:
+            self: Fitted estimator.
+        """
+        n = Y.shape[0]
         delta = self._get_delta(n)
         alpha = self._get_alpha(delta, self._get_alpha_scale())
 
@@ -82,17 +130,35 @@ class RKHSIV(_BaseRKHSIV):
         RootKf = scipy.linalg.sqrtm(Kf).astype(float)
         M = RootKf @ np.linalg.inv(
             Kf / (2 * n * delta**2) + np.eye(n) / 2) @ RootKf
-        # M = 2 * Kf @ (np.eye(n) - Kf/(n * delta**2) + Kf @ Kf/(n**2 * delta**4))
-        # M = 2 * Kf @ (np.eye(n) - Kf/(n * delta**2))
-        # M = Kf
         self.T = T.copy()
         self.a = np.linalg.pinv(Kh @ M @ Kh + alpha * Kh) @ Kh @ M @ Y
         return self
 
     def predict(self, T_test):
+        """
+        Predict outcomes for new treatments.
+
+        Parameters:
+            T_test (array-like): New treatments.
+
+        Returns:
+            array-like: Predicted outcomes.
+        """
         return self._get_kernel(T_test, Y=self.T) @ self.a
 
     def score(self, Z, T, Y, delta='auto'):
+        """
+        Compute the score of the fitted estimator.
+
+        Parameters:
+            Z (array-like): Instrumental variables.
+            T (array-like): Treatments.
+            Y (array-like): Outcomes.
+            delta (str or float): Critical radius.
+
+        Returns:
+            float: Score.
+        """
         n = Y.shape[0]
         delta = self._get_delta(n)
         Kf = self._get_kernel(Z)
@@ -104,37 +170,49 @@ class RKHSIV(_BaseRKHSIV):
 
 
 class RKHSIVCV(RKHSIV):
+    """
+    RKHS IV estimator with cross-validation.
+
+    This class implements an RKHS IV estimator with cross-validation.
+
+    Parameters:
+        kernel (str or callable): Kernel function or string identifier.
+        gamma (float): Gamma parameter for the kernel.
+        degree (int): Degree for polynomial kernels.
+        coef0 (float): Zero coefficient for polynomial kernels.
+        delta_scale (str or float): Scale of the critical radius.
+        delta_exp (str or float): Exponent of the critical radius.
+        alpha_scales (str or array-like): Scale of the regularization parameter.
+        n_alphas (int): Number of alpha scales to try.
+        cv (int): Number of folds for cross-validation.
+        kernel_params (dict): Additional parameters for the kernel.
+    """
 
     def __init__(self, kernel='rbf', gamma=2, degree=3, coef0=1, kernel_params=None,
                  delta_scale='auto', delta_exp='auto', alpha_scales='auto', n_alphas=30, cv=6):
-        """
-        Parameters:
-            kernel : a pairwise kernel function or a string; similar interface with KernelRidge in sklearn
-            gamma : the gamma parameter for the kernel
-            degree : the degree of a polynomial kernel
-            coef0 : the zero coef for a polynomia kernel
-            kernel_params : other kernel params passed to the kernel
-            delta_scale : the scale of the critical radius; delta_n = delta_scal / n**(delta_exp)
-            delta_exp : the exponent of the cirical radius; delta_n = delta_scal / n**(delta_exp)
-            alpha_scales : a list of scale of the regularization to choose from; alpha = alpha_scale * (delta**4)
-            n_alphas : how mny alpha_scales to try
-            cv : how many folds to use in cross-validation for alpha_scale
-        """
         self.kernel = kernel
         self.degree = degree
         self.coef0 = coef0
         self.gamma = gamma
         self.kernel_params = kernel_params
-        self.delta_scale = delta_scale  # worst-case critical value of RKHS spaces
-        self.delta_exp = delta_exp  # worst-case critical value of RKHS spaces
-        self.alpha_scales = alpha_scales  # regularization strength from Theorem 5
+        self.delta_scale = delta_scale
+        self.delta_exp = delta_exp
+        self.alpha_scales = alpha_scales
         self.n_alphas = n_alphas
         self.cv = cv
 
-    def _get_alphas(self, delta, scales):
-        return [c * (delta**4) for c in scales]
-
     def fit(self, Z, T, Y):
+        """
+        Fit the RKHS IV estimator with cross-validation.
+
+        Parameters:
+            Z (array-like): Instrumental variables.
+            T (array-like): Treatments.
+            Y (array-like): Outcomes.
+
+        Returns:
+            self: Fitted estimator.
+        """
         n = Y.shape[0]
 
         Kh = self._get_kernel(T)
@@ -174,9 +252,6 @@ class RKHSIVCV(RKHSIV):
 
         M = RootKf @ np.linalg.inv(
             Kf / (2 * n * delta**2) + np.eye(n) / 2) @ RootKf
-        # M = 2 * Kf @ (np.eye(n) - Kf/(n * delta**2) + Kf @ Kf/(n**2 * delta**4))
-        # M = 2 * Kf @ (np.eye(n) - Kf/(n * delta**2))
-        # M = Kf
 
         self.T = T.copy()
         self.a = np.linalg.pinv(
@@ -185,27 +260,44 @@ class RKHSIVCV(RKHSIV):
 
 
 class RKHSIVL2(_BaseRKHSIV):
+    """
+    RKHS IV estimator with L2 regularization.
+
+    This class implements an RKHS IV estimator with L2 regularization.
+
+    Parameters:
+        kernel (str or callable): Kernel function or string identifier.
+        gamma (float): Gamma parameter for the kernel.
+        degree (int): Degree for polynomial kernels.
+        coef0 (float): Zero coefficient for polynomial kernels.
+        delta_scale (str or float): Scale of the critical radius.
+        delta_exp (str or float): Exponent of the critical radius.
+        kernel_params (dict): Additional parameters for the kernel.
+    """
 
     def __init__(self, kernel='rbf', gamma=2, degree=3, coef0=1,
                  delta_scale='auto', delta_exp='auto', kernel_params=None):
-        """
-        Parameters:
-            kernel : a pairwise kernel function or a string; similar interface with KernelRidge in sklearn
-            gamma : the gamma parameter for the kernel
-            degree : the degree of a polynomial kernel
-            coef0 : the zero coef for a polynomia kernel
-            kernel_params : other kernel params passed to the kernel
-        """
         self.kernel = kernel
         self.degree = degree
         self.coef0 = coef0
         self.gamma = gamma
         self.kernel_params = kernel_params
-        self.delta_scale = delta_scale  # worst-case critical value of RKHS spaces
+        self.delta_scale = delta_scale
         self.delta_exp = delta_exp
 
     def fit(self, Z, T, Y):
-        n = Y.shape[0]  # number of samples
+        """
+        Fit the RKHS IV estimator with L2 regularization.
+
+        Parameters:
+            Z (array-like): Instrumental variables.
+            T (array-like): Treatments.
+            Y (array-like): Outcomes.
+
+        Returns:
+            self: Fitted estimator.
+        """
+        n = Y.shape[0]
         delta = self._get_delta(n)
         alpha = delta**4
 
@@ -218,39 +310,62 @@ class RKHSIVL2(_BaseRKHSIV):
         return self
 
     def predict(self, T_test):
+        """
+        Predict outcomes for new treatments.
+
+        Parameters:
+            T_test (array-like): New treatments.
+
+        Returns:
+            array-like: Predicted outcomes.
+        """
         return self._get_kernel(T_test, Y=self.T) @ self.a
 
 
 class RKHSIVL2CV(RKHSIVL2):
+    """
+    RKHS IV estimator with L2 regularization and cross-validation.
+
+    This class implements an RKHS IV estimator with L2 regularization and cross-validation.
+
+    Parameters:
+        kernel (str or callable): Kernel function or string identifier.
+        gamma (float): Gamma parameter for the kernel.
+        degree (int): Degree for polynomial kernels.
+        coef0 (float): Zero coefficient for polynomial kernels.
+        delta_scale (str or float): Scale of the critical radius.
+        delta_exp (str or float): Exponent of the critical radius.
+        alpha_scales (str or array-like): Scale of the regularization parameter.
+        n_alphas (int): Number of alpha scales to try.
+        cv (int): Number of folds for cross-validation.
+        kernel_params (dict): Additional parameters for the kernel.
+    """
 
     def __init__(self, kernel='rbf', gamma=2, degree=3, coef0=1, kernel_params=None,
                  delta_scale='auto', delta_exp='auto', alpha_scales='auto', n_alphas=30, cv=6):
-        """
-        Parameters:
-            kernel : a pairwise kernel function or a string; similar interface with KernelRidge in sklearn
-            gamma : the gamma parameter for the kernel
-            degree : the degree of a polynomial kernel
-            coef0 : the zero coef for a polynomia kernel
-            kernel_params : other kernel params passed to the kernel
-            delta_scale : the scale of the critical radius; delta_n = delta_scal / n**(delta_exp)
-            delta_exp : the exponent of the cirical radius; delta_n = delta_scal / n**(delta_exp)
-            alpha_scales : a list of scale of the regularization to choose from; alpha = alpha_scale * (delta**2)
-            n_alphas : how mny alpha_scales to try
-            cv : how many folds to use in cross-validation for alpha_scale
-        """
         self.kernel = kernel
         self.degree = degree
         self.coef0 = coef0
         self.gamma = gamma
         self.kernel_params = kernel_params
-        self.delta_scale = delta_scale  # worst-case critical value of RKHS spaces
-        self.delta_exp = delta_exp  # worst-case critical value of RKHS spaces
-        self.alpha_scales = alpha_scales  
+        self.delta_scale = delta_scale
+        self.delta_exp = delta_exp
+        self.alpha_scales = alpha_scales
         self.n_alphas = n_alphas
         self.cv = cv
 
-
     def fit(self, Z, T, Y):
+        """
+        Fit the RKHS IV estimator with L2 regularization and cross-validation.
+
+        Parameters:
+            Z (array-like): Instrumental variables.
+            T (array-like): Treatments.
+            Y (array-like): Outcomes.
+
+        Returns:
+            self: Fitted estimator.
+        """
         n = Y.shape[0]
 
         Kh = self._get_kernel(T)
@@ -289,26 +404,30 @@ class RKHSIVL2CV(RKHSIVL2):
         self.a = np.linalg.pinv(
             Kh @ M @ Kh + self.best_alpha * Kh @ Kh) @ Kh @ M @ Y
         return self
-    
-    
+
+
 class ApproxRKHSIV(_BaseRKHSIV):
+    """
+    Approximate RKHS IV estimator using kernel approximations.
+
+    This class implements an approximate RKHS IV estimator using kernel approximations.
+
+    Parameters:
+        kernel_approx (str): Kernel approximation method ('nystrom' or 'rbfsampler').
+        n_components (int): Number of approximation components.
+        kernel (str or callable): Kernel function or string identifier.
+        gamma (float): Gamma parameter for the kernel.
+        degree (int): Degree for polynomial kernels.
+        coef0 (float): Zero coefficient for polynomial kernels.
+        delta_scale (str or float): Scale of the critical radius.
+        delta_exp (str or float): Exponent of the critical radius.
+        alpha_scale (str or float): Scale of the regularization parameter.
+        kernel_params (dict): Additional parameters for the kernel.
+    """
 
     def __init__(self, kernel_approx='nystrom', n_components=10,
                  kernel='rbf', gamma=2, degree=3, coef0=1, kernel_params=None,
                  delta_scale='auto', delta_exp='auto', alpha_scale='auto'):
-        """
-        Parameters:
-            kernel_approx : what approximator to use; either 'nystrom' or 'rbfsampler' (for kitchen sinks)
-            n_components : how many approximation components to use
-            kernel : a pairwise kernel function or a string; similar interface with KernelRidge in sklearn
-            gamma : the gamma parameter for the kernel
-            degree : the degree of a polynomial kernel
-            coef0 : the zero coef for a polynomia kernel
-            kernel_params : other kernel params passed to the kernel
-            delta_scale : the scale of the critical radius; delta_n = delta_scal / n**(delta_exp)
-            delta_exp : the exponent of the cirical radius; delta_n = delta_scal / n**(delta_exp)
-            alpha_scale : the scale of the regularization; alpha = alpha_scale * (delta**4)
-        """
         self.kernel_approx = kernel_approx
         self.n_components = n_components
         self.kernel = kernel
@@ -316,11 +435,17 @@ class ApproxRKHSIV(_BaseRKHSIV):
         self.coef0 = coef0
         self.gamma = gamma
         self.kernel_params = kernel_params
-        self.delta_scale = delta_scale  # worst-case critical value of RKHS spaces
+        self.delta_scale = delta_scale
         self.delta_exp = delta_exp
-        self.alpha_scale = alpha_scale  # regularization strength from Theorem 5
+        self.alpha_scale = alpha_scale
 
     def _get_new_approx_instance(self):
+        """
+        Create a new kernel approximation instance.
+
+        Returns:
+            object: Kernel approximation instance.
+        """
         if (self.kernel_approx == 'rbfsampler') and (self.kernel == 'rbf'):
             return RBFSampler(gamma=self.gamma, n_components=self.n_components, random_state=1)
         elif self.kernel_approx == 'nystrom':
@@ -330,6 +455,17 @@ class ApproxRKHSIV(_BaseRKHSIV):
             raise AttributeError("Invalid kernel approximator")
 
     def fit(self, Z, T, Y):
+        """
+        Fit the approximate RKHS IV estimator.
+
+        Parameters:
+            Z (array-like): Instrumental variables.
+            T (array-like): Treatments.
+            Y (array-like): Outcomes.
+
+        Returns:
+            self: Fitted estimator.
+        """
         n = Y.shape[0]
         delta = self._get_delta(n)
         alpha = self._get_alpha(delta, self._get_alpha_scale())
@@ -347,9 +483,30 @@ class ApproxRKHSIV(_BaseRKHSIV):
         return self
 
     def predict(self, T):
+        """
+        Predict outcomes for new treatments.
+
+        Parameters:
+            T (array-like): New treatments.
+
+        Returns:
+            array-like: Predicted outcomes.
+        """
         return self.featT.transform(T) @ self.a
 
     def score(self, Z, T, Y, delta='auto'):
+        """
+        Compute the score of the fitted estimator.
+
+        Parameters:
+            Z (array-like): Instrumental variables.
+            T (array-like): Treatments.
+            Y (array-like): Outcomes.
+            delta (str or float): Critical radius.
+
+        Returns:
+            float: Score.
+        """
         n = Y.shape[0]
         delta = self._get_delta(n)
         featZ = self._get_new_approx_instance()
@@ -363,24 +520,29 @@ class ApproxRKHSIV(_BaseRKHSIV):
 
 
 class ApproxRKHSIVCV(ApproxRKHSIV):
+    """
+    Approximate RKHS IV estimator with cross-validation using kernel approximations.
+
+    This class implements an approximate RKHS IV estimator with cross-validation using kernel approximations.
+
+    Parameters:
+        kernel_approx (str): Kernel approximation method ('nystrom' or 'rbfsampler').
+        n_components (int): Number of approximation components.
+        kernel (str or callable): Kernel function or string identifier.
+        gamma (float): Gamma parameter for the kernel.
+        degree (int): Degree for polynomial kernels.
+        coef0 (float): Zero coefficient for polynomial kernels.
+        delta_scale (str or float): Scale of the critical radius.
+        delta_exp (str or float): Exponent of the critical radius.
+        alpha_scales (str or array-like): Scale of the regularization parameter.
+        n_alphas (int): Number of alpha scales to try.
+        cv (int): Number of folds for cross-validation.
+        kernel_params (dict): Additional parameters for the kernel.
+    """
 
     def __init__(self, kernel_approx='nystrom', n_components=10,
                  kernel='rbf', gamma=2, degree=3, coef0=1, kernel_params=None,
                  delta_scale='auto', delta_exp='auto', alpha_scales='auto', n_alphas=30, cv=6):
-        """
-        Parameters:
-            kernel : a pairwise kernel function or a string; similar interface with KernelRidge in sklearn
-            gamma : the gamma parameter for the kernel
-            degree : the degree of a polynomial kernel
-            coef0 : the zero coef for a polynomia kernel
-            kernel_params : other kernel params passed to the kernel
-            n_components : how many nystrom components to use
-            delta_scale : the scale of the critical radius; delta_n = delta_scal / n**(delta_exp)
-            delta_exp : the exponent of the cirical radius; delta_n = delta_scal / n**(delta_exp)
-            alpha_scales : a list of scale of the regularization to choose from; alpha = alpha_scale * (delta**4)
-            n_alphas : how mny alpha_scales to try
-            cv : how many folds to use in cross-validation for alpha_scale
-        """
         self.kernel_approx = kernel_approx
         self.n_components = n_components
         self.kernel = kernel
@@ -388,13 +550,24 @@ class ApproxRKHSIVCV(ApproxRKHSIV):
         self.coef0 = coef0
         self.gamma = gamma
         self.kernel_params = kernel_params
-        self.delta_scale = delta_scale  # worst-case critical value of RKHS spaces
-        self.delta_exp = delta_exp  # worst-case critical value of RKHS spaces
-        self.alpha_scales = alpha_scales  # regularization strength from Theorem 5
+        self.delta_scale = delta_scale
+        self.delta_exp = delta_exp
+        self.alpha_scales = alpha_scales
         self.n_alphas = n_alphas
         self.cv = cv
 
     def fit(self, Z, T, Y):
+        """
+        Fit the approximate RKHS IV estimator with cross-validation.
+
+        Parameters:
+            Z (array-like): Instrumental variables.
+            T (array-like): Treatments.
+            Y (array-like): Outcomes.
+
+        Returns:
+            self: Fitted estimator.
+        """
         n = Y.shape[0]
 
         self.featZ = self._get_new_approx_instance()
@@ -443,4 +616,3 @@ class ApproxRKHSIVCV(ApproxRKHSIV):
         self.a = np.linalg.pinv(W) @ B
         self.fitted_delta = delta
         return self
-

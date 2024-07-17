@@ -31,6 +31,8 @@ class OAdam(Optimizer):
 
     .. _Training GANs with Optimism:
         https://arxiv.org/abs/1711.00141
+    .. _On the Convergence of Adam and Beyond:
+        https://openreview.net/forum?id=ryQu7f-RZ
     """
 
     def __init__(self, params, lr=1e-3, betas=(0.9, 0.999), eps=1e-8,

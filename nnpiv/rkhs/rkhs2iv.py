@@ -1,3 +1,13 @@
+"""
+This module provides implementations of nested NPIV estimators for RKHS function classes.
+
+Classes:
+    _BaseRKHS2IV: Base class for nested RKHS IV methods.
+    RKHS2IV: Nested RKHS IV estimator.
+    RKHS2IVCV: Nested RKHS IV estimator with cross-validation.
+    RKHS2IVL2: Nested RKHS IV estimator with L2 regularization.
+    RKHS2IVL2CV: Nested RKHS IV estimator with L2 regularization and cross-validation.
+"""
 # Copyright (c) Microsoft Corporation.
 # Licensed under the MIT License.
 
@@ -13,14 +23,35 @@ def _check_auto(param):
 
 
 class _BaseRKHS2IV:
+    """
+    Base class for nested RKHS IV methods.
+
+    This class provides common functionality for nested RKHS IV estimators.
+
+    Parameters:
+        kernel (str or callable): Kernel function or string identifier.
+        gamma (float): Gamma parameter for the kernel.
+        degree (int): Degree for polynomial kernels.
+        coef0 (float): Zero coefficient for polynomial kernels.
+        delta_scale (str or float): Scale of the critical radius.
+        delta_exp (str or float): Exponent of the critical radius.
+        alpha_scale (str or float): Scale of the regularization parameter.
+        kernel_params (dict): Additional parameters for the kernel.
+    """
 
     def __init__(self, *args, **kwargs):
         return
 
     def _get_delta(self, n):
-        '''
-        delta -> Critical radius
-        '''
+        """
+        Compute the critical radius.
+
+        Parameters:
+            n (int): Number of samples.
+
+        Returns:
+            float: Critical radius.
+        """
         delta_scale = 5 if _check_auto(self.delta_scale) else self.delta_scale
         delta_exp = .4 if _check_auto(self.delta_exp) else self.delta_exp
         return delta_scale / (n**(delta_exp))
@@ -47,41 +78,64 @@ class _BaseRKHS2IV:
 
 
 class RKHS2IV(_BaseRKHS2IV):
+    """
+    Nested RKHS IV estimator.
+
+    This class implements a nested RKHS IV estimator.
+
+    Parameters:
+        kernel (str or callable): Kernel function or string identifier.
+        gamma (float): Gamma parameter for the kernel.
+        degree (int): Degree for polynomial kernels.
+        coef0 (float): Zero coefficient for polynomial kernels.
+        delta_scale (str or float): Scale of the critical radius.
+        delta_exp (str or float): Exponent of the critical radius.
+        kernel_params (dict): Additional parameters for the kernel.
+    """
 
     def __init__(self, kernel='rbf', gamma=2, degree=3, coef0=1,
                  delta_scale='auto', delta_exp='auto', kernel_params=None):
-        """
-        Parameters:
-            kernel : a pairwise kernel function or a string; similar interface with KernelRidge in sklearn
-            gamma : the gamma parameter for the kernel
-            degree : the degree of a polynomial kernel
-            coef0 : the zero coef for a polynomial kernel
-            kernel_params : other kernel params passed to the kernel
-        """
         self.kernel = kernel
         self.degree = degree
         self.coef0 = coef0
         self.gamma = gamma
         self.kernel_params = kernel_params
-        self.delta_scale = delta_scale  # worst-case critical value of RKHS spaces
+        self.delta_scale = delta_scale
         self.delta_exp = delta_exp
 
     def fit(self, A, B, C, D, Y, W=None, subsetted=False, subset_ind1=None, subset_ind2=None):
+        """
+        Fit the nested RKHS IV estimator.
+
+        Parameters:
+            A (array-like): Instrumental variables for the first stage.
+            B (array-like): Treatments for the first stage.
+            C (array-like): Instrumental variables for the second stage.
+            D (array-like): Treatments for the second stage.
+            Y (array-like): Outcomes.
+            W (array-like, optional): Weights. Defaults to None.
+            subsetted (bool, optional): Whether to use subsets. Defaults to False.
+            subset_ind1 (array-like, optional): Indices for the first subset. Required if subsetted is True.
+            subset_ind2 (array-like, optional): Indices for the second subset. Optional.
+
+        Returns:
+            self: Fitted estimator.
+        """
         if subsetted:
             if subset_ind1 is None:
                 raise ValueError("subset_ind1 must be provided when subsetted is True")
             if len(subset_ind1) != len(Y):
                 raise ValueError("subset_ind1 must have the same length as Y")
 
-        n = Y.shape[0]  # number of samples
+        n = Y.shape[0]
         Id = np.eye(n)
         Iw = Id if W is None else np.diag(W)
 
         if subsetted:
-            ind1 = np.where(subset_ind1==1)[0] 
-            ind2 = np.where(subset_ind2==1)[0] if subset_ind2 is not None else np.where(subset_ind1==0)[0] 
+            ind1 = np.where(subset_ind1 == 1)[0]
+            ind2 = np.where(subset_ind2 == 1)[0] if subset_ind2 is not None else np.where(subset_ind1 == 0)[0]
             Ip = Id[ind1, :]
-            Iq = Id[ind2, :] 
+            Iq = Id[ind2, :]
             p = Ip.shape[0]
             q = Iq.shape[0]
 
@@ -108,62 +162,90 @@ class RKHS2IV(_BaseRKHS2IV):
         return self
 
     def predict(self, B_test, *args):
+        """
+        Predict outcomes for new treatments.
+
+        Parameters:
+            B_test (array-like): New treatments for the second stage.
+            *args: Additional arguments, expected to be A_test (new treatments for the first stage).
+
+        Returns:
+            array-like: Predicted outcomes.
+        """
         if len(args) == 0:
-            # Only B_test provided, return h prediction
             return self._get_kernel(B_test, Y=self.B) @ self.b
         elif len(args) == 1:
-            # Two arguments provided, assume the second is A_test
             A_test = args[0]
             return (self._get_kernel(B_test, Y=self.B) @ self.b, self._get_kernel(A_test, Y=self.A) @ self.a)
         else:
-            # More than one additional argument provided, raise an error
             raise ValueError("predict expects at most two arguments, B_test and optionally A_test")
 
 
 class RKHS2IVCV(RKHS2IV):
+    """
+    Nested RKHS IV estimator with cross-validation.
+
+    This class implements a nested RKHS IV estimator with cross-validation.
+
+    Parameters:
+        kernel (str or callable): Kernel function or string identifier.
+        gamma (float): Gamma parameter for the kernel.
+        degree (int): Degree for polynomial kernels.
+        coef0 (float): Zero coefficient for polynomial kernels.
+        delta_scale (str or float): Scale of the critical radius.
+        delta_exp (str or float): Exponent of the critical radius.
+        alpha_scales (str or array-like): Scale of the regularization parameter.
+        n_alphas (int): Number of alpha scales to try.
+        cv (int): Number of folds for cross-validation.
+        kernel_params (dict): Additional parameters for the kernel.
+    """
 
     def __init__(self, kernel='rbf', gamma=2, degree=3, coef0=1, kernel_params=None,
                  delta_scale='auto', delta_exp='auto', alpha_scales='auto', n_alphas=30, cv=6):
-        """
-        Parameters:
-            kernel : a pairwise kernel function or a string; similar interface with KernelRidge in sklearn
-            gamma : the gamma parameter for the kernel
-            degree : the degree of a polynomial kernel
-            coef0 : the zero coef for a polynomia kernel
-            kernel_params : other kernel params passed to the kernel
-            delta_scale : the scale of the critical radius; delta_n = delta_scal / n**(delta_exp)
-            delta_exp : the exponent of the cirical radius; delta_n = delta_scal / n**(delta_exp)
-            alpha_scales : a list of scale of the regularization to choose from; alpha = alpha_scale * (delta**2)
-            n_alphas : how mny alpha_scales to try
-            cv : how many folds to use in cross-validation for alpha_scale
-        """
         self.kernel = kernel
         self.degree = degree
         self.coef0 = coef0
         self.gamma = gamma
         self.kernel_params = kernel_params
-        self.delta_scale = delta_scale  # worst-case critical value of RKHS spaces
-        self.delta_exp = delta_exp  # worst-case critical value of RKHS spaces
-        self.alpha_scales = alpha_scales  
+        self.delta_scale = delta_scale
+        self.delta_exp = delta_exp
+        self.alpha_scales = alpha_scales
         self.n_alphas = n_alphas
         self.cv = cv
 
     def fit(self, A, B, C, D, Y, W=None, subsetted=False, subset_ind1=None, subset_ind2=None):
+        """
+        Fit the nested RKHS IV estimator with cross-validation.
+
+        Parameters:
+            A (array-like): Instrumental variables for the first stage.
+            B (array-like): Treatments for the first stage.
+            C (array-like): Instrumental variables for the second stage.
+            D (array-like): Treatments for the second stage.
+            Y (array-like): Outcomes.
+            W (array-like, optional): Weights. Defaults to None.
+            subsetted (bool, optional): Whether to use subsets. Defaults to False.
+            subset_ind1 (array-like, optional): Indices for the first subset. Required if subsetted is True.
+            subset_ind2 (array-like, optional): Indices for the second subset. Optional.
+
+        Returns:
+            self: Fitted estimator.
+        """
         if subsetted:
             if subset_ind1 is None:
                 raise ValueError("subset_ind1 must be provided when subsetted is True")
             if len(subset_ind1) != len(Y):
                 raise ValueError("subset_ind1 must have the same length as Y")
 
-        n = Y.shape[0]  # number of samples
+        n = Y.shape[0]
         Id = np.eye(n)
         Iw = Id if W is None else np.diag(W)
 
         if subsetted:
-            ind1 = np.where(subset_ind1==1)[0] 
-            ind2 = np.where(subset_ind2==1)[0] if subset_ind2 is not None else np.where(subset_ind1==0)[0] 
+            ind1 = np.where(subset_ind1 == 1)[0]
+            ind2 = np.where(subset_ind2 == 1)[0] if subset_ind2 is not None else np.where(subset_ind1 == 0)[0]
             Ip = Id[ind1, :]
-            Iq = Id[ind2, :] 
+            Iq = Id[ind2, :]
             p = Ip.shape[0]
             q = Iq.shape[0]
 
@@ -246,41 +328,64 @@ class RKHS2IVCV(RKHS2IV):
     
 
 class RKHS2IVL2(_BaseRKHS2IV):
+    """
+    Nested RKHS IV estimator with L2 regularization.
+
+    This class implements a nested RKHS IV estimator with L2 regularization.
+
+    Parameters:
+        kernel (str or callable): Kernel function or string identifier.
+        gamma (float): Gamma parameter for the kernel.
+        degree (int): Degree for polynomial kernels.
+        coef0 (float): Zero coefficient for polynomial kernels.
+        delta_scale (str or float): Scale of the critical radius.
+        delta_exp (str or float): Exponent of the critical radius.
+        kernel_params (dict): Additional parameters for the kernel.
+    """
 
     def __init__(self, kernel='rbf', gamma=2, degree=3, coef0=1,
                  delta_scale='auto', delta_exp='auto', kernel_params=None):
-        """
-        Parameters:
-            kernel : a pairwise kernel function or a string; similar interface with KernelRidge in sklearn
-            gamma : the gamma parameter for the kernel
-            degree : the degree of a polynomial kernel
-            coef0 : the zero coef for a polynomial kernel
-            kernel_params : other kernel params passed to the kernel
-        """
         self.kernel = kernel
         self.degree = degree
         self.coef0 = coef0
         self.gamma = gamma
         self.kernel_params = kernel_params
-        self.delta_scale = delta_scale  # worst-case critical value of RKHS spaces
+        self.delta_scale = delta_scale
         self.delta_exp = delta_exp
 
     def fit(self, A, B, C, D, Y, W=None, subsetted=False, subset_ind1=None, subset_ind2=None):
+        """
+        Fit the nested RKHS IV estimator with L2 regularization.
+
+        Parameters:
+            A (array-like): Instrumental variables for the first stage.
+            B (array-like): Treatments for the first stage.
+            C (array-like): Instrumental variables for the second stage.
+            D (array-like): Treatments for the second stage.
+            Y (array-like): Outcomes.
+            W (array-like, optional): Weights. Defaults to None.
+            subsetted (bool, optional): Whether to use subsets. Defaults to False.
+            subset_ind1 (array-like, optional): Indices for the first subset. Required if subsetted is True.
+            subset_ind2 (array-like, optional): Indices for the second subset. Optional.
+
+        Returns:
+            self: Fitted estimator.
+        """
         if subsetted:
             if subset_ind1 is None:
                 raise ValueError("subset_ind1 must be provided when subsetted is True")
             if len(subset_ind1) != len(Y):
                 raise ValueError("subset_ind1 must have the same length as Y")
 
-        n = Y.shape[0]  # number of samples
+        n = Y.shape[0]
         Id = np.eye(n)
         Iw = Id if W is None else np.diag(W)
 
         if subsetted:
-            ind1 = np.where(subset_ind1==1)[0] 
-            ind2 = np.where(subset_ind2==1)[0] if subset_ind2 is not None else np.where(subset_ind1==0)[0] 
+            ind1 = np.where(subset_ind1 == 1)[0]
+            ind2 = np.where(subset_ind2 == 1)[0] if subset_ind2 is not None else np.where(subset_ind1 == 0)[0]
             Ip = Id[ind1, :]
-            Iq = Id[ind2, :] 
+            Iq = Id[ind2, :]
             p = Ip.shape[0]
             q = Iq.shape[0]
 
@@ -307,62 +412,90 @@ class RKHS2IVL2(_BaseRKHS2IV):
         return self
 
     def predict(self, B_test, *args):
+        """
+        Predict outcomes for new treatments.
+
+        Parameters:
+            B_test (array-like): New treatments for the second stage.
+            *args: Additional arguments, expected to be A_test (new treatments for the first stage).
+
+        Returns:
+            array-like: Predicted outcomes.
+        """
         if len(args) == 0:
-            # Only B_test provided, return h prediction
             return self._get_kernel(B_test, Y=self.B) @ self.b
         elif len(args) == 1:
-            # Two arguments provided, assume the second is A_test
             A_test = args[0]
             return (self._get_kernel(B_test, Y=self.B) @ self.b, self._get_kernel(A_test, Y=self.A) @ self.a)
         else:
-            # More than one additional argument provided, raise an error
             raise ValueError("predict expects at most two arguments, B_test and optionally A_test")
 
 
 class RKHS2IVL2CV(RKHS2IVL2):
+    """
+    Nested RKHS IV estimator with L2 regularization and cross-validation.
+
+    This class implements a nested RKHS IV estimator with L2 regularization and cross-validation.
+
+    Parameters:
+        kernel (str or callable): Kernel function or string identifier.
+        gamma (float): Gamma parameter for the kernel.
+        degree (int): Degree for polynomial kernels.
+        coef0 (float): Zero coefficient for polynomial kernels.
+        delta_scale (str or float): Scale of the critical radius.
+        delta_exp (str or float): Exponent of the critical radius.
+        alpha_scales (str or array-like): Scale of the regularization parameter.
+        n_alphas (int): Number of alpha scales to try.
+        cv (int): Number of folds for cross-validation.
+        kernel_params (dict): Additional parameters for the kernel.
+    """
 
     def __init__(self, kernel='rbf', gamma=2, degree=3, coef0=1, kernel_params=None,
                  delta_scale='auto', delta_exp='auto', alpha_scales='auto', n_alphas=30, cv=6):
-        """
-        Parameters:
-            kernel : a pairwise kernel function or a string; similar interface with KernelRidge in sklearn
-            gamma : the gamma parameter for the kernel
-            degree : the degree of a polynomial kernel
-            coef0 : the zero coef for a polynomia kernel
-            kernel_params : other kernel params passed to the kernel
-            delta_scale : the scale of the critical radius; delta_n = delta_scal / n**(delta_exp)
-            delta_exp : the exponent of the cirical radius; delta_n = delta_scal / n**(delta_exp)
-            alpha_scales : a list of scale of the regularization to choose from; alpha = alpha_scale * (delta**2)
-            n_alphas : how mny alpha_scales to try
-            cv : how many folds to use in cross-validation for alpha_scale
-        """
         self.kernel = kernel
         self.degree = degree
         self.coef0 = coef0
         self.gamma = gamma
         self.kernel_params = kernel_params
-        self.delta_scale = delta_scale  # worst-case critical value of RKHS spaces
-        self.delta_exp = delta_exp  # worst-case critical value of RKHS spaces
-        self.alpha_scales = alpha_scales  
+        self.delta_scale = delta_scale
+        self.delta_exp = delta_exp
+        self.alpha_scales = alpha_scales
         self.n_alphas = n_alphas
         self.cv = cv
 
     def fit(self, A, B, C, D, Y, W=None, subsetted=False, subset_ind1=None, subset_ind2=None):
+        """
+        Fit the nested RKHS IV estimator with L2 regularization and cross-validation.
+
+        Parameters:
+            A (array-like): Instrumental variables for the first stage.
+            B (array-like): Treatments for the first stage.
+            C (array-like): Instrumental variables for the second stage.
+            D (array-like): Treatments for the second stage.
+            Y (array-like): Outcomes.
+            W (array-like, optional): Weights. Defaults to None.
+            subsetted (bool, optional): Whether to use subsets. Defaults to False.
+            subset_ind1 (array-like, optional): Indices for the first subset. Required if subsetted is True.
+            subset_ind2 (array-like, optional): Indices for the second subset. Optional.
+
+        Returns:
+            self: Fitted estimator.
+        """
         if subsetted:
             if subset_ind1 is None:
                 raise ValueError("subset_ind1 must be provided when subsetted is True")
             if len(subset_ind1) != len(Y):
                 raise ValueError("subset_ind1 must have the same length as Y")
 
-        n = Y.shape[0]  # number of samples
+        n = Y.shape[0]
         Id = np.eye(n)
         Iw = Id if W is None else np.diag(W)
 
         if subsetted:
-            ind1 = np.where(subset_ind1==1)[0] 
-            ind2 = np.where(subset_ind2==1)[0] if subset_ind2 is not None else np.where(subset_ind1==0)[0] 
+            ind1 = np.where(subset_ind1 == 1)[0]
+            ind2 = np.where(subset_ind2 == 1)[0] if subset_ind2 is not None else np.where(subset_ind1 == 0)[0]
             Ip = Id[ind1, :]
-            Iq = Id[ind2, :] 
+            Iq = Id[ind2, :]
             p = Ip.shape[0]
             q = Iq.shape[0]
 
@@ -444,4 +577,3 @@ class RKHS2IVL2CV(RKHS2IVL2):
         self.B = B.copy()
 
         return self
-    

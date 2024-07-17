@@ -1,14 +1,36 @@
+"""
+This module provides implementations of sparse linear NPIV estimators.
+
+Classes:
+    _SparseLinearAdversarialGMM: Base class for sparse linear adversarial GMM.
+    sparse_l1vsl1: Sparse Linear NPIV estimator using $\ell_1-\ell_1$ optimization.
+    sparse_ridge_l1vsl1: Sparse Ridge NPIV estimator using $\ell_1-\ell_1$ optimization.
+"""
 # Copyright (c) Microsoft Corporation.
 # Licensed under the MIT License.
 
 import numpy as np
 from sklearn.linear_model import Lasso, LassoCV, ElasticNet
 from sklearn.base import clone
-from .utilities import cross_product
-
+from nnpiv.linear.utilities import cross_product
 
 
 class _SparseLinearAdversarialGMM:
+    """
+    Base class for sparse linear adversarial GMM.
+
+    This class implements common functionality for sparse linear models using adversarial GMM.
+
+    Parameters:
+        lambda_theta (float): Regularization parameter.
+        B (int): Budget parameter.
+        eta_theta (str or float): Learning rate for theta.
+        eta_w (str or float): Learning rate for w.
+        n_iter (int): Number of iterations.
+        tol (float): Tolerance for duality gap.
+        sparsity (int or None): Sparsity level for the model.
+        fit_intercept (bool): Whether to fit an intercept.
+    """
 
     def __init__(self, lambda_theta=0.01, B=100, eta_theta='auto', eta_w='auto',
                  n_iter=2000, tol=1e-2, sparsity=None, fit_intercept=True):
@@ -42,8 +64,29 @@ class _SparseLinearAdversarialGMM:
 
 
 class sparse_l1vsl1(_SparseLinearAdversarialGMM):
+    """
+    Sparse Linear NPIV estimator using $\ell_1-\ell_1$ optimization.
+
+    This class solves the high-dimensional sparse linear problem using $\ell_1$ relaxations for the minimax optimization problem.
+
+    Parameters:
+        Same as `_SparseLinearAdversarialGMM`.
+    """
 
     def _check_duality_gap(self, Z, X, Y):
+        """
+        Check the duality gap to monitor convergence.
+
+        The ensembles can be thought of as primal and dual solutions, and the duality gap can be used as a certificate for convergence of the algorithm.
+
+        Parameters:
+            Z (array-like): Instrumental variables.
+            X (array-like): Covariates.
+            Y (array-like): Outcomes.
+
+        Returns:
+            bool: True if the duality gap is less than the tolerance, otherwise False.
+        """
         self.max_response_loss_ = np.linalg.norm(
             np.mean(Z * (np.dot(X, self.coef_) - Y).reshape(-1, 1), axis=0), ord=np.inf)\
             + self.lambda_theta * np.linalg.norm(self.coef_, ord=1)
@@ -66,6 +109,17 @@ class sparse_l1vsl1(_SparseLinearAdversarialGMM):
         self._check_duality_gap(Z, X, Y)
 
     def fit(self, Z, X, Y):
+        """
+        Fit the model.
+
+        Parameters:
+            Z (array-like): Instrumental variables.
+            X (array-like): Covariates.
+            Y (array-like): Outcomes.
+
+        Returns:
+            self: Fitted estimator.
+        """
         Z, X, Y = self._check_input(Z, X, Y)
         T = self.n_iter
         d_x = X.shape[1]
@@ -155,17 +209,38 @@ class sparse_l1vsl1(_SparseLinearAdversarialGMM):
         self._post_process(Z, X, Y)
 
         return self
-    
+
 
 class sparse_ridge_l1vsl1(_SparseLinearAdversarialGMM):
+    """
+    Sparse Ridge NPIV estimator using $\ell_1-\ell_1$ optimization.
+
+    This class solves the high-dimensional sparse ridge problem using $\ell_1$ relaxations for the minimax optimization problem.
+
+    Parameters:
+        Same as `_SparseLinearAdversarialGMM`.
+    """
 
     def _check_duality_gap(self, Z, X, Y):
+        """
+        Check the duality gap to monitor convergence.
+
+        The ensembles can be thought of as primal and dual solutions, and the duality gap can be used as a certificate for convergence of the algorithm.
+
+        Parameters:
+            Z (array-like): Instrumental variables.
+            X (array-like): Covariates.
+            Y (array-like): Outcomes.
+
+        Returns:
+            bool: True if the duality gap is less than the tolerance, otherwise False.
+        """
         self.max_response_loss_ = np.linalg.norm(
             np.mean(Z * (Y - np.dot(X, self.coef_)).reshape(-1, 1), axis=0), ord=np.inf)\
             + self.lambda_theta * self.coef_.T @ self.xx @ self.coef_
         
-        self.min_response_loss_ =  2 * np.mean(Y * np.dot(Z, self.w_))\
-            - (self.msvp/self.lambda_theta) * np.linalg.norm(np.mean(X * np.dot(Z, self.w_).reshape(-1, 1),
+        self.min_response_loss_ = 2 * np.mean(Y * np.dot(Z, self.w_))\
+            - (self.msvp / self.lambda_theta) * np.linalg.norm(np.mean(X * np.dot(Z, self.w_).reshape(-1, 1),
                                                                             axis=0),
                                                             ord=2)
                                                    
@@ -182,6 +257,17 @@ class sparse_ridge_l1vsl1(_SparseLinearAdversarialGMM):
         self._check_duality_gap(Z, X, Y)
 
     def fit(self, Z, X, Y):
+        """
+        Fit the model.
+
+        Parameters:
+            Z (array-like): Instrumental variables.
+            X (array-like): Covariates.
+            Y (array-like): Outcomes.
+
+        Returns:
+            self: Fitted estimator.
+        """
         Z, X, Y = self._check_input(Z, X, Y)
         T = self.n_iter
         d_x = X.shape[1]

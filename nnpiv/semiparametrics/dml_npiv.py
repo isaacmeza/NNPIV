@@ -1,25 +1,84 @@
+"""
+This module implements Debiased Machine Learning for Nonparametric Instrumental Variables (DML-npiv).
+It provides tools for estimating causal effects using a combination of machine learning models and 
+instrumental variables techniques. The module supports cross-validation, kernel density estimation 
+for localization, and confidence interval computation.
+
+Classes:
+    DML_npiv: Main class for performing DML-npiv with various configuration options.
+
+DML_npiv Methods:
+    __init__: Initialize the DML_npiv instance with data and model configurations.
+    
+    _calculate_confidence_interval: Calculate confidence intervals for the estimates.
+    
+    _localization: Perform localization using kernel density estimation.
+    
+    _npivfit_outcome: Fit the outcome model using nonparametric instrumental variables.
+    
+    _propensity_score: Estimate the propensity score.
+    
+    _npivfit_action: Fit the action model using nonparametric instrumental variables.
+    
+    _process_fold: Process a single fold for cross-validation.
+    
+    _split_and_estimate: Split the data and estimate the model using cross-validation.
+    
+    dml: Perform Debiased Machine Learning for Nonparametric Instrumental Variables.
+"""
+
 import numpy as np
-from scipy.stats import norm 
+from scipy.stats import norm
 from sklearn.model_selection import KFold
 from sklearn.linear_model import LogisticRegression
-from sklearn.cluster import KMeans
 from sklearn.preprocessing import PolynomialFeatures
 from statsmodels.nonparametric.kde import kernel_switch
 import warnings
-
-from tqdm import tqdm  # Import tqdm
+from tqdm import tqdm
 import copy
 import torch
-from mliv.rkhs import ApproxRKHSIVCV
+from nnpiv.rkhs import ApproxRKHSIVCV
 from joblib import Parallel, delayed
 from scipy.optimize import minimize_scalar
 
 device = torch.cuda.current_device() if torch.cuda.is_available() else None
 
 def _get(opts, key, default):
+    """
+    Retrieve the value associated with 'key' in 'opts', or return 'default' if not present.
+
+    Parameters
+    ----------
+    opts : dict
+        Dictionary of options.
+    key : str
+        Key to look up in 'opts'.
+    default : any
+        Default value to return if 'key' is not found.
+
+    Returns
+    -------
+    any
+        Value associated with 'key' or 'default'.
+    """
     return opts[key] if (opts is not None and key in opts) else default
 
 def _transform_poly(X, opts):
+    """
+    Transform the input data X using polynomial features.
+
+    Parameters
+    ----------
+    X : array-like
+        Input data.
+    opts : dict
+        Options dictionary containing the polynomial degree ('lin_degree').
+
+    Returns
+    -------
+    array-like
+        Transformed data.
+    """
     degree = _get(opts, 'lin_degree', 1)
     if degree == 1:
         return X
@@ -28,6 +87,24 @@ def _transform_poly(X, opts):
         return trans.fit_transform(X)
 
 def _fun_threshold_alpha(alpha, g):
+    """
+    Auxiliary function for computation of optimal alpha for improvement in overlap: CHIM (Dealing with limited overlap in estimation of average treatment effects).
+    
+    Richard K. Crump, V. Joseph Hotz, Guido W. Imbens, Oscar A. Mitnik
+    Biometrika, Volume 96, Issue 1, March 2009.
+
+    Parameters
+    ----------
+    alpha : float
+        Alpha value.
+    g : array-like
+        Input array.
+
+    Returns
+    -------
+    float
+        Result of the threshold function.
+    """
     lambda_val = 1 / (alpha * (1 - alpha))
     ind = (g <= lambda_val)
     den = sum(ind)
@@ -35,8 +112,61 @@ def _fun_threshold_alpha(alpha, g):
     result = (2 * sum(num) / den - lambda_val) ** 2
     return result
 
-
 class DML_npiv:
+    """
+    Debiased Machine Learning for Nonparametric Instrumental Variables (DML-npiv) class.
+
+    Parameters
+    ----------
+    Y : array-like
+        Outcome variable.
+    D : array-like
+        Treatment variable.
+    Z : array-like
+        Instrumental variable.
+    W : array-like
+        Negative control outcome.
+    X1 : array-like, optional
+        Additional covariates.
+    V : array-like, optional
+        Localization covariates.
+    v_values : array-like, optional
+        Values for localization.
+    loc_kernel : str, optional
+        Kernel for localization. Options include 'gau', 'epanechnikov', 'uniform', etc.
+    bw_loc : str, optional
+        Bandwidth for localization.
+    estimator : str, optional
+        Estimator type ('MR', 'OR', 'IPW').
+    model1 : estimator, optional
+        Model for the first stage.
+    nn_1 : bool, optional
+        Use neural network for the first stage.
+    modelq1 : estimator, optional
+        Model for the second stage.
+    nn_q1 : bool, optional
+        Use neural network for the second stage.
+    alpha : float, optional
+        Significance level for confidence intervals.
+    n_folds : int, optional
+        Number of folds for estimation.
+    n_rep : int, optional
+        Number of repetitions for estimation.
+    random_seed : int, optional
+        Seed for random number generator.
+    prop_score : estimator, optional
+        Model for propensity score.
+    CHIM : bool, optional
+        Use CHIM method. Dropping observations with extreme values of the propensity score - CHIM (2009).
+    verbose : bool, optional
+        Print progress information.
+    fitargs1 : dict, optional
+        Arguments for fitting the first stage model.
+    fitargsq1 : dict, optional
+        Arguments for fitting the second stage model.
+    opts : dict, optional
+        Additional options.
+    """
 
     def __init__(self, Y, D, Z, W, X1=None,
                  V=None, 
@@ -63,6 +193,60 @@ class DML_npiv:
                  fitargsq1=None,
                  opts=None
                  ):
+        """
+        Initialize the DML_npiv instance with data and model configurations.
+
+        Parameters
+        ----------
+        Y : array-like
+            Outcome variable.
+        D : array-like
+            Treatment variable.
+        Z : array-like
+            Instrumental variable.
+        W : array-like
+            Negative control outcome.
+        X1 : array-like, optional
+            Additional covariates.
+        V : array-like, optional
+            Localization covariates.
+        v_values : array-like, optional
+            Values for localization.
+        loc_kernel : str, optional
+            Kernel for localization. Options include 'gau', 'epanechnikov', 'uniform', etc.
+        bw_loc : str, optional
+            Bandwidth for localization.
+        estimator : str, optional
+            Estimator type ('MR', 'OR', 'IPW').
+        model1 : estimator, optional
+            Model for the first stage.
+        nn_1 : bool, optional
+            Use neural network for the first stage.
+        modelq1 : estimator, optional
+            Model for the second stage.
+        nn_q1 : bool, optional
+            Use neural network for the second stage.
+        alpha : float, optional
+            Significance level for confidence intervals.
+        n_folds : int, optional
+            Number of folds for estimation.
+        n_rep : int, optional
+            Number of repetitions for estimation.
+        random_seed : int, optional
+            Seed for random number generator.
+        prop_score : estimator, optional
+            Model for propensity score.
+        CHIM : bool, optional
+            Use CHIM method. Dropping observations with extreme values of the propensity score - CHIM (2009).
+        verbose : bool, optional
+            Print progress information.
+        fitargs1 : dict, optional
+            Arguments for fitting the first stage model.
+        fitargsq1 : dict, optional
+            Arguments for fitting the second stage model.
+        opts : dict, optional
+            Additional options.
+        """
         self.Y = Y
         self.D = D
         self.Z = Z
@@ -123,6 +307,21 @@ class DML_npiv:
                 self.v_values = np.mean(self.V, axis=0)    
             
     def _calculate_confidence_interval(self, theta, theta_var):
+        """
+        Calculate the confidence interval for the given estimates.
+
+        Parameters
+        ----------
+        theta : array-like
+            Estimated values.
+        theta_var : array-like
+            Variance of the estimates.
+
+        Returns
+        -------
+        array-like
+            Lower and upper bounds of the confidence intervals.
+        """
         z_alpha_half = norm.ppf(1 - self.alpha / 2)
         n = self.Y.shape[0]
         margin_of_error = z_alpha_half * np.sqrt(theta_var) * np.sqrt(1 / n)
@@ -131,6 +330,23 @@ class DML_npiv:
         return np.column_stack((lower_bound, upper_bound))
 
     def _localization(self, V, v_val, bw):
+        """
+        Perform localization using kernel density estimation.
+
+        Parameters
+        ----------
+        V : array-like
+            Localization covariates.
+        v_val : array-like
+            Values for localization.
+        bw : float
+            Bandwidth for localization.
+
+        Returns
+        -------
+        array-like
+            Weights for localization.
+        """
         if kernel_switch[self.loc_kernel]().domain is None:
             def K(x):
                 return kernel_switch[self.loc_kernel]()(x)
@@ -146,13 +362,31 @@ class DML_npiv:
         return ell.reshape(-1,1)
     
     def _npivfit_outcome(self, Y, D, X, Z):
+        """
+        Fit the outcome model using nonparametric instrumental variables.
 
+        Parameters
+        ----------
+        Y : array-like
+            Outcome variable.
+        D : array-like
+            Treatment variable.
+        X : array-like
+            Covariates.
+        Z : array-like
+            Instrumental variable.
+
+        Returns
+        -------
+        tuple
+            Fitted models for treatment and control groups.
+        """
         bridge_ = [None]*2
 
         if self.estimator == 'MR' or self.estimator == 'OR':
             model_1 = copy.deepcopy(self.model1)
 
-            #First stage
+            # First stage
             if self.nn_1==True:
                 Y, X, Z = tuple(map(lambda x: torch.Tensor(x), [Y, X, Z]))
 
@@ -175,11 +409,27 @@ class DML_npiv:
 
 
     def _propensity_score(self, X, W, D):
-        
+        """
+        Estimate the propensity score.
+
+        Parameters
+        ----------
+        X : array-like
+            Covariates.
+        W : array-like
+            Control variable.
+        D : array-like
+            Treatment variable.
+
+        Returns
+        -------
+        tuple
+            Estimated propensity scores and threshold alpha.
+        """
         model_ps = copy.deepcopy(self.prop_score)
         X1 = np.column_stack((X,W))
             
-        #First stage
+        # First stage
         model_ps.fit(X1, D.flatten())
         ps_hat_1 = model_ps.predict_proba(X1)[:,1]
         
@@ -212,7 +462,27 @@ class DML_npiv:
 
 
     def _npivfit_action(self, ps_hat_1, W, X, Z, alfa=0.0):
+        """
+        Fit the action model using nonparametric instrumental variables.
 
+        Parameters
+        ----------
+        ps_hat_1 : array-like
+            Estimated propensity scores.
+        W : array-like
+            Control variable.
+        X : array-like
+            Covariates.
+        Z : array-like
+            Instrumental variable.
+        alfa : float, optional
+            Threshold alpha for propensity scores.
+
+        Returns
+        -------
+        tuple
+            Fitted models for treated and control groups.
+        """
         bridge_ = [None]*2
 
         if self.estimator == 'MR' or self.estimator == 'IPW':
@@ -226,7 +496,7 @@ class DML_npiv:
 
             model_q1 = copy.deepcopy(self.modelq1)
 
-            #First stage
+            # First stage
             if self.nn_q1==True:
                 ps_hat_1, ps_hat_0, W, X, Z = tuple(map(lambda x: torch.Tensor(x), [ps_hat_1, ps_hat_0, W, X, Z]))
 
@@ -248,6 +518,23 @@ class DML_npiv:
 
 
     def _process_fold(self, fold_idx, train_data, test_data):
+        """
+        Process a single fold for cross-validation.
+
+        Parameters
+        ----------
+        fold_idx : int
+            Fold index.
+        train_data : tuple
+            Training data for the fold.
+        test_data : tuple
+            Testing data for the fold.
+
+        Returns
+        -------
+        array-like
+            Estimated moment functions for the test data.
+        """
         train_Y, test_Y = train_data[0], test_data[0]
         train_D, test_D = train_data[1], test_data[1]
         train_W, test_W = train_data[2], test_data[2]
@@ -325,7 +612,14 @@ class DML_npiv:
 
 
     def _split_and_estimate(self):
-        
+        """
+        Split the data and estimate the model for each fold.
+
+        Returns
+        -------
+        tuple
+            Estimated values, variances, and confidence intervals.
+        """
         theta = []
         theta_var = []
 
@@ -379,9 +673,17 @@ class DML_npiv:
     
 
     def dml(self):
+        """
+        Perform Debiased Machine Learning for Nonparametric Instrumental Variables.
+
+        Returns
+        -------
+        tuple
+            Estimated values, variances, and confidence intervals.
+        """
         theta, theta_var, confidence_interval = self._split_and_estimate()
         if self.V is None:
             return theta[0], theta_var[0], confidence_interval[0]
         else:
             return theta, theta_var, confidence_interval
-    
+            

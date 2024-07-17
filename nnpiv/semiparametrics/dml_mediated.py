@@ -1,3 +1,41 @@
+"""
+This module performs Debiased Machine Learning for mediation analysis, using the sequential estimators
+for the longitudinal nonparametric parameters (in the Nested NPIV framework). It provides tools for estimating
+causal effects with mediation using a combination of machine learning models and instrumental variables 
+techniques. The module supports different types of mediated estimands, cross-validation, kernel density estimation 
+for localization, and confidence interval computation.
+
+Classes:
+    DML_mediated: Main class for performing DML for mediation analysis with various configuration options.
+
+DML_mediated Methods:
+    __init__: Initialize the DML_mediated instance with data and model configurations.
+    
+    _calculate_confidence_interval: Calculate confidence intervals for the estimates.
+    
+    _localization: Perform localization using kernel density estimation.
+    
+    _nnpivfit_outcome_m: Fit the mediated outcome model using nonparametric instrumental variables.
+    
+    _npivfit_outcome: Fit the outcome model using nonparametric instrumental variables.
+    
+    _propensity_score: Estimate the propensity score.
+    
+    _nnpivfit_action_m: Fit the mediated action model using nonparametric instrumental variables.
+    
+    _npivfit_action: Fit the action model using nonparametric instrumental variables.
+    
+    _scores_mediated: Calculate the scores for the mediated effects.
+    
+    _scores_Y1: Calculate the scores for the Y1 estimand.
+    
+    _process_fold: Process a single fold for cross-validation.
+    
+    _split_and_estimate: Split the data and estimate the model for each fold.
+    
+    dml: Perform Debiased Machine Learning for Nonparametric Instrumental Variables.
+"""
+
 import numpy as np
 from scipy.stats import norm 
 from sklearn.model_selection import KFold
@@ -6,20 +44,51 @@ from sklearn.cluster import KMeans
 from sklearn.preprocessing import PolynomialFeatures
 from statsmodels.nonparametric.kde import kernel_switch
 import warnings
-
-from tqdm import tqdm  # Import tqdm
+from tqdm import tqdm 
 import copy
 import torch
-from mliv.rkhs import ApproxRKHSIVCV
+from nnpiv.rkhs import ApproxRKHSIVCV
 from joblib import Parallel, delayed
 from scipy.optimize import minimize_scalar
 
 device = torch.cuda.current_device() if torch.cuda.is_available() else None
 
 def _get(opts, key, default):
+    """
+    Retrieve the value associated with 'key' in 'opts', or return 'default' if not present.
+
+    Parameters
+    ----------
+    opts : dict
+        Dictionary of options.
+    key : str
+        Key to look up in 'opts'.
+    default : any
+        Default value to return if 'key' is not found.
+
+    Returns
+    -------
+    any
+        Value associated with 'key' or 'default'.
+    """
     return opts[key] if (opts is not None and key in opts) else default
 
 def _transform_poly(X, opts):
+    """
+    Transform the input data X using polynomial features.
+
+    Parameters
+    ----------
+    X : array-like
+        Input data.
+    opts : dict
+        Options dictionary containing the polynomial degree ('lin_degree').
+
+    Returns
+    -------
+    array-like
+        Transformed data.
+    """
     degree = _get(opts, 'lin_degree', 1)
     if degree == 1:
         return X
@@ -28,6 +97,22 @@ def _transform_poly(X, opts):
         return trans.fit_transform(X)
 
 def _fun_threshold_alpha(alpha, g):
+    """
+    Auxiliary function for computation of optimal alpha for improvement in overlap: CHIM 
+    (Dealing with limited overlap in estimation of average treatment effects, Crump et al., Biometrika, 2009).
+
+    Parameters
+    ----------
+    alpha : float
+        Alpha value.
+    g : array-like
+        Input array.
+
+    Returns
+    -------
+    float
+        Result of the threshold function.
+    """
     lambda_val = 1 / (alpha * (1 - alpha))
     ind = (g <= lambda_val)
     den = sum(ind)
@@ -37,7 +122,78 @@ def _fun_threshold_alpha(alpha, g):
 
 
 class DML_mediated:
+    """
+    Debiased Machine Learning for mediation analysis (DML-mediation) class.
 
+    Parameters
+    ----------
+    Y : array-like
+        Outcome variable.
+    D : array-like
+        Treatment variable.
+    M : array-like
+        Mediator variable.
+    W : array-like
+        Negative control outcome.
+    Z : array-like
+        Instrumental variable.
+    X1 : array-like, optional
+        Additional covariates.
+    V : array-like, optional
+        Localization covariates.
+    v_values : array-like, optional
+        Values for localization.
+    loc_kernel : str, optional
+        Kernel for localization. Options are ['gau', 'epa', 'uni'].
+    bw_loc : str, optional
+        Bandwidth for localization.
+    estimator : str, optional
+        Estimator type ('MR', 'OR', 'hybrid', 'IPW').
+    estimand : str, optional
+        Type of estimand ('ATE', 'Indirect', 'Direct', 'E[Y1]', 'E[Y0]', 'E[Y(1,M(0))]').
+    model1 : estimator, optional
+        Model for the first stage.
+    nn_1 : bool, optional
+        Use neural network for the first stage.
+    model2 : estimator, optional
+        Model for the second stage.
+    nn_2 : bool, optional
+        Use neural network for the second stage.
+    modelq1 : estimator, optional
+        Model for the q1 stage.
+    nn_q1 : bool, optional
+        Use neural network for the q1 stage.
+    modelq2 : estimator, optional
+        Model for the q2 stage.
+    nn_q2 : bool, optional
+        Use neural network for the q2 stage.
+    alpha : float, optional
+        Significance level for confidence intervals.
+    n_folds : int, optional
+        Number of folds for estimation.
+    n_rep : int, optional
+        Number of repetitions for estimation.
+    random_seed : int, optional
+        Seed for random number generator.
+    prop_score : estimator, optional
+        Model for propensity score.
+    CHIM : bool, optional
+        Use CHIM method:
+        Dropping observations with extreme values of the propensity score - CHIM (2009)
+    verbose : bool, optional
+        Print progress information.
+    fitargs1 : dict, optional
+        Arguments for fitting the first stage model.
+    fitargs2 : dict, optional
+        Arguments for fitting the second stage model.
+    fitargsq1 : dict, optional
+        Arguments for fitting the q1 stage model.
+    fitargsq2 : dict, optional
+        Arguments for fitting the q2 stage model.
+    opts : dict, optional
+        Additional options.
+    """
+    
     def __init__(self, Y, D, M, W, Z, X1=None,
                  V=None, 
                  v_values=None,
@@ -74,6 +230,77 @@ class DML_mediated:
                  fitargsq2=None,
                  opts=None
                  ):
+        """
+        Initialize the DML_npiv instance with data and model configurations.
+        
+        Parameters
+        ----------
+        Y : array-like
+            Outcome variable.
+        D : array-like
+            Treatment variable.
+        M : array-like
+            Mediator variable.
+        W : array-like
+            Negative control outcome.
+        Z : array-like
+            Instrumental variable.
+        X1 : array-like, optional
+            Additional covariates.
+        V : array-like, optional
+            Localization covariates.
+        v_values : array-like, optional
+            Values for localization.
+        loc_kernel : str, optional
+            Kernel for localization. Options are ['gau', 'epa', 'uni'].
+        bw_loc : str, optional
+            Bandwidth for localization.
+        estimator : str, optional
+            Estimator type ('MR', 'OR', 'hybrid', 'IPW').
+        estimand : str, optional
+            Type of estimand ('ATE', 'Indirect', 'Direct', 'E[Y1]', 'E[Y0]', 'E[Y(1,M(0))]').
+        model1 : estimator, optional
+            Model for the first stage.
+        nn_1 : bool, optional
+            Use neural network for the first stage.
+        model2 : estimator, optional
+            Model for the second stage.
+        nn_2 : bool, optional
+            Use neural network for the second stage.
+        modelq1 : estimator, optional
+            Model for the q1 stage.
+        nn_q1 : bool, optional
+            Use neural network for the q1 stage.
+        modelq2 : estimator, optional
+            Model for the q2 stage.
+        nn_q2 : bool, optional
+            Use neural network for the q2 stage.
+        alpha : float, optional
+            Significance level for confidence intervals.
+        n_folds : int, optional
+            Number of folds for estimation.
+        n_rep : int, optional
+            Number of repetitions for estimation.
+        random_seed : int, optional
+            Seed for random number generator.
+        prop_score : estimator, optional
+            Model for propensity score.
+        CHIM : bool, optional
+            Use CHIM method:
+            Dropping observations with extreme values of the propensity score - CHIM (2009)
+        verbose : bool, optional
+            Print progress information.
+        fitargs1 : dict, optional
+            Arguments for fitting the first stage model.
+        fitargs2 : dict, optional
+            Arguments for fitting the second stage model.
+        fitargsq1 : dict, optional
+            Arguments for fitting the q1 stage model.
+        fitargsq2 : dict, optional
+            Arguments for fitting the q2 stage model.
+        opts : dict, optional
+            Additional options.
+        """
         self.Y = Y
         self.D = D
         self.M = M
@@ -127,7 +354,7 @@ class DML_mediated:
             self.estimator = 'MR'
 
         if self.estimand not in ['ATE', 'Indirect', 'Direct', 'E[Y1]', 'E[Y0]', 'E[Y(1,M(0))]']:
-            warnings.warn(f"Invalid estimator: {estimator}. Estimator must be one of ['ATE', 'Indirect', 'Direct', 'E[Y1]', 'E[Y0]', 'E[Y(1,M(0))]']. Using ATE instead.", UserWarning)
+            warnings.warn(f"Invalid estimator: {estimand}. Estimator must be one of ['ATE', 'Indirect', 'Direct', 'E[Y1]', 'E[Y0]', 'E[Y(1,M(0))]']. Using ATE instead.", UserWarning)
             self.estimand = 'ATE'
 
         if self.estimand in ['ATE', 'E[Y1]', 'E[Y0]'] and self.estimator=='hybrid':
@@ -149,6 +376,21 @@ class DML_mediated:
                 self.v_values = np.mean(self.V, axis=0)    
             
     def _calculate_confidence_interval(self, theta, theta_var):
+        """
+        Calculate the confidence interval for the given estimates.
+
+        Parameters
+        ----------
+        theta : array-like
+            Estimated values.
+        theta_var : array-like
+            Variance of the estimates.
+
+        Returns
+        -------
+        array-like
+            Lower and upper bounds of the confidence intervals.
+        """
         z_alpha_half = norm.ppf(1 - self.alpha / 2)
         n = self.Y.shape[0]
         margin_of_error = z_alpha_half * np.sqrt(theta_var) * np.sqrt(1 / n)
@@ -157,6 +399,23 @@ class DML_mediated:
         return np.column_stack((lower_bound, upper_bound))
 
     def _localization(self, V, v_val, bw):
+        """
+        Perform localization using kernel density estimation.
+
+        Parameters
+        ----------
+        V : array-like
+            Localization covariates.
+        v_val : array-like
+            Values for localization.
+        bw : float
+            Bandwidth for localization.
+
+        Returns
+        -------
+        array-like
+            Weights for localization.
+        """
         if kernel_switch[self.loc_kernel]().domain is None:
             def K(x):
                 return kernel_switch[self.loc_kernel]()(x)
@@ -172,7 +431,29 @@ class DML_mediated:
         return ell.reshape(-1,1)
     
     def _nnpivfit_outcome_m(self, Y, D, M, W, X, Z):
+        """
+        Fit the mediated outcome model using nonparametric instrumental variables.
 
+        Parameters
+        ----------
+        Y : array-like
+            Outcome variable.
+        D : array-like
+            Treatment variable.
+        M : array-like
+            Mediator variable.
+        W : array-like
+            Negative control outcome.
+        X : array-like
+            Covariates.
+        Z : array-like
+            Instrumental variable.
+
+        Returns
+        -------
+        tuple
+            Fitted models for treatment and control groups.
+        """
         if self.estimator == 'MR' or self.estimator == 'OR' or self.estimator == 'hybrid':
             model_1 = copy.deepcopy(self.model1)
             model_2 = copy.deepcopy(self.model2)
@@ -243,6 +524,25 @@ class DML_mediated:
 
 
     def _npivfit_outcome(self, Y, D, X, Z):
+        """
+        Fit the outcome model using nonparametric instrumental variables.
+
+        Parameters
+        ----------
+        Y : array-like
+            Outcome variable.
+        D : array-like
+            Treatment variable.
+        X : array-like
+            Covariates.
+        Z : array-like
+            Instrumental variable.
+
+        Returns
+        -------
+        object
+            Fitted model.
+        """
         model_1 = copy.deepcopy(self.model1)
 
         # First stage
@@ -266,6 +566,25 @@ class DML_mediated:
     
 
     def _propensity_score(self, M, X, W, D):
+        """
+        Estimate the propensity score.
+
+        Parameters
+        ----------
+        M : array-like
+            Mediator variable.
+        X : array-like
+            Covariates.
+        W : array-like
+            Negative control outcome.
+        D : array-like
+            Treatment variable.
+
+        Returns
+        -------
+        tuple
+            Estimated propensity scores and threshold alpha.
+        """
         model_ps = copy.deepcopy(self.prop_score)
         X1 = np.column_stack((X,W))
         X0 = np.column_stack((M,X,W))
@@ -312,7 +631,33 @@ class DML_mediated:
 
 
     def _nnpivfit_action_m(self, ps_hat_0, ps_hat_00, D, M, W, X, Z, alfa=0.0):
+        """
+        Fit the mediated action model using nonparametric instrumental variables.
 
+        Parameters
+        ----------
+        ps_hat_0 : array-like
+            Estimated propensity scores for control group.
+        ps_hat_00 : array-like
+            Estimated propensity scores for mediated control group.
+        D : array-like
+            Treatment variable.
+        M : array-like
+            Mediator variable.
+        W : array-like
+            Negative control outcome.
+        X : array-like
+            Covariates.
+        Z : array-like
+            Instrumental variable.
+        alfa : float, optional
+            Threshold alpha for propensity scores.
+
+        Returns
+        -------
+        tuple
+            Fitted models for mediated action.
+        """
         if self.estimator == 'MR' or self.estimator == 'IPW' or self.estimator == 'hybrid':
             mask = np.where((ps_hat_0 >= alfa) & (ps_hat_0 <= 1 - alfa) &
                             (ps_hat_00 >= alfa) & (ps_hat_00 <= 1 - alfa))[0]
@@ -397,6 +742,27 @@ class DML_mediated:
     
 
     def _npivfit_action(self, ps_hat_1, W, X, Z, alfa=0.0):
+        """
+        Fit the action model using nonparametric instrumental variables.
+
+        Parameters
+        ----------
+        ps_hat_1 : array-like
+            Estimated propensity scores.
+        W : array-like
+            Negative control outcome.
+        X : array-like
+            Covariates.
+        Z : array-like
+            Instrumental variable.
+        alfa : float, optional
+            Threshold alpha for propensity scores.
+
+        Returns
+        -------
+        object
+            Fitted model for the action.
+        """
         mask = np.where((ps_hat_1 >= alfa) & (ps_hat_1 <= 1 - alfa))[0]
         ps_hat_1 = ps_hat_1[mask]
         W = W[mask]
@@ -423,7 +789,41 @@ class DML_mediated:
 
     def _scores_mediated(self, train_Y, train_D, train_M, train_W, train_X, train_Z, 
                          test_Y, test_D, test_M, test_W, test_X, test_Z):
-        
+        """
+        Calculate the scores for the mediated effects.
+
+        Parameters
+        ----------
+        train_Y : array-like
+            Training outcome variable.
+        train_D : array-like
+            Training treatment variable.
+        train_M : array-like
+            Training mediator variable.
+        train_W : array-like
+            Training negative control outcome.
+        train_X : array-like
+            Training covariates.
+        train_Z : array-like
+            Training instrumental variable.
+        test_Y : array-like
+            Testing outcome variable.
+        test_D : array-like
+            Testing treatment variable.
+        test_M : array-like
+            Testing mediator variable.
+        test_W : array-like
+            Testing negative control outcome.
+        test_X : array-like
+            Testing covariates.
+        test_Z : array-like
+            Testing instrumental variable.
+
+        Returns
+        -------
+        array-like
+            Estimated moment functions for the test data.
+        """
         if self.estimator == 'MR' or self.estimator == 'OR' or self.estimator == 'hybrid':
             gamma_1, gamma_0 = self._nnpivfit_outcome_m(train_Y, train_D, train_M, train_W, train_X, train_Z)
         if self.estimator == 'MR' or self.estimator == 'hybrid' or self.estimator == 'IPW':
@@ -478,7 +878,37 @@ class DML_mediated:
 
     def _scores_Y1(self, train_Y, train_D, train_M, train_W, train_X, train_Z, 
                          test_Y, test_D, test_X, test_Z):
-        
+        """
+        Calculate the scores for the Y1 estimand.
+
+        Parameters
+        ----------
+        train_Y : array-like
+            Training outcome variable.
+        train_D : array-like
+            Training treatment variable.
+        train_M : array-like
+            Training mediator variable.
+        train_W : array-like
+            Training negative control outcome.
+        train_X : array-like
+            Training covariates.
+        train_Z : array-like
+            Training instrumental variable.
+        test_Y : array-like
+            Testing outcome variable.
+        test_D : array-like
+            Testing treatment variable.
+        test_X : array-like
+            Testing covariates.
+        test_Z : array-like
+            Testing instrumental variable.
+
+        Returns
+        -------
+        array-like
+            Estimated moment functions for the test data.
+        """
         if self.estimator == 'MR' or self.estimator == 'OR':
             gamma_1 = self._npivfit_outcome(train_Y, train_D, train_X, train_Z)
 
@@ -513,6 +943,23 @@ class DML_mediated:
         return psi_hat
     
     def _process_fold(self, fold_idx, train_data, test_data):
+        """
+        Process a single fold for cross-validation.
+
+        Parameters
+        ----------
+        fold_idx : int
+            Fold index.
+        train_data : tuple
+            Training data for the fold.
+        test_data : tuple
+            Testing data for the fold.
+
+        Returns
+        -------
+        array-like
+            Estimated moment functions for the test data.
+        """
         train_Y, test_Y = train_data[0], test_data[0]
         train_D, test_D = train_data[1], test_data[1]
         train_M, test_M = train_data[2], test_data[2]
@@ -580,7 +1027,14 @@ class DML_mediated:
 
 
     def _split_and_estimate(self):
-        
+        """
+        Split the data and estimate the model for each fold.
+
+        Returns
+        -------
+        tuple
+            Estimated values, variances, and confidence intervals.
+        """
         theta = []
         theta_var = []
 
@@ -634,9 +1088,16 @@ class DML_mediated:
     
 
     def dml(self):
+        """
+        Perform Debiased Machine Learning for Nonparametric Instrumental Variables.
+
+        Returns
+        -------
+        tuple
+            Estimated values, variances, and confidence intervals.
+        """
         theta, theta_var, confidence_interval = self._split_and_estimate()
         if self.V is None:
             return theta[0], theta_var[0], confidence_interval[0]
         else:
             return theta, theta_var, confidence_interval
-    
