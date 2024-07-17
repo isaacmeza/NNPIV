@@ -7,7 +7,5 @@ __all__ = ['ensemble',
            'neuralnet',
            'rkhs',
            'shape',
-           'dgps',
-           'dgps_mediated',
-           'dgps_nested',
-           'tsls']
+           'tsls',
+           'semiparametrics']

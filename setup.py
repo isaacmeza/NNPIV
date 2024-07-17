@@ -7,11 +7,11 @@ with open("README.md", "r") as fh:
     long_description = fh.read()
 
 setuptools.setup(
-    name="mliv",  # Replace with your own username
+    name="nnpiv",  # Replace with your own username
     version="0.0.1",
     author="",
     author_email="",
-    description="A small example package",
+    description="NESTED NONPARAMETRIC INSTRUMENTAL VARIABLE REGRESSION",
     long_description=long_description,
     long_description_content_type="text/markdown",
     url="",

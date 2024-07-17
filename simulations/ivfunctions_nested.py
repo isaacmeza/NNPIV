@@ -7,12 +7,12 @@ from sklearn.linear_model import Lasso, LassoCV, LogisticRegression, LogisticReg
 from sklearn.ensemble import RandomForestRegressor, RandomForestClassifier
 from sklearn.preprocessing import PolynomialFeatures
 from sklearn.model_selection import train_test_split
-import mliv.dgps_nested as dgps
-from mliv.ensemble import EnsembleIV, EnsembleIVStar
-from mliv.rkhs import ApproxRKHSIVCV
-from mliv.shape import LipschitzShapeIV, ShapeIV
-from mliv.linear import OptimisticHedgeVsOptimisticHedge, StochasticOptimisticHedgeVsOptimisticHedge
-from mliv.linear import L2OptimisticHedgeVsOGD, L2ProxGradient
+import simulations.dgps_nested as dgps
+from nnpiv.ensemble import EnsembleIV, EnsembleIVStar
+from nnpiv.rkhs import ApproxRKHSIVCV
+from nnpiv.shape import LipschitzShapeIV, ShapeIV
+from nnpiv.linear import OptimisticHedgeVsOptimisticHedge, StochasticOptimisticHedgeVsOptimisticHedge
+from nnpiv.linear import L2OptimisticHedgeVsOGD, L2ProxGradient
 from sklearn.pipeline import Pipeline
 from mcpy.utils import filesafe
 
