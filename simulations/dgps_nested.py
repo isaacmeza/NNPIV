@@ -28,6 +28,10 @@ fn_dict_convex = {'abs': 0, '2dpoly': 1, 'linear': 8,
 # for sparse
 fn_dict_sparse = {'abs': 0, 'linear': 8}
 
+# paper
+fn_dict_paper = {'linear': 8, 'pwlinear': 15, 'sigmoid': 2,
+                 '3dpoly': 7, 'exponential': 16}
+                 
 # all functions
 fn_dict = {'abs': 0, '2dpoly': 1, 'sigmoid': 2,
            'sin': 3, 'frequent_sin': 4, 'abs_sqrt': 5,

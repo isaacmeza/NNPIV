@@ -43,7 +43,7 @@ class MonteCarlo:
         config['param_str'] += '_' + '_'.join(
             ['{}_{}'.format(filesafe(k), v) for k, v in self.config['dgp_opts'].items()])
         config['param_str'] += '_' + '_'.join(
-            ['{}_{}'.format(filesafe(k), v) for k, v in self.config['method_opts'].items()])
+            [filesafe(method_name) for method_name in self.config['methods'].keys()])
         return
 
     def experiment(self, exp_id):
@@ -112,8 +112,8 @@ class NonParametricsMonteCarlo:
             k), self._stringify_param(v)) for k, v in self.config['mc_opts'].items()])
         config['param_str'] += '_' + '_'.join(['{}_{}'.format(filesafe(
             k), self._stringify_param(v)) for k, v in self.config['dgp_opts'].items()])
-        config['param_str'] += '_' + '_'.join(['{}_{}'.format(filesafe(
-            k), self._stringify_param(v)) for k, v in self.config['method_opts'].items()])
+        config['param_str'] += '_' + '_'.join(
+            [filesafe(method_name) for method_name in self.config['methods'].keys()])
         return
 
     def _stringify_param(self, param):

@@ -25,6 +25,7 @@ from sklearn.cluster import KMeans
 from nnpiv.neuralnet.rbflayer import gaussian, inverse_multiquadric
 from nnpiv.neuralnet import AGMM, KernelLayerMMDGMM, CentroidMMDGMM, KernelLossAGMM, MMDGMM
 
+from nnpiv.neuralnet import AGMM2, AGMM2L2
 
 p = 0.1  # dropout prob of dropout layers throughout notebook
 n_hidden = 100  # width of hidden layers throughout notebook
@@ -125,6 +126,42 @@ def agmm(data, opts):
     
     return agmm.predict(B1_test.to(device),
                         model=_get_model_opt(opts, 'model', 0), burn_in=_get(opts, 'burnin', 0))
+
+
+def agmm2(data, opts):
+    print("GPU:", torch.cuda.is_available())
+    B1_test, A1, A2, B1, B2, Y = map(lambda x: torch.Tensor(x), data)
+
+    model =  AGMM2(learnerh = _get_learner(B1.shape[1]), learnerg = _get_learner(A1.shape[1]),
+                     adversary1 = _get_adversary(A2.shape[1]), adversary2 = _get_adversary(B2.shape[1]))
+    
+      
+    agmm2 = model.fit(A1, B1, B2, A2, Y, learner_l2=learner_l2, adversary_l2=adversary_l2, adversary_norm_reg=adversary_norm_reg, learner_norm_reg=adversary_norm_reg,
+            learner_lr=learner_lr, adversary_lr=adversary_lr, 
+            n_epochs=_get(opts, 'n_epochs', n_epochs)*2, bs=_get(opts, 'bs', bs), 
+            train_learner_every=1, train_adversary_every=1,
+            model_dir=str(Path.home()), device=device)
+    pred, _ = agmm2.predict(B1_test.to(device), A1.to(device),
+                        model=_get_model_opt(opts, 'model', 0), burn_in=_get(opts, 'burnin', 0))
+    return pred
+
+
+def agmm2l2(data, opts):
+    print("GPU:", torch.cuda.is_available())
+    B1_test, A1, A2, B1, B2, Y = map(lambda x: torch.Tensor(x), data)
+
+    model =  AGMM2L2(learnerh = _get_learner(B1.shape[1]), learnerg = _get_learner(A1.shape[1]),
+                     adversary1 = _get_adversary(A2.shape[1]), adversary2 = _get_adversary(B2.shape[1]))
+    
+      
+    agmm2l2 = model.fit(A1, B1, B2, A2, Y, learner_l2=learner_l2, adversary_l2=adversary_l2, adversary_norm_reg=adversary_norm_reg, learner_norm_reg=adversary_norm_reg,
+            learner_lr=learner_lr, adversary_lr=adversary_lr, 
+            n_epochs=_get(opts, 'n_epochs', n_epochs)*2, bs=_get(opts, 'bs', bs), 
+            train_learner_every=1, train_adversary_every=1,
+            model_dir=str(Path.home()), device=device)
+    pred, _ = agmm2l2.predict(B1_test.to(device), A1.to(device),
+                        model=_get_model_opt(opts, 'model', 0), burn_in=_get(opts, 'burnin', 0))
+    return pred
 
 
 def klayerfixed(data, opts):
@@ -286,28 +323,3 @@ def rsquare(param_estimates, true_params):
 
 def _key(dic, value):
     return list(iter(dic.keys()))[np.argwhere(np.array(list(iter(dic.values()))) == value)[0, 0]]
-
-
-def print_metrics(param_estimates, metric_results, config):
-    out = open(os.path.join(config['target_dir'],
-                            'print_metrics.csv'), 'a')
-    methods = list(next(iter(metric_results.values())).keys())
-    metrics = list(
-        next(iter(next(iter(metric_results.values())).values())).keys())
-    print(config['param_str'], file=out)
-    for metric_name in metrics:
-        if metric_name != 'raw':
-            print(metric_name, file=out)
-            print("&", "&".join(methods), file=out)
-            for dgp_name, mdgp in metric_results.items():
-                print(dgp_name, _key(dgps.fn_dict,
-                                     config['dgp_opts']['fn']), end=" ", file=out)
-                for method_name in mdgp.keys():
-                    res = mdgp[method_name][metric_name]
-                    mean_res = res.mean()
-                    std_res = res.std() / np.sqrt(len(res))
-                    print(r"& {:.3f} $\pm$ {:.3f}".format(
-                        mean_res, 2 * std_res), end=" ", file=out)
-            print(" ", file=out)
-    out.close()
-    return

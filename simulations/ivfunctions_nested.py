@@ -13,6 +13,11 @@ from nnpiv.rkhs import ApproxRKHSIVCV
 from nnpiv.shape import LipschitzShapeIV, ShapeIV
 from nnpiv.linear import OptimisticHedgeVsOptimisticHedge, StochasticOptimisticHedgeVsOptimisticHedge
 from nnpiv.linear import L2OptimisticHedgeVsOGD, L2ProxGradient
+
+from nnpiv.linear import sparse2_l1vsl1, sparse2_ridge_l1vsl1
+from nnpiv.rkhs import RKHS2IVL2CV
+from nnpiv.ensemble import Ensemble2IV
+
 from sklearn.pipeline import Pipeline
 from mcpy.utils import filesafe
 
@@ -223,6 +228,61 @@ def regtsls(data, opts):
     return second.predict(polyB1_test).reshape(B1_test.shape[:1] + Y.shape[1:])
 
 
+def sparse_joint_l1vsl1(data, opts):
+    B1_test, A1, A2, B1, B2, Y = data
+    
+    trans = PolynomialFeatures(degree=_get(
+        opts, 'lin_degree', 1), include_bias=False)
+    B1_test, A1, A2, B1, B2 = map(trans.fit_transform, [B1_test, A1, A2, B1, B2])
+
+    model = sparse2_l1vsl1(mu=_get(opts, 'lin_l1', .05), V1=_get(opts, 'budget', 100), V2=_get(opts, 'budget', 100),
+                 eta_alpha='auto', eta_w1='auto', eta_beta='auto', eta_w2='auto',
+                 n_iter=_get(opts, 'lin_nit', 10000)*2, tol=.00001/2, sparsity=None, fit_intercept=True)
+    
+    return model.fit(A1, B1, B2, A2, Y).predict(B1_test).reshape(B1_test.shape[:1] + Y.shape[1:])
+
+
+def sparse_joint_ridgel1vsl1(data, opts):
+    B1_test, A1, A2, B1, B2, Y = data
+    
+    trans = PolynomialFeatures(degree=_get(
+        opts, 'lin_degree', 1), include_bias=False)
+    B1_test, A1, A2, B1, B2 = map(trans.fit_transform, [B1_test, A1, A2, B1, B2])
+
+    model = sparse2_ridge_l1vsl1(mu=_get(opts, 'lin_l1', .05), V1=_get(opts, 'budget', 100), V2=_get(opts, 'budget', 100),
+                 eta_alpha='auto', eta_w1='auto', eta_beta='auto', eta_w2='auto',
+                 n_iter=_get(opts, 'lin_nit', 10000)*2, tol=.00001/2, sparsity=None, fit_intercept=True)
+    
+    return model.fit(A1, B1, B2, A2, Y).predict(B1_test).reshape(B1_test.shape[:1] + Y.shape[1:])
+
+
+def rkhs2_ridge(data, opts):
+    B1_test, A1, A2, B1, B2, Y = data
+
+    alpha_scales = np.geomspace(1, 20000, 20)
+    model = RKHS2IVL2CV(kernel='rbf', gamma=2, degree=3, coef0=1, kernel_params=None,
+                 delta_scale='auto', delta_exp='auto', alpha_scales=alpha_scales, cv=5)
+
+    return model.fit(A1, B1, B2, A2, Y).predict(B1_test).reshape(B1_test.shape[:1] + Y.shape[1:])
+
+
+def rfiv2(data, opts):
+    B1_test, A1, A2, B1, B2, Y = data
+
+    adversary = RandomForestRegressor(n_estimators=50, max_depth=2,
+                                    bootstrap=True, min_samples_leaf=40, min_impurity_decrease=0.001)
+    learnerg = RandomForestClassifier(n_estimators=10, max_depth=2, criterion='gini',
+                                        bootstrap=False, min_samples_leaf=40, min_impurity_decrease=0.001)
+    learnerh = RandomForestClassifier(n_estimators=10, max_depth=2, criterion='gini',
+                                        bootstrap=False, min_samples_leaf=40, min_impurity_decrease=0.001)
+
+    model = Ensemble2IV(n_iter=_get(opts, 'rf_iter', 200)*2, max_abs_value=2, 
+                              adversary=adversary, learnerg=learnerg, learnerh=learnerh, n_burn_in=10)
+
+    return model.fit(A1, B1, B2, A2, Y).predict(B1_test).reshape(B1_test.shape[:1] + Y.shape[1:])
+
+
+
 def mse(param_estimates, true_params):
     return np.mean((np.array(param_estimates) - np.array(true_params))**2)
 
@@ -233,28 +293,3 @@ def rsquare(param_estimates, true_params):
 
 def _key(dic, value):
     return list(iter(dic.keys()))[np.argwhere(np.array(list(iter(dic.values()))) == value)[0, 0]]
-
-
-def print_metrics(param_estimates, metric_results, config):
-    out = open(os.path.join(config['target_dir'],
-                            'print_metrics.csv'), 'a')
-    methods = list(next(iter(metric_results.values())).keys())
-    metrics = list(
-        next(iter(next(iter(metric_results.values())).values())).keys())
-    print(config['param_str'], file=out)
-    for metric_name in metrics:
-        if metric_name != 'raw':
-            print(metric_name, file=out)
-            print("&", "&".join(methods), file=out)
-            for dgp_name, mdgp in metric_results.items():
-                print(dgp_name, _key(dgps.fn_dict,
-                                     config['dgp_opts']['fn']), end=" ", file=out)
-                for method_name in mdgp.keys():
-                    res = mdgp[method_name][metric_name]
-                    mean_res = res.mean()
-                    std_res = res.std() / np.sqrt(len(res))
-                    print(r"& {:.3f} $\pm$ {:.3f}".format(
-                        mean_res, 2 * std_res), end=" ", file=out)
-            print(" ", file=out)
-    out.close()
-    return

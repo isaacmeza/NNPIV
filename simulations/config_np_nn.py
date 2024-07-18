@@ -2,20 +2,20 @@
 # Licensed under the MIT License.
 
 import ivfunctions_nested_nn
-from simulations.dgps_nested import fn_dict 
+from simulations.dgps_nested import fn_dict_paper 
 from simulations.printplots import raw_metric, plot_ind
 import printtable
 
 
 CONFIG = {
-    "target_dir": "nested_md_2_nn",
+    "target_dir": "nonparametric_fit",
     "reload_results": True,
     "dgps": {
         "dgp2": ivfunctions_nested_nn.gen_data
     },
     "dgp_opts": {
         'dgp_num': 2,
-        'fn': list(iter(fn_dict.values())),
+        'fn': list(iter(fn_dict_paper.values())),
         'n_samples': 2000,
         'n_a': 10,
         'n_b': 10,
@@ -23,7 +23,7 @@ CONFIG = {
         'gridtest': 1
     },
     "methods": {
-        "AGMM": ivfunctions_nested_nn.agmm    
+        "AGMM2L2": ivfunctions_nested_nn.agmm2l2    
     },
     "method_opts": {
         'n_epochs': 300,
@@ -37,16 +37,15 @@ CONFIG = {
     "plots": {
         'est': plot_ind,
         'print_metrics': lambda x, y, z: printtable.print_table(x, y, z,
-                                                                 filename='nested_md_nn_dgp2.csv',
-                                                                 nn=True)
+                                                                 filename='nonparametric_fit/table1_nn.csv')
     },
     "subplots": {
-        'fn_plot': [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15]
+        'fn_plot': [8,15,2,7,16]
     },
     "sweep_plots": {
     },
     "mc_opts": {
-        'n_experiments': 100,  # number of monte carlo experiments
+        'n_experiments': 500,  # number of monte carlo experiments
         "seed": 123,
     },
     "cluster_opts": {

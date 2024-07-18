@@ -22,10 +22,9 @@ CONFIG = {
         'n_test': 1000,
         'gridtest': 1
     },
-    "methods": { 
-        "RKHS2L2": ivfunctions_nested.rkhs2_ridge,
-        "Sparse2": ivfunctions_nested.sparse_joint_l1vsl1,
-        "RFIV2": ivfunctions_nested.rfiv2
+    "methods": {
+        "2SLS": ivfunctions_nested.tsls,
+        "Reg2SLS": ivfunctions_nested.regtsls
     },
     "method_opts": {
         'lin_degree': 3,
