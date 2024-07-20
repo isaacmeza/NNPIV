@@ -15,7 +15,7 @@ CONFIG = {
     },
     "dgp_opts": {
         'dgp_num': 2,
-        'fn': list(iter(fn_dict_paper.values())),
+        'fn': [2,7,16],
         'n_samples': 2000,
         'n_a': 10,
         'n_b': 10,

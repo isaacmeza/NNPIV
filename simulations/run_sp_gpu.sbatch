@@ -2,21 +2,16 @@
 #SBATCH -o myoutput_%j.out
 #SBATCH -e myerrors_%j.err
 #SBATCH -p gpu
-#SBATCH -t 2-20:00  # Runtime in D-HH:MM, minimum of 10 minutes
-#SBATCH --nodes=1 
+#SBATCH -t 2-12:00  # Runtime in D-HH:MM, minimum of 10 minutes
 #SBATCH -c 64        # Number of cores (-c)
 #SBATCH --gres=gpu:4 # Number of GPUs
-#SBATCH --gpu-freq=high # GPU Frequency
-#SBATCH --mem=50000
+#SBATCH --mem=100000
 #SBATCH --mail-type=END #This command would send an email when the job ends.
 #SBATCH --mail-user=i.mezal.12@gmail.com #Email to which notifications will be sent
 
-
-
 # load modules
 module load python/3.10.13-fasrc01
-mamba activate python_envgpu
-
+mamba activate nnpiv_env
 
 NODE_ID=0
 N_NODES=1

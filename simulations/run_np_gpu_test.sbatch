@@ -5,7 +5,6 @@
 #SBATCH -t 0-11:00  # Runtime in D-HH:MM, minimum of 10 minutes
 #SBATCH -c 64        # Number of cores (-c)
 #SBATCH --gres=gpu:8 # Number of GPUs
-#SBATCH --gpu-freq=high # GPU Frequency
 #SBATCH --mem=100000
 #SBATCH --mail-type=END #This command would send an email when the job ends.
 #SBATCH --mail-user=i.mezal.12@gmail.com #Email to which notifications will be sent

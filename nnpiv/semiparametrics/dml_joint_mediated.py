@@ -564,7 +564,7 @@ class DML_joint_mediated:
             ps_hat_01 = 1 - ps_hat_00
 
             A_train, E_train, B_train, C_train, train_D = map(lambda x: x[mask], 
-                                                [A_train, E_train, B_train, C_train, train_Y, train_D])
+                                                [A_train, E_train, B_train, C_train, train_D])
             
             if self.nn_1 == True:
                 A_train, E_train, B_train, C_train, train_D, ps_hat_0, ps_hat_00, ps_hat_01, B_test, A_test = map(lambda x: torch.Tensor(x), 
