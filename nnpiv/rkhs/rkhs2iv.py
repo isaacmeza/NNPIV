@@ -129,7 +129,7 @@ class RKHS2IV(_BaseRKHS2IV):
 
         n = Y.shape[0]
         Id = np.eye(n)
-        Iw = Id if W is None else np.diag(W)
+        Iw = Id if W is None else np.diag(W.flatten())
 
         if subsetted:
             ind1 = np.where(subset_ind1 == 1)[0]
@@ -152,7 +152,7 @@ class RKHS2IV(_BaseRKHS2IV):
 
         KbPcKa_inv = np.linalg.pinv(Kb @ Pc @ Iw @ Ka)
 
-        M = Ka @ (Iw @ Pc + (Pd @ Ka + Iw @ Pc @ Iw @ Ka + alpha * Id) @ KbPcKa_inv @ (Kb @ Pc + alpha * Id)) @ Kb
+        M = Ka @ ( - Iw @ Pc + (Pd @ Ka + Iw @ Pc @ Iw @ Ka + alpha * Id) @ KbPcKa_inv @ (Kb @ Pc + alpha * Id)) @ Kb
         
         self.b = np.linalg.pinv(M) @ Ka @ Pd @ Y
         self.a = KbPcKa_inv @ (Kb @ Pc + alpha * Id) @ Kb @ self.b
@@ -241,7 +241,7 @@ class RKHS2IVCV(RKHS2IV):
 
         n = Y.shape[0]
         Id = np.eye(n)
-        Iw = Id if W is None else np.diag(W)
+        Iw = Id if W is None else np.diag(W.flatten())
 
         Ka = self._get_kernel(A)
         Kb = self._get_kernel(B)
@@ -305,7 +305,7 @@ class RKHS2IVCV(RKHS2IV):
             scores.append([])
             for alpha_scale in alpha_scales:
                 alpha = alpha_scale * delta_train**4
-                M = Ka_train @ (Iw_train @ Pc_train + (Pd_train @ Ka_train + Iw_train @ Pc_train @ Iw_train @ Ka_train + alpha * Id_train) @ KbPcKa_inv @ (Kb_train @ Pc_train + alpha * Id_train)) @ Kb_train
+                M = Ka_train @ ( - Iw_train @ Pc_train + (Pd_train @ Ka_train + Iw_train @ Pc_train @ Iw_train @ Ka_train + alpha * Id_train) @ KbPcKa_inv @ (Kb_train @ Pc_train + alpha * Id_train)) @ Kb_train
                 b = np.linalg.pinv(M) @ B_train
                 a = KbPcKa_inv @ (Kb_train @ Pc_train + alpha * Id_train) @ Kb_train @ b
                 res1 = Y[test] - Ka[np.ix_(test, train)] @ a
@@ -320,7 +320,7 @@ class RKHS2IVCV(RKHS2IV):
         self.best_alpha = self.best_alpha_scale * delta**4
 
         KbPcKa_inv = np.linalg.pinv(Kb @ Pc @ Iw @ Ka)
-        M = Ka @ (Iw @ Pc + (Pd @ Ka + Iw @ Pc @ Iw @ Ka + self.best_alpha * Id) @ KbPcKa_inv @ (Kb @ Pc + self.best_alpha * Id)) @ Kb
+        M = Ka @ ( - Iw @ Pc + (Pd @ Ka + Iw @ Pc @ Iw @ Ka + self.best_alpha * Id) @ KbPcKa_inv @ (Kb @ Pc + self.best_alpha * Id)) @ Kb
 
         self.b = np.linalg.pinv(M) @ Ka @ Pd @ Y
         self.a = KbPcKa_inv @ (Kb @ Pc + self.best_alpha * Id) @ Kb @ self.b
@@ -383,7 +383,7 @@ class RKHS2IVL2(_BaseRKHS2IV):
 
         n = Y.shape[0]
         Id = np.eye(n)
-        Iw = Id if W is None else np.diag(W)
+        Iw = Id if W is None else np.diag(W.flatten())
 
         if subsetted:
             ind1 = np.where(subset_ind1 == 1)[0]
@@ -406,7 +406,7 @@ class RKHS2IVL2(_BaseRKHS2IV):
 
         KbPcKa_inv = np.linalg.pinv(Kb @ Pc @ Iw @ Ka)
 
-        M = Ka @ (Iw @ Pc + (Pd + Iw @ Pc @ Iw + alpha * Id) @ Ka @ KbPcKa_inv @ Kb @ (Pc + alpha * Id)) @ Kb
+        M = Ka @ ( - Iw @ Pc + (Pd + Iw @ Pc @ Iw + alpha * Id) @ Ka @ KbPcKa_inv @ Kb @ (Pc + alpha * Id)) @ Kb
         
         self.b = np.linalg.pinv(M) @ Ka @ Pd @ Y
         self.a = KbPcKa_inv @ Kb @ (Pc + alpha * Id) @ Kb @ self.b
@@ -495,7 +495,7 @@ class RKHS2IVL2CV(RKHS2IVL2):
 
         n = Y.shape[0]
         Id = np.eye(n)
-        Iw = Id if W is None else np.diag(W)
+        Iw = Id if W is None else np.diag(W.flatten())
 
         Ka = self._get_kernel(A)
         Kb = self._get_kernel(B)
@@ -560,7 +560,7 @@ class RKHS2IVL2CV(RKHS2IVL2):
             scores.append([])
             for alpha_scale in alpha_scales:
                 alpha = alpha_scale * delta_train**4
-                M = Ka_train @ (Iw_train @ Pc_train + (Pd_train + Iw_train @ Pc_train @ Iw_train + alpha * Id_train) @ W @ (Pc_train + alpha * Id_train)) @ Kb_train
+                M = Ka_train @ ( - Iw_train @ Pc_train + (Pd_train + Iw_train @ Pc_train @ Iw_train + alpha * Id_train) @ W @ (Pc_train + alpha * Id_train)) @ Kb_train
                 b = np.linalg.pinv(M) @ B_train
                 a = C_train @ (Pc_train + alpha * Id_train) @ Kb_train @ b
                 res1 = Y[test] - Ka[np.ix_(test, train)] @ a
@@ -575,7 +575,7 @@ class RKHS2IVL2CV(RKHS2IVL2):
         self.best_alpha = self.best_alpha_scale * delta**4
 
         KbPcKa_inv = np.linalg.pinv(Kb @ Pc @ Iw @ Ka)
-        M = Ka @ (Iw @ Pc + (Pd + Iw @ Pc @ Iw + self.best_alpha * Id) @ Ka @ KbPcKa_inv @ Kb @ (Pc + self.best_alpha * Id)) @ Kb
+        M = Ka @ ( - Iw @ Pc + (Pd + Iw @ Pc @ Iw + self.best_alpha * Id) @ Ka @ KbPcKa_inv @ Kb @ (Pc + self.best_alpha * Id)) @ Kb
 
         self.b = np.linalg.pinv(M) @ Ka @ Pd @ Y
         self.a = KbPcKa_inv @ Kb @ (Pc + self.best_alpha * Id) @ Kb @ self.b

@@ -167,7 +167,7 @@ Since :math:`K_C = \Phi_C \Phi_C^*`, the first order condition yields :math:`K_C
 Minimizers
 ^^^^^^^^^^
 
-Let :math:`\Phi_A : \mathcal{H} \rightarrow \mathbb{R}^n` be an operator with :math:`i`th row :math:`\langle \phi(A_i), \cdot \rangle_{\mathcal{H}}`. Define :math:`\Phi_B` analogously, replacing :math:`A_i` with :math:`B_i`. Let :math:`K_A` and :math:`K_B` be the corresponding kernel matrices.
+Let :math:`\Phi_A : \mathcal{H} \rightarrow \mathbb{R}^n` be an operator with :math:`i` th row :math:`\langle \phi(A_i), \cdot \rangle_{\mathcal{H}}`. Define :math:`\Phi_B` analogously, replacing :math:`A_i` with :math:`B_i`. Let :math:`K_A` and :math:`K_B` be the corresponding kernel matrices.
 
 **Existence of minimizers**
 
@@ -213,7 +213,7 @@ To lighten notation, let :math:`K_C^{\dagger} K_C = P_C`.
     
     .. math::
     
-        \hat{\beta} = \left[ K_A \left\{ P_C + \left( P_{C'} + P_C + \mu' \right) K_A \left( K_B P_C K_A \right)^{\dagger} K_B \left( P_C + \mu \right) \right\} K_B \right]^{\dagger} K_A P_{C'} Y \\
+        \hat{\beta} = \left[ K_A \left\{ - P_C + \left( P_{C'} + P_C + \mu' \right) K_A \left( K_B P_C K_A \right)^{\dagger} K_B \left( P_C + \mu \right) \right\} K_B \right]^{\dagger} K_A P_{C'} Y \\
         \hat{\alpha} = \left( K_B P_C K_A \right)^{\dagger} K_B \left( P_C + \mu \right) K_B \hat{\beta}
 
 .. autosummary::
@@ -310,7 +310,7 @@ and solving for :math:`\hat{\beta}`,
 
 .. math::
 
-    \hat{\beta} = \left[ K_A \left\{ P_C + \left( P_{C'} + P_C + \mu' \right) K_A \left( K_B P_C K_A \right)^{\dagger} K_B \left( P_C + \mu \right) \right\} K_B \right]^{\dagger} K_A P_{C'} Y
+    \hat{\beta} = \left[ K_A \left\{ - P_C + \left( P_{C'} + P_C + \mu' \right) K_A \left( K_B P_C K_A \right)^{\dagger} K_B \left( P_C + \mu \right) \right\} K_B \right]^{\dagger} K_A P_{C'} Y
 
 Remark (Subsetted estimator)
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -321,7 +321,7 @@ Remark (Subsetted estimator)
     
     .. math::
     
-        \hat{\beta} = \left[ K_A \left\{ \tilde{P}_C + \left( \tilde{P}_{C'} + \tilde{P}_C + \mu' \right) K_A \left( K_B \tilde{P}_C K_A \right)^{\dagger} K_B \left( \tilde{P}_C + \mu \right) \right\} K_B \right]^{\dagger} K_A \tilde{P}_{C'} Y \\
+        \hat{\beta} = \left[ K_A \left\{ - \tilde{P}_C + \left( \tilde{P}_{C'} + \tilde{P}_C + \mu' \right) K_A \left( K_B \tilde{P}_C K_A \right)^{\dagger} K_B \left( \tilde{P}_C + \mu \right) \right\} K_B \right]^{\dagger} K_A \tilde{P}_{C'} Y \\
         \hat{\alpha} = \left( K_B \tilde{P}_C K_A \right)^{\dagger} K_B \left( \tilde{P}_C + \mu \right) K_B \hat{\beta}
     
     where :math:`\tilde{P}_{C'} = \frac{n}{p} I_{[p]}^{\top} P_{C';[p,p]} I_{[p]}` and :math:`\tilde{P}_C = \frac{n}{q} I_{[q]}^{\top} P_{C;[q,q]} I_{[q]}`. Note that :math:`P_{C';[p,p]} = (K_{C';[p,p]})^- K_{C';[p,p]}` and :math:`K_{C';[p,p]} = I_{[p]} K_{C'} I_{[p]}^{\top}`.
@@ -369,6 +369,106 @@ and the covariance operators are defined analogously to the subsetted estimator.
 Hereafter we use the same argument as in the formula of minimizers.
 
 
+Nyström approximation
+^^^^^^^^^^^^^^^^^^^^^^
+
+Computation of kernel methods may be demanding due to the inversions of matrices  that scale with :math:`n` such as :math:`K_B \in \mathbb{R}^{n \times n}`. One solution is Nyström approximation. We now provide alternative expressions for the minimizers :math:`(\hat{g}, \hat{h})` that lend themselves to Nyström approximation, then describe the procedure.
+
+.. admonition:: Minimizer sufficient statistics
+
+    The minimizers may be expressed as
+    
+    .. math::
+        \hat{g} = \left(\Phi_B^* P_C \Phi_A\right)^{\dagger} \Phi_B^* (P_C + \mu) \Phi_B \hat{h},
+    
+    .. math::
+        \hat{h} = \left[ \Phi_A^* \left\{ -P_C + \left( P_{C'} + P_C + \mu' \right) \Phi_A \left( \Phi_B^* P_C \Phi_A \right)^{\dagger} \Phi_B^* \left( P_C + \mu \right) \right\} \Phi_B \right]^{\dagger} \Phi_A^* P_{C'} Y.
+
+**Proof**
+
+We proceed in steps.
+
+1. By the proof of the Formula of minimizers of Estimator 3, with :math:`G = \Phi_A g` and :math:`H = \Phi_B h`,
+
+.. math::
+    \begin{align*}
+        n \mathcal{E}(g, h) &= Y^{\top} P_{C'} Y - 2 G^{\top} (P_{C'} Y + P_C H) \\
+        & \quad + G^{\top} (P_{C'} + P_C + \mu') G + H^{\top} (P_C + \mu) H, \\
+        &= Y^{\top} P_{C'} Y - 2 g^* \Phi_A^* (P_{C'} Y + P_C \Phi_B h) \\
+        & \quad + g^* \Phi_A^* (P_{C'} + P_C + \mu') \Phi_A g + h^* \Phi_B^* (P_C + \mu) \Phi_B h.
+    \end{align*}
+
+2. Informally, the first order conditions yield
+
+.. math::
+    \begin{align*}
+        0 &= -2 \Phi_A^* (P_{C'} Y + P_C \Phi_B \hat{h}) + 2 \Phi_A^* (P_{C'} + P_C + \mu') \Phi_A \hat{g}, \\
+        0 &= -2 \Phi_B^* P_C \Phi_A \hat{g} + 2 \Phi_B^* (P_C + \mu) \Phi_B \hat{h}.
+    \end{align*}
+
+
+See `De Vito and Caponnetto (2005) <https://apps.dtic.mil/sti/tr/pdf/ADA466779.pdf>`_ (Proof of Proposition 2) for the formal way of deriving the first order condition, which incurs additional notation.
+
+Rearranging and taking pseudo-inverses, we arrive at two equations:
+    
+    .. math::
+        \Phi_A^* (P_{C'} + P_C + \mu') \Phi_A \hat{g} = \Phi_A^* (P_{C'} Y + P_C \Phi_B \hat{h}),
+    
+    .. math::
+        \Phi_B^* P_C \Phi_A \hat{g} = \Phi_B^* (P_C + \mu) \Phi_B \hat{h} 
+        \Longrightarrow \hat{g} = \left(\Phi_B^* P_C \Phi_A \right)^{\dagger} \Phi_B^* (P_C + \mu) \Phi_B \hat{h}.
+
+3. Substituting the latter into the former,
+
+    .. math::
+        \Phi_A^* P_{C'} Y + \Phi_A^* P_C \Phi_B \hat{h} = \Phi_A^* (P_{C'} + P_C + \mu') \Phi_A \left(\Phi_B^* P_C \Phi_A \right)^{\dagger} \Phi_B^* (P_C + \mu) \Phi_B \hat{h},
+    
+    and solving for :math:`\hat{h}`,
+
+    .. math::
+        \hat{h} = \left[ \Phi_A^* \left\{ -P_C + \left( P_{C'} + P_C + \mu' \right) \Phi_A \left( \Phi_B^* P_C \Phi_A \right)^{\dagger} \Phi_B^* \left( P_C + \mu \right) \right\} \Phi_B \right]^{\dagger} \Phi_A^* P_{C'} Y. 
+
+
+Remark (Nyström subsetted estimator)
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+.. admonition:: Formula of minimizers (Subsetted estimator)
+
+    The subsetted minimizers may be expressed as
+        
+    .. math::
+        \hat{g} = \left(\Phi_B^* \tilde{P}_C \Phi_A \right)^{\dagger} \Phi_B^* (\tilde{P}_C + \mu) \Phi_B \hat{h},
+        
+    .. math::
+        \hat{h} = \left[ \Phi_A^* \left\{ -\tilde{P}_C + \left( \tilde{P}_{C'} + \tilde{P}_C + \mu' \right) \Phi_A \left( \Phi_B^* \tilde{P}_C \Phi_A \right)^{\dagger} \Phi_B^* \left( \tilde{P}_C + \mu \right) \right\} \Phi_B \right]^{\dagger} \Phi_A^* \tilde{P}_{C'} Y.
+
+**Proof**
+
+The argument is analogous to the Remark of the properties of pseudo-inverse above.
+
+.. admonition:: Properties of pseudo-inverse
+
+    Continuing the notation of the (Properties of pseudo-inverse), if :math:`\Phi = U \Sigma^{1/2} V^{\top}` and 
+    :math:`K = \Phi \Phi^*`, then :math:`P = UU^{\top} = K^{\dagger} K = \Phi \Phi^{\dagger}`. 
+   
+
+Combining (Minimizer sufficient statistics) and (Properties of pseudo-inverse), we conclude that sufficient statistics for 
+:math:`(\hat{g}, \hat{h})` are feature operators. Within the feature operator :math:`\Phi`, the :math:`i` th row 
+:math:`\langle \phi(X_i), \cdot \rangle` may be viewed as an infinite dimensional vector.
+
+Nyström approximation is a way to approximate infinite dimensional vectors with finite dimensional ones. It uses the substitution
+:math:`\phi(x) \mapsto \check{\phi}(x) = (K_{\mathcal{S} \mathcal{S}})^{-\frac{1}{2}} K_{\mathcal{S} x}`, where
+:math:`\mathcal{S}` is a subset of :math:`s = |\mathcal{S}| \ll n` observations called landmarks. 
+:math:`K_{\mathcal{S} \mathcal{S}} \in \mathbb{R}^{s \times s}` is defined such that 
+:math:`(K_{\mathcal{S} \mathcal{S}})_{ij} = k(X_i, X_j)` for :math:`i, j \in \mathcal{S}`. Similarly, 
+:math:`K_{\mathcal{S} x} \in \mathbb{R}^s` is defined such that :math:`(K_{\mathcal{S} x})_i = k(X_i, x)` 
+for :math:`i \in \mathcal{S}`.
+
+In summary, the approximate sufficient statistics are of the form :math:`\check{\Phi} \in \mathbb{R}^{n \times s}`, 
+i.e. a matrix whose :math:`i` th row :math:`\langle \check{\phi}(X_i), \cdot \rangle` may be viewed as a vector 
+in :math:`\mathbb{R}^s`.
+
+
 Closed form - Estimator 3 (RKHS norm)
 -------------------------------------
 
@@ -390,7 +490,7 @@ We study the RKHS-norm regularized *joint* estimator:
     
     .. math::
     
-        \hat{\beta} &= \left[ K_A \left\{ P_C + \left(P_{C'} K_A + P_C K_A + \mu'\right) \left( K_B P_C K_A \right)^{\dagger} \left( K_B P_C + \mu  \right)\right\} K_B \right]^{\dagger} K_A P_{C'} Y \\
+        \hat{\beta} &= \left[ K_A \left\{ - P_C + \left(P_{C'} K_A + P_C K_A + \mu'\right) \left( K_B P_C K_A \right)^{\dagger} \left( K_B P_C + \mu  \right)\right\} K_B \right]^{\dagger} K_A P_{C'} Y \\
         \hat{\alpha} &= \left( K_B P_C K_A \right)^{\dagger} \left( K_B P_C + \mu \right) K_B \hat{\beta}
     
     and
@@ -417,7 +517,7 @@ Remark: Subsetted estimator
     
     .. math::
     
-        \hat{\beta} &= \left[ K_A \left\{ \tilde{P}_C + \left(\tilde{P}_{C'} K_A + \tilde{P}_C K_A + \mu'\right) \left( K_B \tilde{P}_C K_A \right)^{\dagger} \left( K_B \tilde{P}_C + \mu  \right)\right\} K_B \right]^{\dagger} K_A \tilde{P}_{C'} Y \\
+        \hat{\beta} &= \left[ K_A \left\{ - \tilde{P}_C + \left(\tilde{P}_{C'} K_A + \tilde{P}_C K_A + \mu'\right) \left( K_B \tilde{P}_C K_A \right)^{\dagger} \left( K_B \tilde{P}_C + \mu  \right)\right\} K_B \right]^{\dagger} K_A \tilde{P}_{C'} Y \\
         \hat{\alpha} &= \left( K_B \tilde{P}_C K_A \right)^{\dagger} \left( K_B \tilde{P}_C + \mu \right) K_B \hat{\beta}
     
     with :math:`\tilde{P}_{C'}=\frac{n}{p}I_{[p]}^{\top}P_{C';[p,p]}I_{[p]}` and :math:`\tilde{P}_{C}=\frac{n}{q}I_{[q]}^{\top}P_{C;[q,q]}I_{[q]}`. And
