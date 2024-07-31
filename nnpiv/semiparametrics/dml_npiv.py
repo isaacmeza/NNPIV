@@ -132,6 +132,8 @@ class DML_npiv:
         Localization covariates.
     v_values : array-like, optional
         Values for localization.
+    ci_type : str, optional
+        Type of confidence interval ('pointwise', 'uniform').
     loc_kernel : str, optional
         Kernel for localization. Options include 'gau', 'epanechnikov', 'uniform', etc.
     bw_loc : str, optional
@@ -171,6 +173,7 @@ class DML_npiv:
     def __init__(self, Y, D, Z, W, X1=None,
                  V=None, 
                  v_values=None,
+                 ci_type='pointwise',
                  loc_kernel='gau',
                  bw_loc='silverman',
                  estimator='MR',
@@ -212,6 +215,8 @@ class DML_npiv:
             Localization covariates.
         v_values : array-like, optional
             Values for localization.
+        ci_type : str, optional
+            Type of confidence interval ('pointwise', 'uniform').
         loc_kernel : str, optional
             Kernel for localization. Options include 'gau', 'epanechnikov', 'uniform', etc.
         bw_loc : str, optional
@@ -254,6 +259,7 @@ class DML_npiv:
         self.X1 = X1
         self.V = V
         self.v_values = v_values
+        self.ci_type = ci_type
         self.loc_kernel = loc_kernel
         self.bw_loc = bw_loc
         self.estimator = estimator
@@ -292,6 +298,10 @@ class DML_npiv:
             warnings.warn(f"Invalid estimator: {estimator}. Estimator must be one of ['MR', 'OR', 'IPW']. Using MR instead.", UserWarning)
             self.estimator = 'MR'
 
+        if self.ci_type not in ['pointwise', 'uniform']:
+            warnings.warn(f"Invalid confidence interval type: {ci_type}. Confidence interval type must be one of ['pointwise', 'uniform']. Using pointwise instead.", UserWarning)
+            self.ci_type = 'pointwise'
+
         if self.loc_kernel not in list(kernel_switch.keys()):
             warnings.warn(f"Invalid kernel: {loc_kernel}. Kernel must be one of {list(kernel_switch.keys())}. Using gau instead.", UserWarning)
             self.loc_kernel = 'gau' 
@@ -306,7 +316,7 @@ class DML_npiv:
                 warnings.warn(f"v_values is None. Computing localization around mean(V).", UserWarning)
                 self.v_values = np.mean(self.V, axis=0)    
             
-    def _calculate_confidence_interval(self, theta, theta_var):
+    def _calculate_confidence_interval(self, theta, theta_var, theta_cov):
         """
         Calculate the confidence interval for the given estimates.
 
@@ -316,15 +326,33 @@ class DML_npiv:
             Estimated values.
         theta_var : array-like
             Variance of the estimates.
+        theta_cov : array-like
+            Covariance matrix of the estimates.
 
         Returns
         -------
         array-like
             Lower and upper bounds of the confidence intervals.
         """
-        z_alpha_half = norm.ppf(1 - self.alpha / 2)
         n = self.Y.shape[0]
-        margin_of_error = z_alpha_half * np.sqrt(theta_var) * np.sqrt(1 / n)
+
+        if self.ci_type == 'pointwise':
+            z_alpha_half = norm.ppf(1 - self.alpha / 2)
+            margin_of_error = z_alpha_half * np.sqrt(theta_var / n) 
+        else:
+            S = np.diag(np.diag(theta_cov))
+            S_inv_sqrt = np.diag(1.0 / np.sqrt(np.diag(S)))
+            
+            Sigma_hat = S_inv_sqrt @ theta_cov @ S_inv_sqrt
+            
+            # Sample Q from N(0, Sigma_hat)
+            Q_samples = np.random.multivariate_normal(np.zeros(n), Sigma_hat, 5000)
+            
+            # Compute the (1 - alpha) quantile of the sampled |Q|_infty
+            Q_infinity_norms = np.max(np.abs(Q_samples), axis=1)
+            c_alpha = np.quantile(Q_infinity_norms, 1 - self.alpha)
+            margin_of_error = c_alpha * np.sqrt(np.diag(theta_cov) / n)
+
         lower_bound = theta - margin_of_error
         upper_bound = theta + margin_of_error
         return np.column_stack((lower_bound, upper_bound))
@@ -622,6 +650,7 @@ class DML_npiv:
         """
         theta = []
         theta_var = []
+        theta_cov = []        
 
         for rep in range(self.n_rep):
             
@@ -656,20 +685,23 @@ class DML_npiv:
             # Calculate the average of psi_hat_array for each rep
             psi_hat_array = np.concatenate(fold_results, axis=0)
             theta_rep = np.mean(psi_hat_array, axis=0)
-            theta_var_rep = np.var(psi_hat_array, axis=0)
+            theta_var_rep = np.var(psi_hat_array, axis=0, ddof=1)
+            theta_cov_rep = np.cov(psi_hat_array, rowvar=False)
 
             # Store results for each rep
             theta.append(theta_rep)
             theta_var.append(theta_var_rep)
+            theta_cov.append(theta_cov_rep)
 
         # Calculate the overall average of theta and theta_var
         theta_hat = np.mean(np.stack(theta, axis=0), axis=0)
         theta_var_hat = np.mean(np.stack(theta_var, axis=0), axis=0)
+        theta_cov_hat = np.mean(np.stack(theta_cov, axis=0), axis=0)
 
         # Calculate the confidence interval
-        confidence_interval = self._calculate_confidence_interval(theta_hat, theta_var_hat)
+        confidence_interval = self._calculate_confidence_interval(theta_hat, theta_var_hat, theta_cov_hat) 
 
-        return theta_hat, theta_var_hat, confidence_interval
+        return theta_hat, theta_var_hat, confidence_interval, theta_cov_hat
     
 
     def dml(self):
@@ -681,9 +713,9 @@ class DML_npiv:
         tuple
             Estimated values, variances, and confidence intervals.
         """
-        theta, theta_var, confidence_interval = self._split_and_estimate()
+        theta, theta_var, confidence_interval, theta_cov_hat = self._split_and_estimate()
         if self.V is None:
             return theta[0], theta_var[0], confidence_interval[0]
         else:
-            return theta, theta_var, confidence_interval
+            return theta, theta_cov_hat, confidence_interval
             
