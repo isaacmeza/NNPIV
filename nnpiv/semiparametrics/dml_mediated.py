@@ -415,7 +415,7 @@ class DML_mediated:
             Sigma_hat = S_inv_sqrt @ theta_cov @ S_inv_sqrt
             
             # Sample Q from N(0, Sigma_hat)
-            Q_samples = np.random.multivariate_normal(np.zeros(n), Sigma_hat, 5000)
+            Q_samples = np.random.multivariate_normal(np.zeros(theta.shape[0]), Sigma_hat, 5000)
             
             # Compute the (1 - alpha) quantile of the sampled |Q|_infty
             Q_infinity_norms = np.max(np.abs(Q_samples), axis=1)

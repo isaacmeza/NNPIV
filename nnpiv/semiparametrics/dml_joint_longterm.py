@@ -120,13 +120,9 @@ class DML_joint_longterm:
     longterm_model : str, optional
         Model type for long-term analysis ('surrogacy', 'latent_unconfounded').
     model1 : estimator, optional
-        Model for the first stage.
+        Model for the outcome stage.
     nn_1 : bool, optional
-        Use neural network for the first stage.
-    model2 : estimator, optional
-        Model for the second stage.
-    nn_2 : bool, optional
-        Use neural network for the second stage.
+        Use neural network for the outcome stage.
     alpha : float, optional
         Significance level for confidence intervals.
     n_folds : int, optional
@@ -142,9 +138,7 @@ class DML_joint_longterm:
     verbose : bool, optional
         Print progress information.
     fitargs1 : dict, optional
-        Arguments for fitting the first stage model.
-    fitargs2 : dict, optional
-        Arguments for fitting the second stage model.
+        Arguments for fitting the outcome stage model.
     opts : dict, optional
         Additional options.
     """
@@ -159,9 +153,6 @@ class DML_joint_longterm:
                  model1=RKHS2IVCV(kernel='rbf', gamma=.1, delta_scale='auto', 
                                   delta_exp=.4, alpha_scales=np.geomspace(1, 10000, 10), cv=5), 
                  nn_1=False,
-                 model2=RKHS2IVCV(kernel='rbf', gamma=.1, delta_scale='auto', 
-                                  delta_exp=.4, alpha_scales=np.geomspace(1, 10000, 10), cv=5), 
-                 nn_2=False,
                  alpha=0.05,
                  n_folds=5,
                  n_rep=1,
@@ -186,9 +177,7 @@ class DML_joint_longterm:
         self.estimator = estimator
         self.longterm_model = longterm_model
         self.model1 = copy.deepcopy(model1)
-        self.model2 = copy.deepcopy(model2)
         self.nn_1 = nn_1
-        self.nn_2 = nn_2
         self.prop_score = prop_score
         self.CHIM = CHIM
         self.alpha = alpha
@@ -197,7 +186,6 @@ class DML_joint_longterm:
         self.random_seed = random_seed
         self.verbose = verbose
         self.fitargs1 = fitargs1
-        self.fitargs2 = fitargs2
         self.opts = opts
 
         if self.X1 is None:
@@ -278,7 +266,7 @@ class DML_joint_longterm:
             Sigma_hat = S_inv_sqrt @ theta_cov @ S_inv_sqrt
             
             # Sample Q from N(0, Sigma_hat)
-            Q_samples = np.random.multivariate_normal(np.zeros(n), Sigma_hat, 5000)
+            Q_samples = np.random.multivariate_normal(np.zeros(theta.shape[0]), Sigma_hat, 5000)
             
             # Compute the (1 - alpha) quantile of the sampled |Q|_infty
             Q_infinity_norms = np.max(np.abs(Q_samples), axis=1)
@@ -373,6 +361,7 @@ class DML_joint_longterm:
             E1_train = E_train[ind,:]
             B1_train = B_train[ind,:]
             C1_train = C_train[ind,:]
+            G1_train = train_G[ind]
             Y1_train = train_Y[ind]
 
             ind = np.where(train_D==0)[0]
@@ -380,6 +369,7 @@ class DML_joint_longterm:
             E0_train = E_train[ind,:]
             B0_train = B_train[ind,:]
             C0_train = C_train[ind,:]
+            G0_train = train_G[ind]
             Y0_train = train_Y[ind]
 
             if self.nn_1==False:
@@ -395,11 +385,11 @@ class DML_joint_longterm:
                 A_test = _transform_poly(A_test,self.opts)
 
             if self.fitargs1 is not None:
-                model_1_d1.fit(A1_train, B1_train, C1_train, E1_train, Y1_train, subsetted=True, subset_ind1=train_G, **self.fitargs1)
-                model_1_d0.fit(A0_train, B0_train, C0_train, E0_train, Y0_train, subsetted=True, subset_ind1=train_G, **self.fitargs1)
+                model_1_d1.fit(A1_train, B1_train, C1_train, E1_train, Y1_train, subsetted=True, subset_ind1=G1_train, **self.fitargs1)
+                model_1_d0.fit(A0_train, B0_train, C0_train, E0_train, Y0_train, subsetted=True, subset_ind1=G0_train, **self.fitargs1)
             else:
-                model_1_d1.fit(A1_train, B1_train, C1_train, E1_train, Y1_train, subsetted=True, subset_ind1=train_G)
-                model_1_d0.fit(A0_train, B0_train, C0_train, E0_train, Y0_train, subsetted=True, subset_ind1=train_G)
+                model_1_d1.fit(A1_train, B1_train, C1_train, E1_train, Y1_train, subsetted=True, subset_ind1=G1_train)
+                model_1_d0.fit(A0_train, B0_train, C0_train, E0_train, Y0_train, subsetted=True, subset_ind1=G0_train)
                 
             if self.nn_1==True:
                 nu_1_hat, delta_d1_hat = model_1_d1.predict(B_test.to(device), A_test.to(device), model='avg', burn_in=_get(self.opts, 'burnin', 0))

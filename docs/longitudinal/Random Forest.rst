@@ -281,7 +281,7 @@ For the joint estimator:
     :class: lemma
     :name: lemma-ensemble-3-norm
 
-    Consider the algorithm where for \( t = 1, \ldots, T \):
+    Consider the algorithm where for :math:`t=1, \ldots, T`:
 
     .. math::
 

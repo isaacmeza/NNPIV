@@ -148,9 +148,9 @@ class DML_joint_mediated:
     estimand : str, optional
         Type of estimand ('ATE', 'Indirect', 'Direct', 'E[Y1]', 'E[Y0]', 'E[Y(1,M(0))]').
     model1 : estimator, optional
-        Model for the first stage.
+        Model for the outcome stage.
     nn_1 : bool, optional
-        Use neural network for the first stage.
+        Use neural network for the outcome stage.
     modelq1 : estimator, optional
         Model for the q1 stage.
     nn_q1 : bool, optional
@@ -171,7 +171,7 @@ class DML_joint_mediated:
     verbose : bool, optional
         Print progress information.
     fitargs1 : dict, optional
-        Arguments for fitting the first stage model.
+        Arguments for fitting the outcome stage model.
     fitargsq1 : dict, optional
         Arguments for fitting the q1 stage model.
     opts : dict, optional
@@ -305,7 +305,7 @@ class DML_joint_mediated:
             Sigma_hat = S_inv_sqrt @ theta_cov @ S_inv_sqrt
             
             # Sample Q from N(0, Sigma_hat)
-            Q_samples = np.random.multivariate_normal(np.zeros(n), Sigma_hat, 5000)
+            Q_samples = np.random.multivariate_normal(np.zeros(theta.shape[0]), Sigma_hat, 5000)
             
             # Compute the (1 - alpha) quantile of the sampled |Q|_infty
             Q_infinity_norms = np.max(np.abs(Q_samples), axis=1)
@@ -605,7 +605,7 @@ class DML_joint_mediated:
                 A_test = _transform_poly(A_test, self.opts)
 
             if self.fitargs1 is not None:
-                #Using weights in the second stage
+                #Using weights in the action stage
                 model_q1.fit(A_train, B_train, C_train, E_train, 1/ps_hat_0, W=(ps_hat_00/ps_hat_01), subsetted=True, subset_ind1=1-train_D, **self.fitargs1)
             else:
                 model_q1.fit(A_train, B_train, C_train, E_train, 1/ps_hat_0, W=(ps_hat_00/ps_hat_01), subsetted=True, subset_ind1=1-train_D)
