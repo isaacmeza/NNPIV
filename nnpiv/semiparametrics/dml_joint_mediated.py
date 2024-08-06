@@ -702,7 +702,7 @@ class DML_joint_mediated:
 
         # Evaluate the estimated moment functions using test_data
         if self.estimator == 'MR' or self.estimator == 'OR':
-            if self.nn_1 == True:
+            if self.nn_y == True:
                 test_X = torch.Tensor(test_X)
                 gamma_1_hat = gamma_1.predict(test_X.to(device),
                                             model='avg', burn_in=_get(self.opts, 'burnin', 0)).reshape(-1, 1)
@@ -710,7 +710,7 @@ class DML_joint_mediated:
                 gamma_1_hat = gamma_1.predict(_transform_poly(test_X, opts=self.opts)).reshape(-1, 1)
 
         if self.estimator == 'MR' or self.estimator == 'IPW' or self.estimator == 'hybrid':
-            if self.nn_q1 == True:
+            if self.nn_a == True:
                 test_X, test_Z = tuple(map(lambda x: torch.Tensor(x), [test_X, test_Z]))
                 q_1_hat = q_1.predict(torch.cat((test_X, test_Z), 1).to(device),
                                     model='avg', burn_in=_get(self.opts, 'burnin', 0)).reshape(-1, 1)
