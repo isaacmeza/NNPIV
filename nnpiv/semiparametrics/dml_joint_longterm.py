@@ -354,7 +354,8 @@ class DML_joint_longterm:
             A_test = np.column_stack((test_S, test_X))
 
             if self.nn_1==True:
-                A_train, E_train, B_train, C_train, B_test, A_test = map(lambda x: torch.Tensor(x), [A_train, E_train, B_train, C_train, B_test, A_test])
+                A_train, E_train, B_train, C_train, B_test, A_test, train_G, train_Y = map(lambda x: torch.Tensor(x), 
+                                                        [A_train, E_train, B_train, C_train, B_test, A_test, train_G, train_Y])
 
             ind = np.where(train_D==1)[0]
             A1_train = A_train[ind,:]
@@ -454,7 +455,8 @@ class DML_joint_longterm:
             A_test = np.column_stack((test_S, test_X))
 
             if self.nn_1==True:
-                A_train, E_train, B_train, C_train, B_test, A_test = map(lambda x: torch.Tensor(x), [A_train, E_train, B_train, C_train, B_test, A_test])
+                A_train, E_train, B_train, C_train, B_test, A_test, train_Y, train_G, train_D = map(lambda x: torch.Tensor(x), 
+                                            [A_train, E_train, B_train, C_train, B_test, A_test, train_Y, train_G, train_D])
 
             if self.nn_1==False:
                 A_train = _transform_poly(A_train,self.opts)
