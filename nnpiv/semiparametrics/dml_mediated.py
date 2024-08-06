@@ -169,6 +169,14 @@ class DML_mediated:
         Model for the q2 stage.
     nn_q2 : bool, optional
         Use neural network for the q2 stage.
+    model_y : estimator, optional
+        Model for the outcome - for use with 'E[Y1]', 'E[Y0]', 'Direct', 'Indirect', and 'ATE' estimands.
+    nn_y : bool, optional
+        Use neural network for the outcome model.
+    model_a : estimator, optional
+        Model for the action - for use with 'E[Y1]', 'E[Y0]', 'Direct', 'Indirect', and 'ATE' estimands.
+    nn_a : bool, optional
+        Use neural network for the action model.        
     alpha : float, optional
         Significance level for confidence intervals.
     n_folds : int, optional
@@ -192,6 +200,10 @@ class DML_mediated:
         Arguments for fitting the q1 stage model.
     fitargsq2 : dict, optional
         Arguments for fitting the q2 stage model.
+    fitargsy : dict, optional
+        Arguments for fitting the one stage outcome model.
+    fitargsa : dict, optional
+        Arguments for fitting the one stage action model.
     opts : dict, optional
         Additional options.
     """
@@ -220,6 +232,14 @@ class DML_mediated:
                            kernel='rbf', gamma=.1, delta_scale='auto',
                            delta_exp=.4, alpha_scales=np.geomspace(1, 10000, 10), cv=5), 
                  nn_q2=False,
+                 model_y=ApproxRKHSIVCV(kernel_approx='nystrom', n_components=100,
+                            kernel='rbf', gamma=.1, delta_scale='auto',
+                            delta_exp=.4, alpha_scales=np.geomspace(1, 10000, 10), cv=5),
+                 nn_y=False,
+                 model_a=ApproxRKHSIVCV(kernel_approx='nystrom', n_components=100,
+                            kernel='rbf', gamma=.1, delta_scale='auto',
+                            delta_exp=.4, alpha_scales=np.geomspace(1, 10000, 10), cv=5),
+                 nn_a=False,
                  alpha=0.05,
                  n_folds=5,
                  n_rep=1,
@@ -231,6 +251,8 @@ class DML_mediated:
                  fitargs2=None,
                  fitargsq1=None,
                  fitargsq2=None,
+                 fitargsy=None,
+                 fitargsa=None,
                  opts=None
                  ):
         """
@@ -280,6 +302,14 @@ class DML_mediated:
             Model for the q2 stage.
         nn_q2 : bool, optional
             Use neural network for the q2 stage.
+        model_y : estimator, optional
+            Model for the outcome - for use with 'E[Y1]', 'E[Y0]', 'Direct', 'Indirect', and 'ATE' estimands.
+        nn_y : bool, optional
+            Use neural network for the outcome model.
+        model_a : estimator, optional
+            Model for the action - for use with 'E[Y1]', 'E[Y0]', 'Direct', 'Indirect', and 'ATE' estimands.
+        nn_a : bool, optional
+            Use neural network for the action model.
         alpha : float, optional
             Significance level for confidence intervals.
         n_folds : int, optional
@@ -303,6 +333,10 @@ class DML_mediated:
             Arguments for fitting the q1 stage model.
         fitargsq2 : dict, optional
             Arguments for fitting the q2 stage model.
+        fitargsy : dict, optional
+            Arguments for fitting the one stage outcome model.
+        fitargsa : dict, optional
+            Arguments for fitting the one stage action model.            
         opts : dict, optional
             Additional options.
         """
@@ -323,10 +357,14 @@ class DML_mediated:
         self.model2 = copy.deepcopy(model2)
         self.modelq1 = copy.deepcopy(modelq1)
         self.modelq2 = copy.deepcopy(modelq2)
+        self.model_y = copy.deepcopy(model_y)
+        self.model_a = copy.deepcopy(model_a)
         self.nn_1 = nn_1
         self.nn_2 = nn_2
         self.nn_q1 = nn_q1
         self.nn_q2 = nn_q2
+        self.nn_y = nn_y
+        self.nn_a = nn_a
         self.prop_score = prop_score
         self.CHIM = CHIM
         self.alpha = alpha
@@ -338,6 +376,8 @@ class DML_mediated:
         self.fitargs2 = fitargs2
         self.fitargsq1 = fitargsq1
         self.fitargsq2 = fitargsq2
+        self.fitargsy = fitargsy
+        self.fitargsa = fitargsa
         self.opts = opts
 
         if self.X1 is None:
@@ -571,10 +611,10 @@ class DML_mediated:
         object
             Fitted model.
         """
-        model_1 = copy.deepcopy(self.model1)
+        model_y1 = copy.deepcopy(self.model_y)
 
         # First stage
-        if self.nn_1==True:
+        if self.nn_y==True:
             Y, X, Z = tuple(map(lambda x: torch.Tensor(x), [Y, X, Z]))
         else:
             X = _transform_poly(X, self.opts)
@@ -585,10 +625,10 @@ class DML_mediated:
         X1 = X[ind, :]
         Z1 = Z[ind]
 
-        if self.fitargs1 is not None:
-            bridge_1 = model_1.fit(Z1, X1, Y1, **self.fitargs1)
+        if self.fitargsy is not None:
+            bridge_1 = model_y1.fit(Z1, X1, Y1, **self.fitargsy)
         else:
-            bridge_1 = model_1.fit(Z1, X1, Y1)
+            bridge_1 = model_y1.fit(Z1, X1, Y1)
         
         return bridge_1
     
@@ -797,10 +837,10 @@ class DML_mediated:
         X = X[mask, :]
         Z = Z[mask]
 
-        model_q1 = copy.deepcopy(self.modelq1)
+        model_a1 = copy.deepcopy(self.model_a)
 
         # First stage
-        if self.nn_q1==True:
+        if self.nn_a==True:
             ps_hat_1, W, X, Z = tuple(map(lambda x: torch.Tensor(x), [ps_hat_1, W, X, Z]))
             A2 = torch.cat((X, W), 1)
             A1 = torch.cat((X, Z), 1)
@@ -808,10 +848,10 @@ class DML_mediated:
             A2 = _transform_poly(np.column_stack((X, W)), self.opts)
             A1 = _transform_poly(np.column_stack((X, Z)), self.opts)
 
-        if self.fitargsq1 is not None:
-            bridge_1 = model_q1.fit(A2, A1, 1 / ps_hat_1, **self.fitargsq1)
+        if self.fitargsa is not None:
+            bridge_1 = model_a1.fit(A2, A1, 1 / ps_hat_1, **self.fitargsa)
         else:
-            bridge_1 = model_q1.fit(A2, A1, 1 / ps_hat_1)
+            bridge_1 = model_a1.fit(A2, A1, 1 / ps_hat_1)
 
         return bridge_1
 
