@@ -2,7 +2,7 @@
 This module implements Debiased Machine Learning for Nonparametric Instrumental Variables (DML-npiv).
 It provides tools for estimating causal effects using a combination of machine learning models and 
 instrumental variables techniques. The module supports cross-validation, kernel density estimation 
-for localization, and confidence interval computation.
+for localization, and confidence interval computation with pointwise or uniform guarantees.
 
 Classes:
     DML_npiv: Main class for performing DML-npiv with various configuration options.

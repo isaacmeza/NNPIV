@@ -69,4 +69,4 @@ The long-term counterfactual is
    :template: class.rst
 
    dml_longterm.DML_longterm
-   dml_joint_longterm.DML_joint_longterm
+   dml_longterm_seq.DML_longterm_seq
