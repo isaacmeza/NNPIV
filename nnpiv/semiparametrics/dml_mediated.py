@@ -253,8 +253,6 @@ class DML_mediated:
         self.n_rep = n_rep
         self.random_seed = random_seed
         self.verbose = verbose
-        self.fitargs1 = fitargs1
-        self.fitargsq1 = fitargsq1
         self.fitargsy = fitargsy
         self.fitargsa = fitargsa
         self.opts = opts
@@ -264,12 +262,23 @@ class DML_mediated:
             self.model2 = copy.deepcopy(model1[1])
             self.sequential_o = True
             if not isinstance(nn_1, list):
-                raise ValueError("Sequential outcome model fitting requires nn_1 to be a list.")
+                warnings.warn("Sequential outcome model fitting requires nn_1 to be a list. Assuming [False, False]", UserWarning)
+                self.nn_1 = False
+                self.nn_2 = False
             else:
                 self.nn_1 = nn_1[0]
                 self.nn_2 = nn_1[1]
+            if not isinstance(fitargs1, list):
+                warnings.warn("Sequential outcome model fitting requires fitargs1 to be a list. Assuming [fitargs1, fitargs1]", UserWarning)
+                self.fitargs1 = fitargs1
+                self.fitargs2 = fitargs1
+            else:   
+                self.fitargs1 = fitargs1[0]
+                self.fitargs2 = fitargs1[1]
         else:
             self.model1 = copy.deepcopy(model1)
+            self.nn_1 = nn_1
+            self.fitargs1 = fitargs1
             self.sequential_o = False
 
         if isinstance(modelq1, list):
@@ -277,12 +286,23 @@ class DML_mediated:
             self.modelq2 = copy.deepcopy(modelq1[1])
             self.sequential_a = True
             if not isinstance(nn_q1, list):
-                raise ValueError("Sequential action model fitting requires nn_q1 to be a list.")
+                warnings.warn("Sequential action model fitting requires nn_q1 to be a list. Assuming [False, False]", UserWarning)
+                self.nn_q1 = False
+                self.nn_q2 = False
             else:
                 self.nn_q1 = nn_q1[0]
                 self.nn_q2 = nn_q1[1]
+            if not isinstance(fitargsq1, list):
+                warnings.warn("Sequential outcome model fitting requires fitargsq1 to be a list. Assuming [fitargsq1, fitargsq1]", UserWarning)
+                self.fitargsq1 = fitargsq1
+                self.fitargsq2 = fitargsq1
+            else:   
+                self.fitargsq1 = fitargsq1[0]
+                self.fitargsq2 = fitargsq1[1]                
         else:
-            self.modelq1 = copy.deepcopy(modelq1)  
+            self.modelq1 = copy.deepcopy(modelq1) 
+            self.nn_q1 = nn_q1
+            self.fitargsq1 = fitargsq1 
             self.sequential_a = False          
         
         if self.X1 is None:

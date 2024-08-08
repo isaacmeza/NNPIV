@@ -17,7 +17,7 @@ import collections
 from copy import deepcopy
 from mcpy.utils import filesafe
 import simulations.dgps_mediated as dgps
-from nnpiv.semiparametrics import DML_mediated, DML_joint_mediated
+from nnpiv.semiparametrics import DML_mediated
 import time
 
 def _get(opts, key, default):
@@ -26,8 +26,6 @@ def _get(opts, key, default):
 
 def _check_valid_config(config):
     assert 'dgp_opts' in config, "config dict must contain dgp_opts"
-    assert 'estimator' in config, "config dict must contain estimator"
-    assert config['estimator'] in ['joint', 'sequential'], "config dict must contain estimator as 'joint' or 'sequential'"
     assert 'method_opts' in config, "config dict must contain method_opts"
     assert 'mc_opts' in config, "config dict must contain mc_opts"
     assert 'methods' in config, "config dict must contain methods"
@@ -58,27 +56,7 @@ class SemiParametricsMonteCarlo:
         tau_fn = dgps.get_tau_fn(fn_number)
         W, Z, X, M, D, Y, tau_fn = dgps.get_data(_get(self.config['dgp_opts'], 'n_samples', 2000), tau_fn)
 
-        if self.config['estimator'] == 'sequential':
-            dml_model = DML_mediated(Y=Y, D=D, M=M, W=W, Z=Z, X1=X,
-                                estimator='MR',
-                                estimand='E[Y(1,M(0))]',
-                                model1 = model_instance[0],
-                                model2 = model_instance[1],
-                                modelq1 = model_instance[2],
-                                modelq2 = model_instance[3],
-                                n_folds=5, n_rep=1, verbose=False,
-                                CHIM = _get(self.config['method_opts'], 'CHIM', False),
-                                nn_1 = _get(self.config['method_opts'], 'nn_1', False),
-                                nn_2 = _get(self.config['method_opts'], 'nn_2', False),
-                                nn_q1 = _get(self.config['method_opts'], 'nn_q1', False),
-                                nn_q2 = _get(self.config['method_opts'], 'nn_q2', False),
-                                fitargs1 = _get(self.config['method_opts'], 'fitargs', None),
-                                fitargs2 = _get(self.config['method_opts'], 'fitargs', None),
-                                fitargsq1 = _get(self.config['method_opts'], 'fitargs', None),
-                                fitargsq2 = _get(self.config['method_opts'], 'fitargs', None),
-                                opts = _get(self.config['method_opts'], 'opts', None))
-        else :
-            dml_model = DML_joint_mediated(Y=Y, D=D, M=M, W=W, Z=Z, X1=X,
+        dml_model = DML_mediated(Y=Y, D=D, M=M, W=W, Z=Z, X1=X,
                                 estimator='MR',
                                 estimand='E[Y(1,M(0))]',
                                 model1 = model_instance[0],

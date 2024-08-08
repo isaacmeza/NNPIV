@@ -191,7 +191,6 @@ class DML_longterm:
                  CHIM=False,
                  verbose=True,
                  fitargs1=None,
-                 fitargs2=None,
                  opts=None
                  ):
         self.Y = Y
@@ -221,13 +220,24 @@ class DML_longterm:
             self.model2 = copy.deepcopy(model1[1])
             self.sequential_o = True
             if not isinstance(nn_1, list):
-                raise ValueError("Sequential outcome model fitting requires nn_1 to be a list.")
+                warnings.warn("Sequential outcome model fitting requires nn_1 to be a list. Assuming [False, False]", UserWarning)
+                self.nn_1 = False
+                self.nn_2 = False
             else:
                 self.nn_1 = nn_1[0]
                 self.nn_2 = nn_1[1]
+            if not isinstance(fitargs1, list):
+                warnings.warn("Sequential outcome model fitting requires fitargs1 to be a list. Assuming [fitargs1, fitargs1]", UserWarning)
+                self.fitargs1 = fitargs1
+                self.fitargs2 = fitargs1
+            else:   
+                self.fitargs1 = fitargs1[0]
+                self.fitargs2 = fitargs1[1]
         else:
             self.model1 = copy.deepcopy(model1)
-            self.sequential_o = False        
+            self.nn_1 = nn_1
+            self.fitargs1 = fitargs1
+            self.sequential_o = False
 
         if self.X1 is None:
             if self.V is None:
