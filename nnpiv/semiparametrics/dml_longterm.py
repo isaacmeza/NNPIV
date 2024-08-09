@@ -1039,7 +1039,7 @@ class DML_longterm:
         if self.estimator == 'IPW':
             psi_hat = (alfa_1_hat - alfa_0_hat) * test_Y 
 
-        # Localization
+        # Localization 
         if self.V is not None:
             if isinstance(self.bw_loc, str):
                 if self.bw_loc == 'silverman':
@@ -1048,13 +1048,18 @@ class DML_longterm:
                     n = train_V.shape[0]
                     bw = .9 * A * n ** (-0.2)
                 elif self.bw_loc == 'scott':
-                    IQR = np.percentile(train_V, 75, axis=0)-np.percentile(train_V, 25, axis=0)
-                    A = np.min([np.std(train_V, axis=0), IQR/1.349], axis=0)
+                    A = np.std(train_V, axis=0)
                     n = train_V.shape[0]
                     bw = 1.059 * A * n ** (-0.2)
             else:
                 if len(self.bw_loc)==1:
-                    bw = [train_V.shape[1]]*self.bw_loc
+                    bw = np.ones((train_V.shape[1]))*self.bw_loc[0]
+                else:
+                    if len(self.bw_loc)==train_V.shape[1]:
+                        bw = self.bw_loc
+                    else:
+                        warnings.warn(f"bw_loc has incorrect length. Using first element instead.", UserWarning)
+                        bw = np.ones((train_V.shape[1]))*self.bw_loc[0]
 
             ell = [self._localization(test_V, v, bw) for v in self.v_values]
             ell = np.column_stack(ell)
