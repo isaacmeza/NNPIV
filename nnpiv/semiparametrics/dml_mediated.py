@@ -142,7 +142,7 @@ class DML_mediated:
         Localization covariates.
     v_values : array-like, optional
         Values for localization.
-    include_V : str, optional
+    include_V : bool, optional
         Include localization covariates in the model.        
     ci_type : str, optional
         Type of confidence interval ('pointwise', 'uniform').
@@ -199,7 +199,7 @@ class DML_mediated:
     def __init__(self, Y, D, M, W, Z, X1=None,
                  V=None, 
                  v_values=None,
-                 include_V='True',
+                 include_V=True,
                  ci_type='pointwise',
                  loc_kernel='gau',
                  bw_loc='silverman',
@@ -310,12 +310,12 @@ class DML_mediated:
             self.sequential_a = False          
         
         if self.X1 is None:
-            if self.V is not None and self.include_V == 'True':
+            if self.V is not None and self.include_V == True:
                 self.X = self.V
             else:
                 self.X = np.ones((self.Y.shape[0], 1))
         else:
-            if self.V is not None and self.include_V == 'True':
+            if self.V is not None and self.include_V == True:
                 self.X = np.column_stack([self.X1, self.V])
             else:
                 self.X = self.X1
