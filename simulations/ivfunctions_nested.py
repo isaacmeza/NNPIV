@@ -15,7 +15,7 @@ from nnpiv.linear import OptimisticHedgeVsOptimisticHedge, StochasticOptimisticH
 from nnpiv.linear import L2OptimisticHedgeVsOGD, L2ProxGradient
 
 from nnpiv.linear import sparse2_l1vsl1, sparse2_ridge_l1vsl1
-from nnpiv.rkhs import RKHS2IVL2CV
+from nnpiv.rkhs import RKHS2IVL2
 from nnpiv.ensemble import Ensemble2IV
 
 from sklearn.pipeline import Pipeline
@@ -259,9 +259,7 @@ def sparse_joint_ridgel1vsl1(data, opts):
 def rkhs2_ridge(data, opts):
     B1_test, A1, A2, B1, B2, Y = data
 
-    alpha_scales = np.geomspace(1, 20000, 20)
-    model = RKHS2IVL2CV(kernel='rbf', gamma=2, degree=3, coef0=1, kernel_params=None,
-                 delta_scale='auto', delta_exp='auto', alpha_scales=alpha_scales, cv=5)
+    model = RKHS2IVL2(kernel='rbf', gamma=.05, delta_scale='auto', delta_exp=.4)
 
     return model.fit(A1, B1, B2, A2, Y).predict(B1_test).reshape(B1_test.shape[:1] + Y.shape[1:])
 

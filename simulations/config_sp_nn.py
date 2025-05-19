@@ -59,7 +59,7 @@ CONFIG = {
     "reload_results": True,
     "dgp_opts": {
         'dgp_name': 'nn',
-        'fn': [0,1],
+        'fn': [0,1,2,3,4],
         'n_samples': 2000
     },
     "methods": {
@@ -69,13 +69,13 @@ CONFIG = {
         'nn_1' : True,
         'nn_q1' : True,
         'CHIM' : False,
-        'fitargs' : {'n_epochs': 600, 'bs': 100, 'learner_lr': 1e-4, 'adversary_lr': 1e-4, 
+        'fitargs' : {'n_epochs': 500, 'bs': 100, 'learner_lr': 1e-4, 'adversary_lr': 1e-4, 
                       'learner_l2': 1e-3, 'adversary_l2': 1e-4, 'model_dir' : str(Path.home()), 'device' : device },
         'opts' : {'burnin': 400}
     },
     "estimator": 'joint',
     "mc_opts": {
-        'n_experiments': 5,  # number of monte carlo experiments
+        'n_experiments': 500,  # number of monte carlo experiments
         "seed": 123,
     }
 }

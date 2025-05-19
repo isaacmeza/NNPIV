@@ -13,7 +13,7 @@ CONFIG = {
     "reload_results": True,
     "dgp_opts": {
         'dgp_name': 'benchmark',
-        'fn': [0,1],
+        'fn': [0,1,2,3,4],
         'n_samples': 2000
     },
     "methods": {
@@ -30,7 +30,7 @@ CONFIG = {
     },
     "estimator": 'sequential',
     "mc_opts": {
-        'n_experiments': 5,  # number of monte carlo experiments
+        'n_experiments': 500,  # number of monte carlo experiments
         "seed": 123,
     }
 }

@@ -24,12 +24,7 @@ CONFIG = {
         'gridtest': 1
     },
     "methods": { 
-        "2SLS": ivfunctions_nested.tsls,
-        "Reg2SLS": ivfunctions_nested.regtsls,
-        "RKHS2L2": ivfunctions_nested.rkhs2_ridge,
-        "Sparse2": ivfunctions_nested.sparse_joint_l1vsl1,
-        "AGMM2L2": ivfunctions_nested_nn.agmm2l2,
-        "RFIV2": ivfunctions_nested.rfiv2
+        "RKHS2L2": ivfunctions_nested.rkhs2_ridge
     },
     "method_opts": {
         'lin_degree': 3,
@@ -53,7 +48,7 @@ CONFIG = {
     "sweep_plots": {
     },
     "mc_opts": {
-        'n_experiments': 500,  # number of monte carlo experiments
+        'n_experiments': 100,  # number of monte carlo experiments
         "seed": 123,
     },
     "cluster_opts": {

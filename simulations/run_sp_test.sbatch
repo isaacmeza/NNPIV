@@ -4,7 +4,7 @@
 #SBATCH -p test
 #SBATCH -t 0-11:30  # Runtime in D-HH:MM, minimum of 10 minutes
 #SBATCH -c 110        # Number of cores (-c)
-#SBATCH --mem=100000
+#SBATCH --mem=300000
 #SBATCH --mail-type=END #This command would send an email when the job ends.
 #SBATCH --mail-user=i.mezal.12@gmail.com #Email to which notifications will be sent
 
