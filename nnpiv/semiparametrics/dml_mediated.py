@@ -46,7 +46,7 @@ import warnings
 from tqdm import tqdm  # Import tqdm
 import copy
 import torch
-from nnpiv.rkhs import RKHS2IVCV, ApproxRKHSIVCV
+from nnpiv.rkhs import RKHS2IVCV, ApproxRKHSIVCV, RKHS2IVL2
 from joblib import Parallel, delayed
 from scipy.optimize import minimize_scalar
 
@@ -147,7 +147,7 @@ class DML_mediated:
     ci_type : str, optional
         Type of confidence interval ('pointwise', 'uniform').
     loc_kernel : str, optional
-        Kernel for localization. Options are ['gau', 'epa', 'uni'].
+        Kernel for localization. Options include 'gau', 'epa', 'uni', 'tri', etc.
     bw_loc : str, optional
         Bandwidth for localization.
     estimator : str, optional
@@ -205,11 +205,9 @@ class DML_mediated:
                  bw_loc='silverman',
                  estimator='MR',
                  estimand='ATE',
-                 model1=RKHS2IVCV(kernel='rbf', gamma=.1, delta_scale='auto', 
-                                  delta_exp=.4, alpha_scales=np.geomspace(1, 10000, 10), cv=5), 
+                 model1=RKHS2IVL2(kernel='rbf', gamma=.0013, delta_scale='auto', delta_exp=10),
                  nn_1=False,
-                 modelq1=RKHS2IVCV(kernel='rbf', gamma=.1, delta_scale='auto', 
-                                  delta_exp=.4, alpha_scales=np.geomspace(1, 10000, 10), cv=5), 
+                 modelq1=RKHS2IVL2(kernel='rbf', gamma=.0013, delta_scale='auto', delta_exp=10),
                  nn_q1=False,
                  model_y=ApproxRKHSIVCV(kernel_approx='nystrom', n_components=100,
                             kernel='rbf', gamma=.1, delta_scale='auto',
@@ -266,9 +264,9 @@ class DML_mediated:
             self.model2 = copy.deepcopy(model1[1])
             self.sequential_o = True
             if not isinstance(nn_1, list):
-                warnings.warn("Sequential outcome model fitting requires nn_1 to be a list. Assuming [False, False]", UserWarning)
-                self.nn_1 = False
-                self.nn_2 = False
+                warnings.warn("Sequential outcome model fitting requires nn_1 to be a list. Assuming [nn_1, nn_1]", UserWarning)
+                self.nn_1 = nn_1
+                self.nn_2 = nn_1
             else:
                 self.nn_1 = nn_1[0]
                 self.nn_2 = nn_1[1]
@@ -290,9 +288,9 @@ class DML_mediated:
             self.modelq2 = copy.deepcopy(modelq1[1])
             self.sequential_a = True
             if not isinstance(nn_q1, list):
-                warnings.warn("Sequential action model fitting requires nn_q1 to be a list. Assuming [False, False]", UserWarning)
-                self.nn_q1 = False
-                self.nn_q2 = False
+                warnings.warn("Sequential outcome model fitting requires nn_q1 to be a list. Assuming [nn_q1, nn_q1]", UserWarning)
+                self.nn_q1 = nn_q1
+                self.nn_q2 = nn_q1
             else:
                 self.nn_q1 = nn_q1[0]
                 self.nn_q2 = nn_q1[1]
@@ -338,6 +336,9 @@ class DML_mediated:
 
         if self.ci_type not in ['pointwise', 'uniform']:
             warnings.warn(f"Invalid confidence interval type: {ci_type}. Confidence interval type must be one of ['pointwise', 'uniform']. Using pointwise instead.", UserWarning)
+            self.ci_type = 'pointwise'
+        if self.ci_type == 'uniform' and (self.v_values is None or self.v_values.shape[0] == 1 or self.V is None):
+            warnings.warn(f"Uniform confidence intervals are not supported for less than one localization value. Using pointwise instead.", UserWarning)
             self.ci_type = 'pointwise'
 
         if self.loc_kernel not in list(kernel_switch.keys()):

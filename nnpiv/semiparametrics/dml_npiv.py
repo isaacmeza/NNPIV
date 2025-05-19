@@ -137,7 +137,7 @@ class DML_npiv:
     ci_type : str, optional
         Type of confidence interval ('pointwise', 'uniform').
     loc_kernel : str, optional
-        Kernel for localization. Options include 'gau', 'epanechnikov', 'uniform', etc.
+        Kernel for localization. Options include 'gau', 'epa', 'uni', 'tri', etc.
     bw_loc : str, optional
         Bandwidth for localization.
     estimator : str, optional
@@ -223,7 +223,7 @@ class DML_npiv:
         ci_type : str, optional
             Type of confidence interval ('pointwise', 'uniform').
         loc_kernel : str, optional
-            Kernel for localization. Options include 'gau', 'epanechnikov', 'uniform', etc.
+            Kernel for localization. Options include 'gau', 'epa', 'uni', 'tri', etc.
         bw_loc : str, optional
             Bandwidth for localization.
         estimator : str, optional
@@ -306,6 +306,9 @@ class DML_npiv:
 
         if self.ci_type not in ['pointwise', 'uniform']:
             warnings.warn(f"Invalid confidence interval type: {ci_type}. Confidence interval type must be one of ['pointwise', 'uniform']. Using pointwise instead.", UserWarning)
+            self.ci_type = 'pointwise'
+        if self.ci_type == 'uniform' and (self.v_values is None or self.v_values.shape[0] == 1 or self.V is None):
+            warnings.warn(f"Uniform confidence intervals are not supported for less than one localization value. Using pointwise instead.", UserWarning)
             self.ci_type = 'pointwise'
 
         if self.loc_kernel not in list(kernel_switch.keys()):
