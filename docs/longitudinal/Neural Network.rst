@@ -62,5 +62,4 @@ Joint estimator
    :toctree: _autosummary
    :template: class.rst
 
-   agmm2.AGMM2
    agmm2.AGMM2L2

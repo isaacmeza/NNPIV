@@ -8,7 +8,7 @@ from pathlib import Path
 import torch
 import torch.nn as nn
 from nnpiv.neuralnet.rbflayer import gaussian, inverse_multiquadric
-from nnpiv.neuralnet import AGMM, AGMM2
+from nnpiv.neuralnet import AGMM2L2
 
 p = 0.1  # dropout prob of dropout layers throughout notebook
 n_hidden = 100  # width of hidden layers throughout notebook
@@ -25,7 +25,7 @@ learner_lr = 1e-4
 adversary_lr = 1e-4
 learner_l2 = 1e-3
 adversary_l2 = 1e-4
-adversary_norm_reg = 1e-3
+learner_norm_reg = 1e-12
 n_epochs = 300
 bs = 100
 sigma = 2.0 / g_features
@@ -46,10 +46,10 @@ def _get_adversary_g(n_z):
                          nn.Dropout(p=p), nn.Linear(n_hidden, g_features), nn.ReLU())
 
 
-agmm_1 = AGMM2(learnerh = _get_learner(3), learnerg = _get_learner(4),
+agmm_1 = AGMM2L2(learnerh = _get_learner(3), learnerg = _get_learner(4),
                      adversary1 = _get_adversary(4), adversary2 = _get_adversary(3))
 
-agmm_q1 = AGMM2(learnerh = _get_learner(4), learnerg = _get_learner(3),
+agmm_q1 = AGMM2L2(learnerh = _get_learner(4), learnerg = _get_learner(3),
                      adversary1 = _get_adversary(3), adversary2 = _get_adversary(4))
 
 

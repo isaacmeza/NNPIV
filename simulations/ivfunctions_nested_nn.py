@@ -42,7 +42,7 @@ learner_lr = 1e-4
 adversary_lr = 1e-4
 learner_l2 = 1e-3
 adversary_l2 = 1e-4
-adversary_norm_reg = 1e-3
+learner_norm_reg = 1e-3
 n_epochs = 300
 bs = 100
 sigma = 2.0 / g_features
@@ -132,11 +132,11 @@ def agmm2(data, opts):
     print("GPU:", torch.cuda.is_available())
     B1_test, A1, A2, B1, B2, Y = map(lambda x: torch.Tensor(x), data)
 
-    model =  AGMM2(learnerh = _get_learner(B1.shape[1]), learnerg = _get_learner(A1.shape[1]),
+    model =  AGMM2L2(learnerh = _get_learner(B1.shape[1]), learnerg = _get_learner(A1.shape[1]),
                      adversary1 = _get_adversary(A2.shape[1]), adversary2 = _get_adversary(B2.shape[1]))
     
       
-    agmm2 = model.fit(A1, B1, B2, A2, Y, learner_l2=learner_l2, adversary_l2=adversary_l2, adversary_norm_reg=adversary_norm_reg, learner_norm_reg=adversary_norm_reg,
+    agmm2 = model.fit(A1, B1, B2, A2, Y, learner_l2=learner_l2, adversary_l2=adversary_l2, learner_norm_reg=0,
             learner_lr=learner_lr, adversary_lr=adversary_lr, 
             n_epochs=_get(opts, 'n_epochs', n_epochs)*2, bs=_get(opts, 'bs', bs), 
             train_learner_every=1, train_adversary_every=1,
@@ -154,7 +154,7 @@ def agmm2l2(data, opts):
                      adversary1 = _get_adversary(A2.shape[1]), adversary2 = _get_adversary(B2.shape[1]))
     
       
-    agmm2l2 = model.fit(A1, B1, B2, A2, Y, learner_l2=learner_l2, adversary_l2=adversary_l2, adversary_norm_reg=adversary_norm_reg, learner_norm_reg=adversary_norm_reg,
+    agmm2l2 = model.fit(A1, B1, B2, A2, Y, learner_l2=learner_l2, adversary_l2=adversary_l2, learner_norm_reg=learner_norm_reg,
             learner_lr=learner_lr, adversary_lr=adversary_lr, 
             n_epochs=_get(opts, 'n_epochs', n_epochs)*2, bs=_get(opts, 'bs', bs), 
             train_learner_every=1, train_adversary_every=1,
@@ -178,7 +178,7 @@ def klayerfixed(data, opts):
     mmdgmm_fixed = KernelLayerMMDGMM(learner, lambda x: x, n_a, n_centers, kernel_fn,
                                      centers=centers, sigmas=sigmas, trainable=False)
     mmdgmm_fixed.fit(A2, A1, Y, learner_l2=learner_l2, adversary_l2=adversary_l2,
-                     adversary_norm_reg=adversary_norm_reg,
+                     adversary_norm_reg=learner_norm_reg,
                      learner_lr=learner_lr, adversary_lr=adversary_lr,
                      n_epochs=_get(opts, 'n_epochs', n_epochs),
                      bs=_get(opts, 'bs', bs),
@@ -198,7 +198,7 @@ def klayerfixed(data, opts):
     mmdgmm_fixed = KernelLayerMMDGMM(learner, lambda x: x, n_b, n_centers, kernel_fn,
                                      centers=centers, sigmas=sigmas, trainable=False)
     mmdgmm_fixed.fit(B2, B1, bridge_fs, learner_l2=learner_l2, adversary_l2=adversary_l2,
-                     adversary_norm_reg=adversary_norm_reg,
+                     adversary_norm_reg=learner_norm_reg,
                      learner_lr=learner_lr, adversary_lr=adversary_lr,
                      n_epochs=_get(opts, 'n_epochs', n_epochs),
                      bs=_get(opts, 'bs', bs),
@@ -220,7 +220,7 @@ def klayertrained(data, opts):
     klayermmdgmm = KernelLayerMMDGMM(learner, adversary_g, g_features,
                                      n_centers, kernel_fn, centers=centers, sigmas=sigmas)
     klayermmdgmm.fit(A2, A1, Y, learner_l2=learner_l2, adversary_l2=adversary_l2,
-                     adversary_norm_reg=adversary_norm_reg,
+                     adversary_norm_reg=learner_norm_reg,
                      learner_lr=learner_lr, adversary_lr=adversary_lr,
                      n_epochs=_get(opts, 'n_epochs', n_epochs),
                      bs=_get(opts, 'bs', bs),
@@ -235,7 +235,7 @@ def klayertrained(data, opts):
     klayermmdgmm = KernelLayerMMDGMM(learner, adversary_g, g_features,
                                      n_centers, kernel_fn, centers=centers, sigmas=sigmas)
     klayermmdgmm.fit(B2, B1, bridge_fs, learner_l2=learner_l2, adversary_l2=adversary_l2,
-                     adversary_norm_reg=adversary_norm_reg,
+                     adversary_norm_reg=learner_norm_reg,
                      learner_lr=learner_lr, adversary_lr=adversary_lr,
                      n_epochs=_get(opts, 'n_epochs', n_epochs),
                      bs=_get(opts, 'bs', bs),
@@ -257,7 +257,7 @@ def centroidmmd(data, opts):
     centroid_mmd = CentroidMMDGMM(
         learner, adversary_g, kernel_fn, centers_A, np.ones(n_centers) * sigma)
     centroid_mmd.fit(A2, A1, Y, learner_l2=learner_l2, adversary_l2=adversary_l2,
-                     adversary_norm_reg=adversary_norm_reg,
+                     adversary_norm_reg=learner_norm_reg,
                      learner_lr=learner_lr, adversary_lr=adversary_lr,
                      n_epochs=_get(opts, 'n_epochs', n_epochs),
                      bs=_get(opts, 'bs', bs),
@@ -272,7 +272,7 @@ def centroidmmd(data, opts):
     centroid_mmd = CentroidMMDGMM(
         learner, adversary_g, kernel_fn, centers_B, np.ones(n_centers) * sigma)
     centroid_mmd.fit(B2, B1, bridge_fs, learner_l2=learner_l2, adversary_l2=adversary_l2,
-                     adversary_norm_reg=adversary_norm_reg,
+                     adversary_norm_reg=learner_norm_reg,
                      learner_lr=learner_lr, adversary_lr=adversary_lr,
                      n_epochs=_get(opts, 'n_epochs', n_epochs),
                      bs=_get(opts, 'bs', bs),
