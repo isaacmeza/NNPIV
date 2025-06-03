@@ -118,7 +118,7 @@ class DML_longterm_seq:
     This class is deprecated and will be removed in a future version.
     
     .. deprecated:: 1.0
-        Use `DML_mediated` instead.
+        Use `DML_longterm` instead.
 
     Debiased Machine Learning for long-term causal analysis (DML-longterm) class.
 
