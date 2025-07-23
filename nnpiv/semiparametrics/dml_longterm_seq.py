@@ -595,7 +595,6 @@ class DML_longterm_seq:
         ind = np.where(G_train == 0)[0]
         X_g0_train = X_train[ind, :]
         D_g0_train = D_train[ind]
-        ind = np.where(G_train == 1)[0]
         ind = np.where(D_train == 1)[0]
         S_d1_train = S_train[ind]
         X_d1_train = X_train[ind, :]
