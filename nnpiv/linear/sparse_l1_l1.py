@@ -1,4 +1,4 @@
-"""
+r"""
 This module provides implementations of sparse linear NPIV estimators.
 
 Classes
