@@ -4,7 +4,7 @@
 from .agmm_earlystop import AGMMEarlyStop, KernelLayerMMDGMMEarlyStop,\
     CentroidMMDGMMEarlyStop, KernelLossAGMMEarlyStop
 from .agmm import AGMM, KernelLayerMMDGMM, CentroidMMDGMM, KernelLossAGMM, MMDGMM
-from .agmm2 import AGMM2, AGMM2L2
+from .agmm2 import AGMM2L2
 
 from .architectures import CNN_Z_agmm, CNN_Z_kernel, CNN_X, CNN_X_bn, fc_z_agmm, fc_z_kernel, fc_x
 
@@ -14,7 +14,6 @@ __all__ = ['AGMMEarlyStop',
            'CentroidMMDGMMEarlyStop',
            'KernelLossAGMMEarlyStop',
            'AGMM',
-           'AGMM2',
            'AGMM2L2',
            'KernelLayerMMDGMM',
            'CentroidMMDGMM',
