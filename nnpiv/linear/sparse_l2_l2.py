@@ -1,10 +1,14 @@
-"""
+r"""
 This module provides implementations of sparse linear NPIV estimators with L2 norm regularization.
 
 Classes:
-    _SparseLinearAdversarialGMM: Base class for sparse linear adversarial GMM.
-    sparse_l2vsl2: Sparse Linear NPIV estimator using :math:`\ell_2-\ell_2` optimization.
-    sparse_ridge_l2vsl2: Sparse Ridge NPIV estimator using :math:`\ell_2-\ell_2` optimization.
+-------
+_SparseLinearAdversarialGMM 
+    Base class for sparse linear adversarial GMM.
+sparse_l2vsl2
+    Sparse Linear NPIV estimator using :math:`\ell_2-\ell_2` optimization.
+sparse_ridge_l2vsl2
+    Sparse Ridge NPIV estimator using :math:`\ell_2-\ell_2` optimization.
 """
 # Copyright (c) Microsoft Corporation.
 # Licensed under the MIT License.
@@ -90,7 +94,7 @@ class _SparseLinearAdversarialGMM:
 
 
 class sparse_l2vsl2(_SparseLinearAdversarialGMM):
-    """
+    r"""
     Sparse Linear NPIV estimator using :math:`\ell_2-\ell_2` optimization.
 
     This class solves the high-dimensional sparse linear problem using :math:`\ell_2` relaxations for the minimax optimization problem.
@@ -233,7 +237,7 @@ class sparse_l2vsl2(_SparseLinearAdversarialGMM):
     
 
 class sparse_ridge_l2vsl2(_SparseLinearAdversarialGMM):
-    """
+    r"""
     Sparse Ridge NPIV estimator using :math:`\ell_2-\ell_2` optimization.
 
     This class solves the high-dimensional sparse ridge problem using :math:`\ell_2` relaxations for the minimax optimization problem.

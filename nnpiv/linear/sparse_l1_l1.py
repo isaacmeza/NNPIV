@@ -68,7 +68,7 @@ class _SparseLinearAdversarialGMM:
 
 
 class sparse_l1vsl1(_SparseLinearAdversarialGMM):
-    """
+    r"""
     Sparse Linear NPIV estimator using :math:`\ell_1-\ell_1` optimization.
 
     This class solves the high-dimensional sparse linear problem using :math:`\ell_1` relaxations for the minimax optimization problem.
@@ -216,7 +216,7 @@ class sparse_l1vsl1(_SparseLinearAdversarialGMM):
 
 
 class sparse_ridge_l1vsl1(_SparseLinearAdversarialGMM):
-    """
+    r"""
     Sparse Ridge NPIV estimator using :math:`\ell_1-\ell_1` optimization.
 
     This class solves the high-dimensional sparse ridge problem using :math:`\ell_1` relaxations for the minimax optimization problem.
