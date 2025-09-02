@@ -110,12 +110,12 @@ class _BaseAGMM2:
         """
         if model == 'avg':
             pred_h = np.array([
-                torch.load(os.path.join(self.model_dir, f"h_epoch{i}"))(B)
+                torch.load(os.path.join(self.model_dir, f"h_epoch{i}"), weights_only=False)(B)
                      .cpu().data.numpy()
                 for i in range(burn_in, self.n_epochs)
             ])
             pred_g = np.array([
-                torch.load(os.path.join(self.model_dir, f"g_epoch{i}"))(A)
+                torch.load(os.path.join(self.model_dir, f"g_epoch{i}"), weights_only=False)(A)
                      .cpu().data.numpy()
                 for i in range(burn_in, self.n_epochs)
             ])
@@ -132,16 +132,16 @@ class _BaseAGMM2:
             )
         if model == 'final':
             return (
-                torch.load(os.path.join(self.model_dir, f"h_epoch{self.n_epochs-1}"))(B)
+                torch.load(os.path.join(self.model_dir, f"h_epoch{self.n_epochs-1}"), weights_only=False)(B)
                      .cpu().data.numpy(),
-                torch.load(os.path.join(self.model_dir, f"g_epoch{self.n_epochs-1}"))(A)
+                torch.load(os.path.join(self.model_dir, f"g_epoch{self.n_epochs-1}"), weights_only=False)(A)
                      .cpu().data.numpy()
             )
         if isinstance(model, int):
             return (
-                torch.load(os.path.join(self.model_dir, f"h_epoch{model}"))(B)
+                torch.load(os.path.join(self.model_dir, f"h_epoch{model}"), weights_only=False )(B)
                      .cpu().data.numpy(),
-                torch.load(os.path.join(self.model_dir, f"g_epoch{model}"))(A)
+                torch.load(os.path.join(self.model_dir, f"g_epoch{model}"), weights_only=False)(A)
                      .cpu().data.numpy()
             )
 

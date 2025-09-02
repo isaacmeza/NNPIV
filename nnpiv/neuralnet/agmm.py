@@ -110,7 +110,7 @@ class _BaseAGMM:
         """
         if model == 'avg':
             preds = np.array([torch.load(os.path.join(self.model_dir,
-                                                      "epoch{}".format(i)))(T).cpu().data.numpy()
+                                                      "epoch{}".format(i)), weights_only=False)(T).cpu().data.numpy()
                               for i in np.arange(burn_in, self.n_epochs)])
             if alpha is None:
                 return np.mean(preds, axis=0)
@@ -120,10 +120,10 @@ class _BaseAGMM:
                         preds, 100 * alpha / 2, axis=0), np.percentile(preds, 100 * (1 - alpha / 2), axis=0)
         if model == 'final':
             return torch.load(os.path.join(self.model_dir,
-                                           "epoch{}".format(self.n_epochs - 1)))(T).cpu().data.numpy()
+                                           "epoch{}".format(self.n_epochs - 1)), weights_only=False)(T).cpu().data.numpy()
         if isinstance(model, int):
             return torch.load(os.path.join(self.model_dir,
-                                           "epoch{}".format(model)))(T).cpu().data.numpy()
+                                           "epoch{}".format(model)), weights_only=False)(T).cpu().data.numpy()
 
 
 class _BaseSupLossAGMM(_BaseAGMM):
