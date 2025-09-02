@@ -1,5 +1,5 @@
 """
-This module provides implementations of sparse linear NPIV estimators using $\ell_2-\ell_2$ optimization for nested NPIV.
+This module provides implementations of sparse linear NPIV estimators using :math:`\ell_2-\ell_2` optimization for nested NPIV.
 """
 
 # Copyright (c) Microsoft Corporation.
@@ -107,9 +107,9 @@ class _SparseLinear2AdversarialGMM:
 
 class sparse2_l2vsl2(_SparseLinear2AdversarialGMM):
     """
-    Sparse Linear NPIV estimator using $\ell_2-\ell_2$ optimization for nested NPIV.
+    Sparse Linear NPIV estimator using :math:`\ell_2-\ell_2` optimization for nested NPIV.
 
-    This class solves the high-dimensional sparse linear problem using $\ell_2$ relaxations for the minimax optimization problem in a nested NPIV setting.
+    This class solves the high-dimensional sparse linear problem using :math:`\ell_2` relaxations for the minimax optimization problem in a nested NPIV setting.
 
     Parameters:
         Same as `_SparseLinear2AdversarialGMM`.
@@ -338,9 +338,9 @@ class sparse2_l2vsl2(_SparseLinear2AdversarialGMM):
 
 class sparse2_ridge_l2vsl2(_SparseLinear2AdversarialGMM):
     """
-    Sparse Ridge NPIV estimator using $\ell_2-\ell_2$ optimization for nested NPIV.
+    Sparse Ridge NPIV estimator using :math:`\ell_2-\ell_2` optimization for nested NPIV.
 
-    This class solves the high-dimensional sparse ridge problem using $\ell_2$ relaxations for the minimax optimization problem in a nested NPIV setting.
+    This class solves the high-dimensional sparse ridge problem using :math:`\ell_2` relaxations for the minimax optimization problem in a nested NPIV setting.
 
     Parameters:
         Same as `_SparseLinear2AdversarialGMM`.

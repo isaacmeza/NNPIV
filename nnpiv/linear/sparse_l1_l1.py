@@ -1,10 +1,14 @@
 """
 This module provides implementations of sparse linear NPIV estimators.
 
-Classes:
-    _SparseLinearAdversarialGMM: Base class for sparse linear adversarial GMM.
-    sparse_l1vsl1: Sparse Linear NPIV estimator using $\ell_1-\ell_1$ optimization.
-    sparse_ridge_l1vsl1: Sparse Ridge NPIV estimator using $\ell_1-\ell_1$ optimization.
+Classes
+-------
+_SparseLinearAdversarialGMM
+    Base class for sparse linear adversarial GMM.
+sparse_l1vsl1
+    Sparse Linear NPIV estimator using :math:`\ell_1-\ell_1` optimization.
+sparse_ridge_l1vsl1
+    Sparse Ridge NPIV estimator using :math:`\ell_1-\ell_1` optimization.
 """
 # Copyright (c) Microsoft Corporation.
 # Licensed under the MIT License.
@@ -65,9 +69,9 @@ class _SparseLinearAdversarialGMM:
 
 class sparse_l1vsl1(_SparseLinearAdversarialGMM):
     """
-    Sparse Linear NPIV estimator using $\ell_1-\ell_1$ optimization.
+    Sparse Linear NPIV estimator using :math:`\ell_1-\ell_1` optimization.
 
-    This class solves the high-dimensional sparse linear problem using $\ell_1$ relaxations for the minimax optimization problem.
+    This class solves the high-dimensional sparse linear problem using :math:`\ell_1` relaxations for the minimax optimization problem.
 
     Parameters:
         Same as `_SparseLinearAdversarialGMM`.
@@ -213,9 +217,9 @@ class sparse_l1vsl1(_SparseLinearAdversarialGMM):
 
 class sparse_ridge_l1vsl1(_SparseLinearAdversarialGMM):
     """
-    Sparse Ridge NPIV estimator using $\ell_1-\ell_1$ optimization.
+    Sparse Ridge NPIV estimator using :math:`\ell_1-\ell_1` optimization.
 
-    This class solves the high-dimensional sparse ridge problem using $\ell_1$ relaxations for the minimax optimization problem.
+    This class solves the high-dimensional sparse ridge problem using :math:`\ell_1` relaxations for the minimax optimization problem.
 
     Parameters:
         Same as `_SparseLinearAdversarialGMM`.
