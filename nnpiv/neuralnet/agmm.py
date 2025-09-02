@@ -30,6 +30,7 @@ from nnpiv.neuralnet.rbflayer import RBF
 # It can be set to 0 if using pytorch 1.4.0
 EPSILON = 1e-2
 
+DEVICE = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
 
 def add_weight_decay(net, l2_value, skip_list=()):
     decay, no_decay = [], []
@@ -109,9 +110,14 @@ class _BaseAGMM:
             the predictions across different epochs (proxy for a confidence interval)
         """
         if model == 'avg':
-            preds = np.array([torch.load(os.path.join(self.model_dir,
-                                                      "epoch{}".format(i)), weights_only=False)(T).cpu().data.numpy()
-                              for i in np.arange(burn_in, self.n_epochs)])
+            preds = np.array([
+                            torch.load(os.path.join(self.model_dir, f"epoch{i}"),
+                                    map_location=DEVICE, weights_only=False).to(DEVICE).eval()(
+                                T if isinstance(T, torch.Tensor) and T.device == DEVICE
+                                else torch.as_tensor(T, dtype=torch.float32, device=DEVICE)
+                            ).detach().cpu().numpy()
+                            for i in np.arange(burn_in, self.n_epochs)
+                        ])
             if alpha is None:
                 return np.mean(preds, axis=0)
             else:
@@ -119,11 +125,25 @@ class _BaseAGMM:
                     np.percentile(
                         preds, 100 * alpha / 2, axis=0), np.percentile(preds, 100 * (1 - alpha / 2), axis=0)
         if model == 'final':
-            return torch.load(os.path.join(self.model_dir,
-                                           "epoch{}".format(self.n_epochs - 1)), weights_only=False)(T).cpu().data.numpy()
+            return (
+                    torch.load(os.path.join(self.model_dir, f"epoch{self.n_epochs - 1}"),
+                            map_location=DEVICE, weights_only=False)
+                        .to(DEVICE).eval()(
+                            T if isinstance(T, torch.Tensor) and T.device == DEVICE
+                            else torch.as_tensor(T, dtype=torch.float32, device=DEVICE)
+                        )
+                        .detach().cpu().numpy()
+                )
         if isinstance(model, int):
-            return torch.load(os.path.join(self.model_dir,
-                                           "epoch{}".format(model)), weights_only=False)(T).cpu().data.numpy()
+            return (
+                    torch.load(os.path.join(self.model_dir, f"epoch{model}"),
+                            map_location=DEVICE, weights_only=False)
+                        .to(DEVICE).eval()(
+                            T if isinstance(T, torch.Tensor) and T.device == DEVICE
+                            else torch.as_tensor(T, dtype=torch.float32, device=DEVICE)
+                        )
+                        .detach().cpu().numpy()
+                )
 
 
 class _BaseSupLossAGMM(_BaseAGMM):

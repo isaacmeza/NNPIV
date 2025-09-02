@@ -113,30 +113,53 @@ class _BaseAGMM:
         Parameters
         ----------
         T : treatments
-        model : one of ('avg', 'final'), whether to use an average of models or the final
-        burn_in : discard the first "burn_in" epochs when doing averaging
-        alpha : if not None but a float, then it also returns the a/2 and 1-a/2, percentile of
-            the predictions across different epochs (proxy for a confidence interval)
+        model : one of ('avg', 'final', 'earlystop' or an int)
+        burn_in : discard the first "burn_in" epochs when averaging
+        alpha : if float, also return the alpha/2 and 1-alpha/2 percentiles
         """
+
+        DEVICE = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
+
+        # ensure input is a tensor on the same device as the loaded model will be
+        T_dev = T.to(DEVICE) if isinstance(T, torch.Tensor) else torch.as_tensor(T, dtype=torch.float32, device=DEVICE)
+
+        def _load_epoch(name: str):
+            # TRUSTED CHECKPOINTS: allow full-object unpickling (old saves like torch.save(model, path))
+            mdl = torch.load(os.path.join(self.model_dir, name),
+                            map_location=DEVICE, weights_only=False)
+            # move to device + eval (in case the checkpoint wasn’t already)
+            if isinstance(mdl, torch.nn.Module):
+                mdl = mdl.to(DEVICE).eval()
+            return mdl
+
         if model == 'avg':
-            preds = np.array([torch.load(os.path.join(self.model_dir,
-                                                      "epoch{}".format(i)), weights_only=False)(T).cpu().data.numpy()
-                              for i in np.arange(burn_in, self.n_epochs)])
+            idxs = np.arange(burn_in, self.n_epochs)
+            preds = np.array([
+                _load_epoch(f"epoch{i}")(T_dev).detach().cpu().numpy()
+                for i in idxs
+            ])
             if alpha is None:
-                return np.mean(preds, axis=0)
+                return preds.mean(axis=0)
             else:
-                return np.mean(preds, axis=0),\
-                    np.percentile(
-                        preds, 100 * alpha / 2, axis=0), np.percentile(preds, 100 * (1 - alpha / 2), axis=0)
+                return (
+                    preds.mean(axis=0),
+                    np.percentile(preds, 100 * alpha / 2, axis=0),
+                    np.percentile(preds, 100 * (1 - alpha / 2), axis=0),
+                )
+
         if model == 'final':
-            return torch.load(os.path.join(self.model_dir,
-                                           "epoch{}".format(self.n_epochs - 1)), weights_only=False)(T).cpu().data.numpy()
+            mdl = _load_epoch(f"epoch{self.n_epochs - 1}")
+            return mdl(T_dev).detach().cpu().numpy()
+
         if model == 'earlystop':
-            return torch.load(os.path.join(self.model_dir,
-                                           "earlystop"), weights_only=False)(T).cpu().data.numpy()
+            mdl = _load_epoch("earlystop")
+            return mdl(T_dev).detach().cpu().numpy()
+
         if isinstance(model, int):
-            return torch.load(os.path.join(self.model_dir,
-                                           "epoch{}".format(model)), weights_only=False)(T).cpu().data.numpy()
+            mdl = _load_epoch(f"epoch{model}")
+            return mdl(T_dev).detach().cpu().numpy()
+
+        raise ValueError(f"Unknown model option: {model!r}")
 
 
 class _BaseSupLossAGMM(_BaseAGMM):

@@ -108,15 +108,26 @@ class _BaseAGMM2:
         burn_in : discard the first burn_in epochs when averaging
         alpha : confidence interval level (if not None)
         """
+        # real device object
+        DEVICE = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
+
+        # ensure inputs are tensors on the same device as loaded models
+        B_dev = B if isinstance(B, torch.Tensor) and B.device == DEVICE \
+                else torch.as_tensor(B, dtype=torch.float32, device=DEVICE)
+        A_dev = A if isinstance(A, torch.Tensor) and A.device == DEVICE \
+                else torch.as_tensor(A, dtype=torch.float32, device=DEVICE)
+
         if model == 'avg':
             pred_h = np.array([
-                torch.load(os.path.join(self.model_dir, f"h_epoch{i}"), weights_only=False)(B)
-                     .cpu().data.numpy()
+                torch.load(os.path.join(self.model_dir, f"h_epoch{i}"),
+                        map_location=DEVICE, weights_only=False
+                ).to(DEVICE).eval()(B_dev).detach().cpu().numpy()
                 for i in range(burn_in, self.n_epochs)
             ])
             pred_g = np.array([
-                torch.load(os.path.join(self.model_dir, f"g_epoch{i}"), weights_only=False)(A)
-                     .cpu().data.numpy()
+                torch.load(os.path.join(self.model_dir, f"g_epoch{i}"),
+                        map_location=DEVICE, weights_only=False
+                ).to(DEVICE).eval()(A_dev).detach().cpu().numpy()
                 for i in range(burn_in, self.n_epochs)
             ])
             mean_h = np.mean(pred_h, axis=0)
@@ -128,22 +139,31 @@ class _BaseAGMM2:
                 np.percentile(pred_h, 100 * alpha / 2, axis=0),
                 np.percentile(pred_h, 100 * (1 - alpha / 2), axis=0),
                 np.percentile(pred_g, 100 * alpha / 2, axis=0),
-                np.percentile(pred_g, 100 * (1 - alpha / 2), axis=0)
+                np.percentile(pred_g, 100 * (1 - alpha / 2), axis=0),
             )
+
         if model == 'final':
             return (
-                torch.load(os.path.join(self.model_dir, f"h_epoch{self.n_epochs-1}"), weights_only=False)(B)
-                     .cpu().data.numpy(),
-                torch.load(os.path.join(self.model_dir, f"g_epoch{self.n_epochs-1}"), weights_only=False)(A)
-                     .cpu().data.numpy()
+                torch.load(os.path.join(self.model_dir, f"h_epoch{self.n_epochs-1}"),
+                        map_location=DEVICE, weights_only=False
+                ).to(DEVICE).eval()(B_dev).detach().cpu().numpy(),
+                torch.load(os.path.join(self.model_dir, f"g_epoch{self.n_epochs-1}"),
+                        map_location=DEVICE, weights_only=False
+                ).to(DEVICE).eval()(A_dev).detach().cpu().numpy(),
             )
+
         if isinstance(model, int):
             return (
-                torch.load(os.path.join(self.model_dir, f"h_epoch{model}"), weights_only=False )(B)
-                     .cpu().data.numpy(),
-                torch.load(os.path.join(self.model_dir, f"g_epoch{model}"), weights_only=False)(A)
-                     .cpu().data.numpy()
+                torch.load(os.path.join(self.model_dir, f"h_epoch{model}"),
+                        map_location=DEVICE, weights_only=False
+                ).to(DEVICE).eval()(B_dev).detach().cpu().numpy(),
+                torch.load(os.path.join(self.model_dir, f"g_epoch{model}"),
+                        map_location=DEVICE, weights_only=False
+                ).to(DEVICE).eval()(A_dev).detach().cpu().numpy(),
             )
+
+        raise ValueError(f"Unknown model option: {model!r}")
+
 
 
 class _BaseSupLossAGMM2(_BaseAGMM2):
