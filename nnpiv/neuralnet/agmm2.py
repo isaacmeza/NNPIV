@@ -72,6 +72,16 @@ class _BaseAGMM2:
                 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.device = device
 
+        def to_cpu(x):
+            return x.detach().cpu() if isinstance(x, torch.Tensor) else x
+
+        A, B, C, D, Y, W = map(to_cpu, (A, B, C, D, Y, W))
+        if subsetted:
+            if subset_ind1 is None:
+                raise ValueError("subset_ind1 must be provided when subsetted=True")
+            subset_ind1 = to_cpu(subset_ind1)
+            subset_ind2 = to_cpu(subset_ind2) if subset_ind2 is not None else None
+
         if add_sample_inds:
             sample_inds = torch.arange(Y.shape[0]).clone().detach()
             self.train_ds = TensorDataset(A, B, C, D, Y, W, sample_inds) if not subsetted else \
@@ -84,6 +94,10 @@ class _BaseAGMM2:
             self.train_ds, batch_size=bs, shuffle=True,
             pin_memory=(self.device.type == "cuda")
         )
+
+        # Pin memory only when training on CUDA
+        pin = isinstance(device, torch.device) and device.type == "cuda"
+        self.train_dl = DataLoader(self.train_ds, batch_size=bs, shuffle=True, pin_memory=pin)
 
         # Move networks to device
         self.learnerh  = self.learnerh.to(self.device)

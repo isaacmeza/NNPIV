@@ -76,16 +76,18 @@ class _BaseAGMM:
 
         self.n_epochs = n_epochs
 
-        if add_sample_inds:
-            sample_inds = torch.tensor(np.arange(Y.shape[0]))
-            self.train_ds = TensorDataset(Z, T, Y, sample_inds)
-        else:
-            self.train_ds = TensorDataset(Z, T, Y)
+        def to_cpu(x):
+            return x.detach().cpu() if isinstance(x, torch.Tensor) else x
+        Z, T, Y = map(to_cpu, (Z, T, Y))
 
-        self.train_dl = DataLoader(
-            self.train_ds, batch_size=bs, shuffle=True,
-            pin_memory=(self.device.type == "cuda")
-        )
+        self.train_ds = TensorDataset(Z, T, Y) if not add_sample_inds else \
+            TensorDataset(Z, T, Y, torch.tensor(np.arange(Y.shape[0])))
+
+        # pin only if tensors are CPU and we train on CUDA
+        pin = (device is not None and isinstance(device, torch.device)
+            and device.type == "cuda")
+        self.train_dl = DataLoader(self.train_ds, batch_size=bs, shuffle=True,
+                                pin_memory=pin)
 
         self.learner = self.learner.to(self.device)
         self.adversary = self.adversary.to(self.device)
