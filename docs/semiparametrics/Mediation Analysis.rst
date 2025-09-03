@@ -44,7 +44,6 @@ Our DML framework allows for various types of estimands. Here, we describe each 
    :template: class.rst
 
    dml_mediated.DML_mediated
-   dml_mediated_seq.DML_mediated_seq
 
 **References**
 

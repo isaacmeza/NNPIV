@@ -19,28 +19,12 @@ Joint/Sequential mediation
    :show-inheritance:
    :private-members:
 
-Sequential mediation (deprecated)
----------------
-.. automodule:: dml_mediated_seq
-   :members:
-   :undoc-members:
-   :show-inheritance:
-   :private-members:
-
 Longterm Analysis
 =================
 
 Joint/Sequential longterm
 --------------------
 .. automodule:: dml_longterm
-   :members:
-   :undoc-members:
-   :show-inheritance:
-   :private-members:
-
-Sequential longterm  (deprecated)
----------------
-.. automodule:: dml_longterm_seq
    :members:
    :undoc-members:
    :show-inheritance:

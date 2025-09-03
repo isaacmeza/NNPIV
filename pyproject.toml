@@ -1,10 +1,10 @@
 [build-system]
-requires = ["setuptools >=42", "wheel"]
+requires = ["setuptools>=75", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "nnpiv"
-version = "0.0.1"
+version = "0.2.0"
 description = "NESTED NONPARAMETRIC INSTRUMENTAL VARIABLE REGRESSION"
 authors = [
     { name = "Isaac Meza", email = "isaacmezalopez@g.harvard.edu" },
@@ -12,10 +12,13 @@ authors = [
 ]
 readme = "README.rst"
 license = { text = "MIT" }
-requires-python = ">=3.6"
+requires-python = ">=3.10"
 dependencies = ["cvxopt>1.2.0"]
 classifiers = [
     "Programming Language :: Python :: 3",
-    "License :: OSI Approved :: MIT License",
     "Operating System :: OS Independent"
 ]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["nnpiv*"]
