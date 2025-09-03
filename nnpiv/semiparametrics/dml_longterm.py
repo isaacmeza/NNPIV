@@ -49,7 +49,8 @@ from nnpiv.rkhs import RKHS2IVCV, ApproxRKHSIVCV, RKHS2IVL2
 from joblib import Parallel, delayed
 from scipy.optimize import minimize_scalar
 
-device = torch.cuda.current_device() if torch.cuda.is_available() else None
+DEVICE = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
+toT = lambda a: torch.as_tensor(a, dtype=torch.float32, device=DEVICE)
 
 def _get(opts, key, default):
     """
@@ -413,10 +414,11 @@ class DML_longterm:
             A_test = np.column_stack((test_S, test_X))
 
             if self.nn_1==True:
-                A_train, E_train, B_train, C_train, B_test, A_test, train_G, train_Y = map(lambda x: torch.Tensor(x), 
-                                                        [A_train, E_train, B_train, C_train, B_test, A_test, train_G, train_Y])
+                A_train, E_train, B_train, C_train, B_test, A_test, train_G, train_Y = map(
+                    toT, [A_train, E_train, B_train, C_train, B_test, A_test, train_G, train_Y]
+                )
 
-            ind = np.where(train_D==1)[0]
+            ind = (torch.nonzero(train_D.eq(1), as_tuple=False).squeeze(1) if self.nn_1 else np.where(train_D==1)[0])
             A1_train = A_train[ind,:]
             E1_train = E_train[ind,:]
             B1_train = B_train[ind,:]
@@ -424,7 +426,7 @@ class DML_longterm:
             G1_train = train_G[ind]
             Y1_train = train_Y[ind]
 
-            ind = np.where(train_D==0)[0]
+            ind = (torch.nonzero(train_D.eq(0), as_tuple=False).squeeze(1) if self.nn_1 else np.where(train_D==0)[0])
             A0_train = A_train[ind,:]
             E0_train = E_train[ind,:]
             B0_train = B_train[ind,:]
@@ -452,10 +454,10 @@ class DML_longterm:
                 model_1_d0.fit(A0_train, B0_train, C0_train, E0_train, Y0_train, subsetted=True, subset_ind1=G0_train)
                 
             if self.nn_1==True:
-                nu_1_hat, delta_d1_hat = model_1_d1.predict(B_test.to(device), A_test.to(device), model='avg', burn_in=_get(self.opts, 'burnin', 0))
+                nu_1_hat, delta_d1_hat = model_1_d1.predict(B_test.to(DEVICE), A_test.to(DEVICE), model='avg', burn_in=_get(self.opts, 'burnin', 0))
                 nu_1_hat = nu_1_hat.reshape(-1, 1)
                 delta_d1_hat = delta_d1_hat.reshape(-1, 1)
-                nu_0_hat, delta_d0_hat = model_1_d0.predict(B_test.to(device), A_test.to(device), model='avg', burn_in=_get(self.opts, 'burnin', 0))
+                nu_0_hat, delta_d0_hat = model_1_d0.predict(B_test.to(DEVICE), A_test.to(DEVICE), model='avg', burn_in=_get(self.opts, 'burnin', 0))
                 nu_0_hat = nu_0_hat.reshape(-1, 1)
                 delta_d0_hat = delta_d0_hat.reshape(-1, 1)
             else:
@@ -501,14 +503,16 @@ class DML_longterm:
 
             # First stage in observational data
             if self.nn_1 == True:
-                Y, D, S, X, G = map(lambda x: torch.Tensor(x), [Y, D, S, X, G]) 
+                Y, D, S, X, G = map(toT, [Y, D, S, X, G])
 
-            ind = np.where(np.logical_and(G == 1, D == 1))[0]
+            ind = (torch.nonzero((G==1) & (D==1), as_tuple=False).squeeze(1)
+                    if self.nn_1 else np.where(np.logical_and(G==1, D==1))[0])
             S1_1 = S[ind]
             X1_1 = X[ind, :]
             Y1_1 = Y[ind]
 
-            ind = np.where(np.logical_and(G == 1, D == 0))[0]
+            ind = (torch.nonzero((G==1) & (D==0), as_tuple=False).squeeze(1)
+                    if self.nn_1 else np.where(np.logical_and(G==1, D==0))[0])
             S1_0 = S[ind]
             X1_0 = X[ind, :]
             Y1_0 = Y[ind]
@@ -529,10 +533,10 @@ class DML_longterm:
 
             if self.nn_1 == True:
                 A1 = torch.cat((S, X), 1)
-                bridge_1_d1_hat = torch.Tensor(bridge_1_d1.predict(A1.to(device),
-                            model='avg', burn_in=_get(self.opts, 'burnin', 0)))
-                bridge_1_d0_hat = torch.Tensor(bridge_1_d0.predict(A1.to(device),
-                            model='avg', burn_in=_get(self.opts, 'burnin', 0)))
+                _pred1 = bridge_1_d1.predict(A1.to(DEVICE), model='avg', burn_in=_get(self.opts, 'burnin', 0))
+                bridge_1_d1_hat = _pred1 if isinstance(_pred1, torch.Tensor) else toT(_pred1)
+                _pred0 = bridge_1_d0.predict(A1.to(DEVICE), model='avg', burn_in=_get(self.opts, 'burnin', 0))
+                bridge_1_d0_hat = _pred0 if isinstance(_pred0, torch.Tensor) else toT(_pred0)
             else:
                 A1 = _transform_poly(np.column_stack((S, X)), self.opts)
                 bridge_1_d1_hat = bridge_1_d1.predict(A1)
@@ -547,9 +551,9 @@ class DML_longterm:
             # Second stage in experimental data
             if self.nn_1 != self.nn_2:
                 if self.nn_2 == False:
-                    D, X, G, bridge_1_d1_hat, bridge_1_d0_hat = map(lambda x: x.numpy(), [D, X, G, bridge_1_d1_hat, bridge_1_d0_hat])
+                    D, X, G, bridge_1_d1_hat, bridge_1_d0_hat = map(lambda x: x.detach().cpu().numpy(), [D, X, G, bridge_1_d1_hat, bridge_1_d0_hat])
                 else:
-                    D, X, G, bridge_1_d1_hat, bridge_1_d0_hat = map(lambda x: torch.Tensor(x), [D, X, G, bridge_1_d1_hat, bridge_1_d0_hat])
+                    D, X, G, bridge_1_d1_hat, bridge_1_d0_hat = map(toT, [D, X, G, bridge_1_d1_hat, bridge_1_d0_hat])
 
             ind_1 = np.where(np.logical_and(G == 0, D == 1))[0]
             ind_0 = np.where(np.logical_and(G == 0, D == 0))[0]
@@ -626,8 +630,8 @@ class DML_longterm:
             A_test = np.column_stack((test_S, test_X))
 
             if self.nn_1==True:
-                A_train, E_train, B_train, C_train, B_test, A_test, train_Y, train_G, train_D = map(lambda x: torch.Tensor(x), 
-                                            [A_train, E_train, B_train, C_train, B_test, A_test, train_Y, train_G, train_D])
+                A_train, E_train, B_train, C_train, B_test, A_test, train_Y, train_G, train_D = map(toT,
+                                                            [A_train, E_train, B_train, C_train, B_test, A_test, train_Y, train_G, train_D])
 
             if self.nn_1==False:
                 A_train = _transform_poly(A_train,self.opts)
@@ -647,10 +651,10 @@ class DML_longterm:
                 model_1_d0.fit(A_train, B_train, C_train, E_train, train_Y, subsetted=True, subset_ind1=train_G, subset_ind2=G0_D0)
 
             if self.nn_1==True:
-                nu_1_hat, delta_d1_hat = model_1_d1.predict(B_test.to(device), A_test.to(device), model='avg', burn_in=_get(self.opts, 'burnin', 0))
+                nu_1_hat, delta_d1_hat = model_1_d1.predict(B_test.to(DEVICE), A_test.to(DEVICE), model='avg', burn_in=_get(self.opts, 'burnin', 0))
                 nu_1_hat = nu_1_hat.reshape(-1, 1)
                 delta_d1_hat = delta_d1_hat.reshape(-1, 1)
-                nu_0_hat, delta_d0_hat = model_1_d0.predict(B_test.to(device), A_test.to(device), model='avg', burn_in=_get(self.opts, 'burnin', 0))
+                nu_0_hat, delta_d0_hat = model_1_d0.predict(B_test.to(DEVICE), A_test.to(DEVICE), model='avg', burn_in=_get(self.opts, 'burnin', 0))
                 nu_0_hat = nu_0_hat.reshape(-1, 1)
                 delta_d0_hat = delta_d0_hat.reshape(-1, 1)
             else:
@@ -695,9 +699,9 @@ class DML_longterm:
 
             # First stage in observational data
             if self.nn_1 == True:
-                Y, D, S, X, G = map(lambda x: torch.Tensor(x), [Y, D, S, X, G]) 
+                Y, D, S, X, G = map(toT, [Y, D, S, X, G])
 
-            ind = np.where(G == 1)[0]
+            ind = (torch.nonzero(G.eq(1), as_tuple=False).squeeze(1) if self.nn_1 else np.where(G==1)[0])
             S1 = S[ind]
             X1 = X[ind, :]
             Y1 = Y[ind]
@@ -714,8 +718,8 @@ class DML_longterm:
 
             if self.nn_1 == True:
                 A1 = torch.cat((S, X), 1)
-                bridge_1_hat = torch.Tensor(bridge_1.predict(A1.to(device),
-                            model='avg', burn_in=_get(self.opts, 'burnin', 0)))
+                _pred = bridge_1.predict(A1.to(DEVICE), model='avg', burn_in=_get(self.opts, 'burnin', 0))
+                bridge_1_hat = _pred if isinstance(_pred, torch.Tensor) else toT(_pred)
             else:
                 A1 = _transform_poly(np.column_stack((S, X)), self.opts)
                 bridge_1_hat = bridge_1.predict(A1)
@@ -727,9 +731,9 @@ class DML_longterm:
             # Second stage in experimental data
             if self.nn_1 != self.nn_2:
                 if self.nn_2 == False:
-                    D, X, G, bridge_1_hat = map(lambda x: x.numpy(), [D, X, G, bridge_1_hat])
+                    D, X, G, bridge_1_hat = map(lambda x: x.detach().cpu().numpy(), [D, X, G, bridge_1_hat])
                 else:
-                    D, X, G, bridge_1_hat = map(lambda x: torch.Tensor(x), [D, X, G, bridge_1_hat])
+                    D, X, G, bridge_1_hat = map(toT, [D, X, G, bridge_1_hat])
 
             ind_1 = np.where(np.logical_and(G == 0, D == 1))[0]
             ind_0 = np.where(np.logical_and(G == 0, D == 0))[0]
@@ -945,8 +949,8 @@ class DML_longterm:
                     
                     if self.estimator == 'MR' or self.estimator == 'hybrid':
                         if self.nn_1 == True:
-                            test_S, test_X = tuple(map(lambda x: torch.Tensor(x), [test_S, test_X]))
-                            delta_d0_hat = delta_0.predict(torch.cat((test_S, test_X), 1).to(device),
+                            test_S, test_X = tuple(map(toT, [test_S, test_X]))
+                            delta_d0_hat = delta_0.predict(torch.cat((test_S, test_X), 1).to(DEVICE),
                                                         model='avg', burn_in=_get(self.opts, 'burnin', 0)).reshape(-1, 1)
                             delta_d1_hat = delta_d0_hat
                         else:
@@ -955,10 +959,10 @@ class DML_longterm:
 
                     if self.estimator == 'MR' or self.estimator == 'OR':
                         if self.nn_2 == True:
-                            test_X = torch.Tensor(test_X)
-                            nu_1_hat = nu_1.predict(test_X.to(device),
+                            test_X = toT(test_X)
+                            nu_1_hat = nu_1.predict(test_X.to(DEVICE),
                                                         model='avg', burn_in=_get(self.opts, 'burnin', 0)).reshape(-1, 1)
-                            nu_0_hat = nu_0.predict(test_X.to(device),
+                            nu_0_hat = nu_0.predict(test_X.to(DEVICE),
                                                         model='avg', burn_in=_get(self.opts, 'burnin', 0)).reshape(-1, 1)
                         else:
                             nu_1_hat = nu_1.predict(_transform_poly(test_X, self.opts)).reshape(-1, 1)
@@ -975,10 +979,10 @@ class DML_longterm:
 
                     if self.estimator == 'MR' or self.estimator == 'hybrid':
                         if self.nn_1 == True:
-                            test_S, test_X = tuple(map(lambda x: torch.Tensor(x), [test_S, test_X]))
-                            delta_d1_hat = delta_d1.predict(torch.cat((test_S, test_X), 1).to(device),
+                            test_S, test_X = tuple(map(toT, [test_S, test_X]))
+                            delta_d1_hat = delta_d1.predict(torch.cat((test_S, test_X), 1).to(DEVICE),
                                                         model='avg', burn_in=_get(self.opts, 'burnin', 0)).reshape(-1, 1)
-                            delta_d0_hat = delta_d0.predict(torch.cat((test_S, test_X), 1).to(device),
+                            delta_d0_hat = delta_d0.predict(torch.cat((test_S, test_X), 1).to(DEVICE),
                                                         model='avg', burn_in=_get(self.opts, 'burnin', 0)).reshape(-1, 1)
                         else:
                             delta_d1_hat = delta_d1.predict(_transform_poly(np.column_stack((test_S, test_X)), self.opts)).reshape(-1, 1)
@@ -986,10 +990,10 @@ class DML_longterm:
 
                     if self.estimator == 'MR' or self.estimator == 'OR':
                         if self.nn_2 == True:
-                            test_X = torch.Tensor(test_X)
-                            nu_1_hat = nu_1.predict(test_X.to(device),
+                            test_X = toT(test_X)
+                            nu_1_hat = nu_1.predict(test_X.to(DEVICE),
                                                         model='avg', burn_in=_get(self.opts, 'burnin', 0)).reshape(-1, 1)
-                            nu_0_hat = nu_0.predict(test_X.to(device),
+                            nu_0_hat = nu_0.predict(test_X.to(DEVICE),
                                                         model='avg', burn_in=_get(self.opts, 'burnin', 0)).reshape(-1, 1)
                         else:
                             nu_1_hat = nu_1.predict(_transform_poly(test_X, self.opts)).reshape(-1, 1)

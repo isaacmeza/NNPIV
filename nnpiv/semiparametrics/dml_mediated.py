@@ -50,7 +50,8 @@ from nnpiv.rkhs import RKHS2IVCV, ApproxRKHSIVCV, RKHS2IVL2
 from joblib import Parallel, delayed
 from scipy.optimize import minimize_scalar
 
-device = torch.cuda.current_device() if torch.cuda.is_available() else None
+DEVICE = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
+toT = lambda a: torch.as_tensor(a, dtype=torch.float32, device=DEVICE)
 
 def _get(opts, key, default):
     """
@@ -459,9 +460,9 @@ class DML_mediated:
 
             #First stage
             if self.nn_1==True:
-                Y, D, M, W, X, Z = map(lambda x: torch.Tensor(x), [Y, D, M, W, X, Z]) 
+                Y, D, M, W, X, Z = map(toT, [Y, D, M, W, X, Z]) 
 
-            ind = np.where(D==1)[0]
+            ind = (torch.nonzero(D.eq(1), as_tuple=False).squeeze(1) if self.nn_1 else np.where(D==1)[0])
             M1 = M[ind]
             W1 = W[ind]
             X1 = X[ind,:]
@@ -482,8 +483,9 @@ class DML_mediated:
 
             if self.nn_1==True:
                 A1 = torch.cat((M,X,W),1)
-                bridge_1_hat = torch.Tensor(bridge_1.predict(A1.to(device),
-                            model='avg', burn_in=_get(self.opts, 'burnin', 0)))
+                _pred = bridge_1.predict(A1.to(DEVICE), model='avg', burn_in=_get(self.opts, 'burnin', 0))
+                bridge_1_hat = _pred if isinstance(_pred, torch.Tensor) else toT(_pred)
+
             else:
                 A1 = _transform_poly(np.column_stack((M,X,W)),self.opts)
                 bridge_1_hat = bridge_1.predict(A1)
@@ -495,11 +497,11 @@ class DML_mediated:
             #Second stage 
             if self.nn_1!=self.nn_2:
                 if self.nn_2==False:
-                    D, W, X, Z, bridge_1_hat = map(lambda x: x.numpy(), [D, W, X, Z, bridge_1_hat])
+                    D, W, X, Z, bridge_1_hat = map(lambda x: x.detach().cpu().numpy(), [D, W, X, Z, bridge_1_hat])
                 else:
-                    D, W, X, Z, bridge_1_hat = map(lambda x: torch.Tensor(x), [D, W, X, Z, bridge_1_hat])
+                    D, W, X, Z, bridge_1_hat = map(toT, [D, W, X, Z, bridge_1_hat])
 
-            ind = np.where(D==0)[0]
+            ind = (torch.nonzero(D.eq(0), as_tuple=False).squeeze(1) if self.nn_2 else np.where(D==0)[0])
             W0 = W[ind]
             X0 = X[ind,:]
             Z0 = Z[ind]
@@ -546,12 +548,12 @@ class DML_mediated:
 
         # First stage
         if self.nn_y==True:
-            Y, X, Z = tuple(map(lambda x: torch.Tensor(x), [Y, X, Z]))
+            Y, D, X, Z = map(toT, [Y, D, X, Z])
         else:
             X = _transform_poly(X, self.opts)
             Z = _transform_poly(Z, self.opts)
 
-        ind = np.where(D==1)[0]
+        ind = (torch.nonzero(D.eq(1), as_tuple=False).squeeze(1) if self.nn_1 else np.where(D==1)[0])
         Y1 = Y[ind]
         X1 = X[ind, :]
         Z1 = Z[ind]
@@ -674,9 +676,9 @@ class DML_mediated:
 
             #First stage
             if self.nn_q1==True:
-                ps_hat_0, ps_hat_00, ps_hat_01, D, M, W, X, Z = map(lambda x: torch.Tensor(x), [ps_hat_0, ps_hat_00, ps_hat_01, D, M, W, X, Z]) 
+                ps_hat_0, ps_hat_00, ps_hat_01, D, M, W, X, Z = map(toT, [ps_hat_0, ps_hat_00, ps_hat_01, D, M, W, X, Z])
 
-            ind = np.where(D==0)[0]
+            ind = (torch.nonzero(D.eq(0), as_tuple=False).squeeze(1) if self.nn_2 else np.where(D==0)[0])
             ps_hat_0 = ps_hat_0[ind]
             W1 = W[ind]
             X1 = X[ind,:]
@@ -696,8 +698,8 @@ class DML_mediated:
 
             if self.nn_q1==True:
                 A1 = torch.cat((X,Z),1)
-                bridge_1_hat = torch.Tensor(bridge_1.predict(A1.to(device),
-                            model='avg', burn_in=_get(self.opts, 'burnin', 0)))
+                _pred = bridge_1.predict(A1.to(DEVICE), model='avg', burn_in=_get(self.opts, 'burnin', 0))
+                bridge_1_hat = _pred if isinstance(_pred, torch.Tensor) else toT(_pred)
             else:    
                 A1 = _transform_poly(np.column_stack((X,Z)),self.opts)    
                 bridge_1_hat = bridge_1.predict(A1)
@@ -710,12 +712,12 @@ class DML_mediated:
             #Second stage
             if self.nn_q1!=self.nn_q2:
                 if self.nn_q2==False:
-                    D, M, W, X, Z, bridge_1_hat, ps_hat_00, ps_hat_01 = map(lambda x: x.numpy(), [D, M, W, X, Z, bridge_1_hat, ps_hat_00, ps_hat_01])
+                    D, M, W, X, Z, bridge_1_hat, ps_hat_00, ps_hat_01 = map(lambda x: x.detach().cpu().numpy(), [D, M, W, X, Z, bridge_1_hat, ps_hat_00, ps_hat_01])
                 else:
-                    D, M, W, X, Z, bridge_1_hat, ps_hat_00, ps_hat_01 = map(lambda x: torch.Tensor(x), [D, M, W, X, Z, bridge_1_hat, ps_hat_00, ps_hat_01])
+                    D, M, W, X, Z, bridge_1_hat, ps_hat_00, ps_hat_01 = map(toT, [D, M, W, X, Z, bridge_1_hat, ps_hat_00, ps_hat_01])
 
             bridge_1_hat = bridge_1_hat*(ps_hat_00/ps_hat_01)
-            ind = np.where(D==1)[0]
+            ind = (torch.nonzero(D.eq(1), as_tuple=False).squeeze(1) if self.nn_1 else np.where(D==1)[0])
             M0 = M[ind]
             W0 = W[ind]
             X0 = X[ind,:]
@@ -771,7 +773,7 @@ class DML_mediated:
 
         # First stage
         if self.nn_a==True:
-            ps_hat_1, W, X, Z = tuple(map(lambda x: torch.Tensor(x), [ps_hat_1, W, X, Z]))
+            ps_hat_1, W, X, Z = map(toT, [ps_hat_1, W, X, Z])
             A2 = torch.cat((X, W), 1)
             A1 = torch.cat((X, Z), 1)
         else:
@@ -833,16 +835,16 @@ class DML_mediated:
                 # Evaluate the estimated moment functions using test_data
                 if self.estimator == 'MR' or self.estimator == 'hybrid':
                     if self.nn_1 == True:
-                        test_M, test_X, test_W = tuple(map(lambda x: torch.Tensor(x), [test_M, test_X, test_W]))
-                        gamma_1_hat = gamma_1.predict(torch.cat((test_M, test_X, test_W), 1).to(device),
+                        test_M, test_X, test_W = map(toT, [test_M, test_X, test_W])
+                        gamma_1_hat = gamma_1.predict(torch.cat((test_M, test_X, test_W), 1).to(DEVICE),
                                                     model='avg', burn_in=_get(self.opts, 'burnin', 0)).reshape(-1, 1)
                     else:
                         gamma_1_hat = gamma_1.predict(_transform_poly(np.column_stack((test_M, test_X, test_W)), opts=self.opts)).reshape(-1, 1)
 
                 if self.estimator == 'MR' or self.estimator == 'OR':
                     if self.nn_2 == True:
-                        test_X, test_W = tuple(map(lambda x: torch.Tensor(x), [test_X, test_W]))
-                        gamma_0_hat = gamma_0.predict(torch.cat((test_X, test_W), 1).to(device),
+                        test_X, test_W = map(toT, [test_X, test_W])
+                        gamma_0_hat = gamma_0.predict(torch.cat((test_X, test_W), 1).to(DEVICE),
                                                     model='avg', burn_in=_get(self.opts, 'burnin', 0)).reshape(-1, 1)
                     else:
                         gamma_0_hat = gamma_0.predict(_transform_poly(np.column_stack((test_X, test_W)), opts=self.opts)).reshape(-1, 1)
@@ -856,8 +858,9 @@ class DML_mediated:
                 A_test = np.column_stack((test_M, test_X, test_W))
 
                 if self.nn_1 == True:
-                    A_train, E_train, B_train, C_train, B_test, A_test, train_Y, train_D = map(lambda x: torch.Tensor(x), 
-                                                                                            [A_train, E_train, B_train, C_train, B_test, A_test, train_Y, train_D])
+                    A_train, E_train, B_train, C_train, B_test, A_test, train_Y, train_D = map(toT, 
+                                                            [A_train, E_train, B_train, C_train, B_test, A_test, train_Y, train_D])
+
                 else:
                     A_train = _transform_poly(A_train, self.opts)
                     E_train = _transform_poly(E_train, self.opts)
@@ -872,7 +875,7 @@ class DML_mediated:
                     model_1.fit(A_train, B_train, C_train, E_train, train_Y, subsetted=True, subset_ind1=train_D)
 
                 if self.nn_1 == True:
-                    gamma_0_hat, gamma_1_hat = model_1.predict(B_test.to(device), A_test.to(device), model='avg', burn_in=_get(self.opts, 'burnin', 0))
+                    gamma_0_hat, gamma_1_hat = model_1.predict(B_test.to(DEVICE), A_test.to(DEVICE), model='avg', burn_in=_get(self.opts, 'burnin', 0))
                     gamma_0_hat = gamma_0_hat.reshape(-1, 1)
                     gamma_1_hat = gamma_1_hat.reshape(-1, 1)
                 else:
@@ -889,16 +892,16 @@ class DML_mediated:
                 # Evaluate the estimated moment functions using test_data
                 if self.estimator == 'MR' or self.estimator == 'hybrid':
                     if self.nn_q1 == True:
-                        test_X, test_Z = tuple(map(lambda x: torch.Tensor(x), [test_X, test_Z]))
-                        q_0_hat = q_0.predict(torch.cat((test_X, test_Z), 1).to(device),
+                        test_X, test_Z = map(toT, [test_X, test_Z])
+                        q_0_hat = q_0.predict(torch.cat((test_X, test_Z), 1).to(DEVICE),
                                             model='avg', burn_in=_get(self.opts, 'burnin', 0)).reshape(-1, 1)
                     else:
                         q_0_hat = q_0.predict(_transform_poly(np.column_stack((test_X, test_Z)), opts=self.opts)).reshape(-1, 1)
 
                 if self.estimator == 'MR' or self.estimator == 'IPW':
                     if self.nn_q2 == True:
-                        test_M, test_X, test_Z = tuple(map(lambda x: torch.Tensor(x), [test_M, test_X, test_Z]))
-                        q_1_hat = q_1.predict(torch.cat((test_M, test_X, test_Z), 1).to(device),
+                        test_M, test_X, test_Z = map(toT, [test_M, test_X, test_Z])
+                        q_1_hat = q_1.predict(torch.cat((test_M, test_X, test_Z), 1).to(DEVICE),
                                             model='avg', burn_in=_get(self.opts, 'burnin', 0)).reshape(-1, 1)
                     else:
                         q_1_hat = q_1.predict(_transform_poly(np.column_stack((test_M, test_X, test_Z)), opts=self.opts)).reshape(-1, 1)
@@ -922,8 +925,9 @@ class DML_mediated:
                                                     [A_train, E_train, B_train, C_train, train_D])
                 
                 if self.nn_1 == True:
-                    A_train, E_train, B_train, C_train, train_D, ps_hat_0, ps_hat_00, ps_hat_01, B_test, A_test = map(lambda x: torch.Tensor(x), 
-                                [A_train, E_train, B_train, C_train, train_D, ps_hat_0, ps_hat_00, ps_hat_01, B_test, A_test])
+                    A_train, E_train, B_train, C_train, train_D, ps_hat_0, ps_hat_00, ps_hat_01, B_test, A_test = map(
+                        toT, [A_train, E_train, B_train, C_train, train_D, ps_hat_0, ps_hat_00, ps_hat_01, B_test, A_test]
+                    )
                     
                 else:
                     A_train = _transform_poly(A_train, self.opts)
@@ -940,7 +944,7 @@ class DML_mediated:
                     model_q1.fit(A_train, B_train, C_train, E_train, 1/ps_hat_0, W=(ps_hat_00/ps_hat_01), subsetted=True, subset_ind1=1-train_D)
 
                 if self.nn_1 == True:
-                    q_1_hat, q_0_hat = model_q1.predict(B_test.to(device), A_test.to(device), model='avg', burn_in=_get(self.opts, 'burnin', 0))
+                    q_1_hat, q_0_hat = model_q1.predict(B_test.to(DEVICE), A_test.to(DEVICE), model='avg', burn_in=_get(self.opts, 'burnin', 0))
                     q_0_hat = q_0_hat.reshape(-1, 1)
                     q_1_hat = q_1_hat.reshape(-1, 1)
                 else:
@@ -1004,16 +1008,16 @@ class DML_mediated:
         # Evaluate the estimated moment functions using test_data
         if self.estimator == 'MR' or self.estimator == 'OR':
             if self.nn_y == True:
-                test_X = torch.Tensor(test_X)
-                gamma_1_hat = gamma_1.predict(test_X.to(device),
+                test_X = toT(test_X)
+                gamma_1_hat = gamma_1.predict(test_X.to(DEVICE),
                                             model='avg', burn_in=_get(self.opts, 'burnin', 0)).reshape(-1, 1)
             else:
                 gamma_1_hat = gamma_1.predict(_transform_poly(test_X, opts=self.opts)).reshape(-1, 1)
 
         if self.estimator == 'MR' or self.estimator == 'IPW' or self.estimator == 'hybrid':
             if self.nn_a == True:
-                test_X, test_Z = tuple(map(lambda x: torch.Tensor(x), [test_X, test_Z]))
-                q_1_hat = q_1.predict(torch.cat((test_X, test_Z), 1).to(device),
+                test_X, test_Z = map(toT, [test_X, test_Z])
+                q_1_hat = q_1.predict(torch.cat((test_X, test_Z), 1).to(DEVICE),
                                     model='avg', burn_in=_get(self.opts, 'burnin', 0)).reshape(-1, 1)
             else:
                 q_1_hat = q_1.predict(_transform_poly(np.column_stack((test_X, test_Z)), opts=self.opts)).reshape(-1, 1)
