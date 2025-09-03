@@ -462,7 +462,7 @@ class DML_mediated:
             if self.nn_1==True:
                 Y, D, M, W, X, Z = map(toT, [Y, D, M, W, X, Z]) 
 
-            ind = ((D.squeeze(-1) == 1).nonzero(as_tuple=True)[0] if self.nn_1 else np.where(D==1)[0])
+            ind = (torch.nonzero(D.reshape(-1) == 1).squeeze(1) if self.nn_1 else np.where(D==1)[0])
             M1 = M[ind]
             W1 = W[ind]
             X1 = X[ind,:]
@@ -501,7 +501,7 @@ class DML_mediated:
                 else:
                     D, W, X, Z, bridge_1_hat = map(toT, [D, W, X, Z, bridge_1_hat])
 
-            ind = ((D.squeeze(-1) == 0).nonzero(as_tuple=True)[0] if self.nn_2 else np.where(D==0)[0])
+            ind = (torch.nonzero(D.reshape(-1) == 0).squeeze(1) if self.nn_2 else np.where(D==0)[0])
             W0 = W[ind]
             X0 = X[ind,:]
             Z0 = Z[ind]
@@ -553,7 +553,7 @@ class DML_mediated:
             X = _transform_poly(X, self.opts)
             Z = _transform_poly(Z, self.opts)
 
-        ind = ((D.squeeze(-1) == 1).nonzero(as_tuple=True)[0] if self.nn_1 else np.where(D==1)[0])
+        ind = (torch.nonzero(D.reshape(-1) == 1).squeeze(1) if self.nn_y else np.where(D==1)[0])
         Y1 = Y[ind]
         X1 = X[ind, :]
         Z1 = Z[ind]
@@ -585,6 +585,11 @@ class DML_mediated:
         tuple
             Estimated propensity scores and threshold alpha.
         """
+
+        def _to_np(a):
+            return a.detach().cpu().numpy() if isinstance(a, torch.Tensor) else a
+        M, X, W, D = map(_to_np, (M, X, W, D))
+
         model_ps = copy.deepcopy(self.prop_score)
         X1 = np.column_stack((X,W))
         X0 = np.column_stack((M,X,W))
@@ -678,7 +683,7 @@ class DML_mediated:
             if self.nn_q1==True:
                 ps_hat_0, ps_hat_00, ps_hat_01, D, M, W, X, Z = map(toT, [ps_hat_0, ps_hat_00, ps_hat_01, D, M, W, X, Z])
 
-            ind = ((D.squeeze(-1) == 0).nonzero(as_tuple=True)[0] if self.nn_2 else np.where(D==0)[0])
+            ind = (torch.nonzero(D.reshape(-1) == 0).squeeze(1) if self.nn_q1 else np.where(D==0)[0])
             ps_hat_0 = ps_hat_0[ind]
             W1 = W[ind]
             X1 = X[ind,:]
@@ -717,7 +722,7 @@ class DML_mediated:
                     D, M, W, X, Z, bridge_1_hat, ps_hat_00, ps_hat_01 = map(toT, [D, M, W, X, Z, bridge_1_hat, ps_hat_00, ps_hat_01])
 
             bridge_1_hat = bridge_1_hat*(ps_hat_00/ps_hat_01)
-            ind = ((D.squeeze(-1) == 1).nonzero(as_tuple=True)[0] if self.nn_1 else np.where(D==1)[0])
+            ind = (torch.nonzero(D.reshape(-1) == 1).squeeze(1) if self.nn_q2 else np.where(D==1)[0])
             M0 = M[ind]
             W0 = W[ind]
             X0 = X[ind,:]

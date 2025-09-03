@@ -418,7 +418,11 @@ class DML_longterm:
                     toT, [A_train, E_train, B_train, C_train, B_test, A_test, train_G, train_Y]
                 )
 
-            ind = ((train_D.squeeze(-1) == 1).nonzero(as_tuple=True)[0] if self.nn_1 else np.where(train_D==1)[0])
+            # D==1
+            ind = (
+                torch.nonzero(train_D.reshape(-1) == 1).squeeze(1).to(A_train.device)
+                if self.nn_1 else np.where(train_D.reshape(-1) == 1)[0]
+            )
             A1_train = A_train[ind,:]
             E1_train = E_train[ind,:]
             B1_train = B_train[ind,:]
@@ -426,7 +430,11 @@ class DML_longterm:
             G1_train = train_G[ind]
             Y1_train = train_Y[ind]
 
-            ind = ((train_D.squeeze(-1) == 0).nonzero(as_tuple=True)[0] if self.nn_1 else np.where(train_D==0)[0])
+            # D==0
+            ind = (
+                torch.nonzero(train_D.reshape(-1) == 0).squeeze(1).to(A_train.device)
+                if self.nn_1 else np.where(train_D.reshape(-1) == 0)[0]
+            )
             A0_train = A_train[ind,:]
             E0_train = E_train[ind,:]
             B0_train = B_train[ind,:]
@@ -505,12 +513,15 @@ class DML_longterm:
             if self.nn_1 == True:
                 Y, D, S, X, G = map(toT, [Y, D, S, X, G])
 
-            ind = ((G==1) & (D==1)).nonzero(as_tuple=False).squeeze(1) if self.nn_1 else np.where(np.logical_and(G==1, D==1))[0]
+            ind = (torch.nonzero((G.reshape(-1) == 1) & (D.reshape(-1) == 1)).squeeze(1)
+                if self.nn_1 else np.where((G == 1) & (D == 1))[0])
             S1_1 = S[ind]
             X1_1 = X[ind, :]
             Y1_1 = Y[ind]
 
-            ind = ((G==1) & (D==0)).nonzero(as_tuple=False).squeeze(1) if self.nn_1 else np.where(np.logical_and(G==1, D==0))[0]
+            # G==1 & D==0
+            ind = (torch.nonzero((G.reshape(-1) == 1) & (D.reshape(-1) == 0)).squeeze(1)
+                if self.nn_1 else np.where((G == 1) & (D == 0))[0])
             S1_0 = S[ind]
             X1_0 = X[ind, :]
             Y1_0 = Y[ind]
@@ -548,13 +559,23 @@ class DML_longterm:
         if self.estimator == 'MR' or self.estimator == 'OR':
             # Second stage in experimental data
             if self.nn_1 != self.nn_2:
-                if self.nn_2 == False:
-                    D, X, G, bridge_1_d1_hat, bridge_1_d0_hat = map(lambda x: x.detach().cpu().numpy(), [D, X, G, bridge_1_d1_hat, bridge_1_d0_hat])
+                if not self.nn_2:
+                    D, X, G, bridge_1_d1_hat, bridge_1_d0_hat = map(
+                        lambda x: x.detach().cpu().numpy(),
+                        [D, X, G, bridge_1_d1_hat, bridge_1_d0_hat]
+                    )
                 else:
-                    D, X, G, bridge_1_d1_hat, bridge_1_d0_hat = map(toT, [D, X, G, bridge_1_d1_hat, bridge_1_d0_hat])
+                    D, X, G, bridge_1_d1_hat, bridge_1_d0_hat = map(
+                        toT, [D, X, G, bridge_1_d1_hat, bridge_1_d0_hat]
+                    )
 
-            ind_1 = np.where(np.logical_and(G == 0, D == 1))[0]
-            ind_0 = np.where(np.logical_and(G == 0, D == 0))[0]
+            if self.nn_2:
+                ind_1 = torch.nonzero((G.reshape(-1) == 0) & (D.reshape(-1) == 1)).squeeze(1).cpu().long()
+                ind_0 = torch.nonzero((G.reshape(-1) == 0) & (D.reshape(-1) == 0)).squeeze(1).cpu().long()
+            else:
+                ind_1 = np.where((G == 0) & (D == 1))[0]
+                ind_0 = np.where((G == 0) & (D == 0))[0]
+
             X0_1 = X[ind_1, :]
             bridge_1_d1_hat = bridge_1_d1_hat[ind_1]
             X0_0 = X[ind_0, :]
@@ -699,7 +720,10 @@ class DML_longterm:
             if self.nn_1 == True:
                 Y, D, S, X, G = map(toT, [Y, D, S, X, G])
 
-            ind = (G.squeeze(-1) == 1).nonzero(as_tuple=True)[0] if self.nn_1 else np.where(G==1)[0]
+            ind = (
+                torch.nonzero(G.reshape(-1) == 1).squeeze(1).to(G.device)
+                if self.nn_1 else np.where(G.reshape(-1) == 1)[0]
+            )
             S1 = S[ind]
             X1 = X[ind, :]
             Y1 = Y[ind]
@@ -733,8 +757,14 @@ class DML_longterm:
                 else:
                     D, X, G, bridge_1_hat = map(toT, [D, X, G, bridge_1_hat])
 
-            ind_1 = np.where(np.logical_and(G == 0, D == 1))[0]
-            ind_0 = np.where(np.logical_and(G == 0, D == 0))[0]
+            ind_1 = (
+                torch.nonzero((G.reshape(-1) == 0) & (D.reshape(-1) == 1)).squeeze(1).to(G.device)
+                if self.nn_2 else np.where((G == 0) & (D == 1))[0]
+            )
+            ind_0 = (
+                torch.nonzero((G.reshape(-1) == 0) & (D.reshape(-1) == 0)).squeeze(1).to(G.device)
+                if self.nn_2 else np.where((G == 0) & (D == 0))[0]
+            )
             X0_1 = X[ind_1, :]
             bridge_1_hat_1 = bridge_1_hat[ind_1]
             X0_0 = X[ind_0, :]
@@ -786,6 +816,13 @@ class DML_longterm:
         tuple
             Estimated propensity scores and threshold alpha.
         """
+        def _to_np(a):
+            return a.detach().cpu().numpy() if isinstance(a, torch.Tensor) else a
+
+        S_train, X_train, D_train, G_train, S_test, X_test = map(
+            _to_np, (S_train, X_train, D_train, G_train, S_test, X_test)
+        )
+
         model_ps = copy.deepcopy(self.prop_score)
         ind = np.where(G_train==0)[0]
         X_g0_train = X_train[ind,:]
@@ -864,6 +901,13 @@ class DML_longterm:
         tuple
             Estimated propensity scores and threshold alpha.
         """
+        def _to_np(a):
+            return a.detach().cpu().numpy() if isinstance(a, torch.Tensor) else a
+
+        S_train, X_train, D_train, G_train, S_test, X_test = map(
+            _to_np, (S_train, X_train, D_train, G_train, S_test, X_test)
+        )
+
         model_ps = copy.deepcopy(self.prop_score)
         SX_train = np.column_stack((S_train,X_train))
         ind = np.where(G_train==0)[0]
