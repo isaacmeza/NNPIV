@@ -65,6 +65,10 @@ class _BaseAGMM:
         """
         self.verbose = verbose
 
+        if device is None:
+            device = Z.device if isinstance(Z, torch.Tensor) else DEVICE
+        self.device = device
+
         if not os.path.exists(model_dir):
             os.makedirs(model_dir)
         self.tempdir = tempfile.TemporaryDirectory(dir=model_dir)
@@ -77,10 +81,14 @@ class _BaseAGMM:
             self.train_ds = TensorDataset(Z, T, Y, sample_inds)
         else:
             self.train_ds = TensorDataset(Z, T, Y)
-        self.train_dl = DataLoader(self.train_ds, batch_size=bs, shuffle=True)
 
-        self.learner = self.learner.to(device)
-        self.adversary = self.adversary.to(device)
+        self.train_dl = DataLoader(
+            self.train_ds, batch_size=bs, shuffle=True,
+            pin_memory=(self.device.type == "cuda")
+        )
+
+        self.learner = self.learner.to(self.device)
+        self.adversary = self.adversary.to(self.device)
 
         if not warm_start:
             self.learner.apply(lambda m: (
@@ -191,7 +199,9 @@ class _BaseSupLossAGMM(_BaseAGMM):
 
             for it, (zb, xb, yb) in enumerate(self.train_dl):
 
-                zb, xb, yb = map(lambda x: x.to(device), (zb, xb, yb))
+                zb = zb.to(self.device, non_blocking=True)
+                xb = xb.to(self.device, non_blocking=True)
+                yb = yb.to(self.device, non_blocking=True)
 
                 if (it % train_learner_every == 0):
                     self.learner.train()
@@ -432,8 +442,8 @@ class KernelLossAGMM(_BaseAGMM):
             print("Epoch #", epoch, sep="")
             for it, ((zb1, xb1, yb1), (zb2, xb2, yb2)) in enumerate(zip(self.train_dl, train_dl2)):
 
-                zb1, xb1, yb1 = map(lambda x: x.to(device), (zb1, xb1, yb1))
-                zb2, xb2, yb2 = map(lambda x: x.to(device), (zb2, xb2, yb2))
+                zb1 = zb1.to(self.device, non_blocking=True); xb1 = xb1.to(self.device, non_blocking=True); yb1 = yb1.to(self.device, non_blocking=True)
+                zb2 = zb2.to(self.device, non_blocking=True); xb2 = xb2.to(self.device, non_blocking=True); yb2 = yb2.to(self.device, non_blocking=True)
 
                 if it % train_learner_every == 0:
                     self.learner.train()
@@ -573,13 +583,13 @@ class MMDGMM(_BaseAGMM):
             print("Epoch #", epoch, sep="")
             for it, (zb1, xb1, yb1, idb1) in enumerate(self.train_dl):
 
-                zb1, xb1, yb1, idb1 = map(
-                    lambda x: x.to(device), (zb1, xb1, yb1, idb1))
-
+                zb1 = zb1.to(self.device, non_blocking=True); xb1 = xb1.to(self.device, non_blocking=True) 
+                yb1 = yb1.to(self.device, non_blocking=True); idb1 = idb1.to(self.device)
+                
                 idb2 = np.random.choice(sample_inds, bs2, replace=False)
-                zb2 = Z[idb2].to(device)
+                zb2 = Z[idb2].to(self.device)
                 idb3 = np.random.choice(sample_inds, bs3, replace=False)
-                zb3 = Z[idb3].to(device)
+                zb3 = Z[idb3].to(self.device)
 
                 if it % train_learner_every == 0:
                     self.learner.train()

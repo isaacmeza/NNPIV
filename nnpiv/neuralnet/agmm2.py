@@ -62,6 +62,16 @@ class _BaseAGMM2:
         self.model_dir = self.tempdir.name
         self.n_epochs = n_epochs
 
+        if device is None:
+            # prefer the device of any tensor input, otherwise fall back to CUDA/CPU
+            for t in (A, B, C, D, Y, W, subset_ind1, subset_ind2):
+                if isinstance(t, torch.Tensor):
+                    device = t.device
+                    break
+            if device is None:
+                device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        self.device = device
+
         if add_sample_inds:
             sample_inds = torch.arange(Y.shape[0]).clone().detach()
             self.train_ds = TensorDataset(A, B, C, D, Y, W, sample_inds) if not subsetted else \
@@ -69,13 +79,17 @@ class _BaseAGMM2:
         else:
             self.train_ds = TensorDataset(A, B, C, D, Y, W) if not subsetted else \
                 TensorDataset(A, B, C, D, Y, W, subset_ind1, subset_ind2)
-        self.train_dl = DataLoader(self.train_ds, batch_size=bs, shuffle=True)
+        
+        self.train_dl = DataLoader(
+            self.train_ds, batch_size=bs, shuffle=True,
+            pin_memory=(self.device.type == "cuda")
+        )
 
         # Move networks to device
-        self.learnerh = self.learnerh.to(device)
-        self.learnerg = self.learnerg.to(device)
-        self.adversary1 = self.adversary1.to(device)
-        self.adversary2 = self.adversary2.to(device)
+        self.learnerh  = self.learnerh.to(self.device)
+        self.learnerg  = self.learnerg.to(self.device)
+        self.adversary1 = self.adversary1.to(self.device)
+        self.adversary2 = self.adversary2.to(self.device)
 
         # Optional warm start
         if not warm_start:
@@ -223,7 +237,7 @@ class _BaseSupLossAGMM2(_BaseAGMM2):
 
             for it, batch in enumerate(self.train_dl):
 
-                data = tuple(x.to(device) for x in batch)
+                data = tuple(x.to(self.device, non_blocking=(self.device.type == "cuda")) for x in batch)
                 if subsetted:
                     Ab, Bb, Cb, Db, Yb, Wb, subset_ind1, subset_ind2 = data
                 else:
