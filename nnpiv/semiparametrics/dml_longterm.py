@@ -418,7 +418,7 @@ class DML_longterm:
                     toT, [A_train, E_train, B_train, C_train, B_test, A_test, train_G, train_Y]
                 )
 
-            ind = (torch.nonzero(train_D.eq(1), as_tuple=False).squeeze(1) if self.nn_1 else np.where(train_D==1)[0])
+            ind = ((train_D.squeeze(-1) == 1).nonzero(as_tuple=True)[0] if self.nn_1 else np.where(train_D==1)[0])
             A1_train = A_train[ind,:]
             E1_train = E_train[ind,:]
             B1_train = B_train[ind,:]
@@ -426,7 +426,7 @@ class DML_longterm:
             G1_train = train_G[ind]
             Y1_train = train_Y[ind]
 
-            ind = (torch.nonzero(train_D.eq(0), as_tuple=False).squeeze(1) if self.nn_1 else np.where(train_D==0)[0])
+            ind = ((train_D.squeeze(-1) == 0).nonzero(as_tuple=True)[0] if self.nn_1 else np.where(train_D==0)[0])
             A0_train = A_train[ind,:]
             E0_train = E_train[ind,:]
             B0_train = B_train[ind,:]
@@ -505,14 +505,12 @@ class DML_longterm:
             if self.nn_1 == True:
                 Y, D, S, X, G = map(toT, [Y, D, S, X, G])
 
-            ind = (torch.nonzero((G==1) & (D==1), as_tuple=False).squeeze(1)
-                    if self.nn_1 else np.where(np.logical_and(G==1, D==1))[0])
+            ind = ((G==1) & (D==1)).nonzero(as_tuple=False).squeeze(1) if self.nn_1 else np.where(np.logical_and(G==1, D==1))[0]
             S1_1 = S[ind]
             X1_1 = X[ind, :]
             Y1_1 = Y[ind]
 
-            ind = (torch.nonzero((G==1) & (D==0), as_tuple=False).squeeze(1)
-                    if self.nn_1 else np.where(np.logical_and(G==1, D==0))[0])
+            ind = ((G==1) & (D==0)).nonzero(as_tuple=False).squeeze(1) if self.nn_1 else np.where(np.logical_and(G==1, D==0))[0]
             S1_0 = S[ind]
             X1_0 = X[ind, :]
             Y1_0 = Y[ind]
@@ -701,7 +699,7 @@ class DML_longterm:
             if self.nn_1 == True:
                 Y, D, S, X, G = map(toT, [Y, D, S, X, G])
 
-            ind = (torch.nonzero(G.eq(1), as_tuple=False).squeeze(1) if self.nn_1 else np.where(G==1)[0])
+            ind = (G.squeeze(-1) == 1).nonzero(as_tuple=True)[0] if self.nn_1 else np.where(G==1)[0]
             S1 = S[ind]
             X1 = X[ind, :]
             Y1 = Y[ind]
