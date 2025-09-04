@@ -1,6 +1,6 @@
 .. _longitudinal_notebook_agmm:
 
-Nested NPIV demo: sequential (AGMM) vs simultaneous (AGMM2L2)
+Longitudinal Nested NPIV : sequential (AGMM) vs simultaneous (AGMM2L2)
 ==========================
 
 .. code:: ipython3

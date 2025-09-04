@@ -1,3 +1,5 @@
+.. _semiparametrics_notebook_agmm:
+
 Semiparametrics : DML (mediated) with Neural Nets — AGMM (sequential) & AGMM2L2 (simultaneous)
 =============================
 
