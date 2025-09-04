@@ -1,258 +1,324 @@
-Semiparametrics Notebook AGMM
+DML (mediated) with Neural Nets — AGMM (sequential) & AGMM2L2 (simultaneous)
 =============================
 
 .. code:: ipython3
 
-    import os
-    import numpy as np
-    import pandas as pd
-    
-    import mliv.dgps_nested as dgps
-    import mliv.dgps_mediated as dgps
-    import matplotlib.pyplot as plt
-    
-    import torch
-    import torch.nn as nn
-    from sklearn.cluster import KMeans
-    #from mliv.neuralnet.deepiv_fit import deep_iv_fit
-    from mliv.neuralnet.rbflayer import gaussian, inverse_multiquadric
-    from mliv.neuralnet import AGMM, AGMM2, AGMM2L2
-    from mliv.tsls import tsls, regtsls
-    
-    # Now you can import the module
-    from dml_mediated import DML_mediated
-    
-    p = 0.1  # dropout prob of dropout layers throughout notebook
-    n_hidden = 100  # width of hidden layers throughout notebook
-    
-    
-    device = torch.cuda.current_device() if torch.cuda.is_available() else None
+  # ---- Limit BLAS/OpenMP threads BEFORE importing heavy libs ----
+  import os as os
+  os.environ.setdefault("OMP_NUM_THREADS", "1")
+  os.environ.setdefault("OPENBLAS_NUM_THREADS", "1")
+  os.environ.setdefault("MKL_NUM_THREADS", "1")
+  os.environ.setdefault("VECLIB_MAXIMUM_THREADS", "1")
+  os.environ.setdefault("NUMEXPR_NUM_THREADS", "1")
+
+  # ---- Standard libs ----
+  import sys
+  import time
+  import platform
+  from pathlib import Path
+
+  # ---- Third-party ----
+  import numpy as np
+  from threadpoolctl import threadpool_limits
+
+  # Keep native libraries (BLAS/OpenMP) to 1 thread
+  threadpool_limits(1)
+
+  # ---- Local repo imports (adjust path if needed) ----
+  sys.path.append(str(Path.cwd() / "../../simulations"))
+  import dgps_mediated as dgps  
+
+  import torch 
+  import torch.nn as nn  
+  from nnpiv.neuralnet.agmm import AGMM  
+  from nnpiv.neuralnet.agmm2 import AGMM2L2 
+  from nnpiv.semiparametrics import DML_mediated  
+
+
+  # -----------------------
+  # Reproducibility helpers
+  # -----------------------
+  def seed_everything(seed: int = 123) -> None:
+      """Set seeds for reproducibility."""
+      import random
+      random.seed(seed)
+      np.random.seed(seed)
+      torch.manual_seed(seed)
+      if torch.cuda.is_available():
+          torch.cuda.manual_seed_all(seed)
+      # Keep torch to 1 thread too
+      try:
+          torch.set_num_threads(1)
+          torch.set_num_interop_threads(1)
+      except Exception:
+          pass
+
+  seed_everything(123)
+
+  # -----------------------
+  # Resource print utility
+  # -----------------------
+  def print_resources():
+      """Print basic compute resource info (CPU, GPU, library versions)."""
+      cpu_cores = os.cpu_count()
+      pyver = sys.version.split()[0]
+      npver = np.__version__
+      torchver = torch.__version__
+      if torch.cuda.is_available():
+          try:
+              gpu_name = torch.cuda.get_device_name(0)
+          except Exception:
+              gpu_name = "Unknown GPU"
+          gpu_info = f"CUDA: available — {gpu_name}"
+      else:
+          gpu_info = "CUDA: not available"
+      print("=== Compute resources ===")
+      print(f"Python: {pyver}")
+      print(f"NumPy: {npver}")
+      print(f"PyTorch: {torchver}")
+      print(f"CPU cores: {cpu_cores}")
+      print(gpu_info)
+      print("Thread caps (env):")
+      for k in ["OMP_NUM_THREADS","OPENBLAS_NUM_THREADS","MKL_NUM_THREADS",
+                "VECLIB_MAXIMUM_THREADS","NUMEXPR_NUM_THREADS"]:
+          print(f"  {k}={os.environ.get(k, 'unset')}")
+      print(f"Platform: {platform.platform()}")
+      print("=========================\n")
+
+
+  # -----------------------
+  # Result formatter
+  # -----------------------
+  def summarize_dml_result(name: str, result, elapsed: float):
+      """
+      Accepts result from .dml() and prints θ, SE, 95% CI when available.
+      Compatible with returns like (theta, var, ci) or (theta, var, ci, cov).
+      """
+      if isinstance(result, tuple):
+          if len(result) == 3:
+              theta, var, ci = result
+              cov = None
+          elif len(result) == 4:
+              theta, var, ci, cov = result
+          else:
+              print(f"[{name}] time={elapsed:.2f}s — result={result}")
+              return
+      else:
+          print(f"[{name}] time={elapsed:.2f}s — result={result}")
+          return
+
+      theta = np.atleast_1d(theta).astype(float)
+      var = np.atleast_1d(var).astype(float)
+      se = np.sqrt(var)
+      ci = np.array(ci, dtype=float) if ci is not None else None
+
+      def fmt_arr(a):
+          return f"{float(a[0]):.4f}" if a.size == 1 else np.array2string(a, precision=4)
+
+      print(f"[{name}] time={elapsed:.2f}s")
+      print(f"  theta: {fmt_arr(theta)}")
+      print(f"  SE   : {fmt_arr(se)}")
+      if ci is not None:
+          if ci.ndim == 1 and ci.size == 2:
+              print(f"  95% CI: [{ci[0]:.4f}, {ci[1]:.4f}]")
+          else:
+              print(f"  95% CI: {np.array2string(ci, precision=4)}")
+      if 'cov' in locals() and cov is not None:
+          print(f"  (cov shape: {cov.shape})")
+      print("")
+
 
 .. code:: ipython3
 
-    
-    fn_number = 0
-    tau_fn = dgps.get_tau_fn(fn_number)
-    tauinv_fn = dgps.get_tauinv_fn(fn_number)
-    W, Z, X, M, D, Y, tau_fn = dgps.get_data(2000, tau_fn)
-    
-    V = np.random.rand(Y.shape[0])
-    V = V.reshape(-1, 1)
-    
-    print(np.column_stack((W,X,Z)).shape)
-    ind = np.where(D==0)[0]
-    W0 = W[ind]
-    X0 = X[ind,:]
-    W0_test = np.zeros((1000, 1+X.shape[1]))
-    W0_test += np.median(np.column_stack((X0,W0)), axis=0, keepdims=True)
-    W0_test[:, 2] = np.linspace(np.percentile(
-                W0[:, 0], 5), np.percentile(W0[:, 0], 95), 1000)
-    
-    # True parameters
-    b_yd = 2.0; b_ym = 1.0; b_yx = np.array([[-1.0],[-1.0]]); b_yu = -1.0; b_yw = 2.0; b_y0 = 2.0
-    b_wx = np.array([[0.2],[0.2]]); b_wu = -0.6; b_w0 = 0.3
-    b_md = -0.3; b_mx = np.array([[-0.5],[-0.5]]); b_mu = 0.4; b_m0 = 0.0
-        
-    gamma_1w = (b_yw*b_wu + b_yu)/b_wu
-    gamma_1x = b_yw*b_wx + b_yx - gamma_1w*b_wx
-    gamma_1m = b_ym
-    gamma_10 = b_y0 + b_yd + b_yw*b_w0 - gamma_1w*b_w0
-    
-    gamma_0w = (gamma_1m*b_mu + gamma_1w*b_wu)/b_wu
-    gamma_0x = gamma_1m*b_mx + gamma_1w*b_wx + gamma_1x - gamma_0w*b_wx
-    gamma_00 = gamma_10 + gamma_1m*b_m0 + gamma_1w*b_w0 - gamma_0w*b_w0
-    
-        # True nuisance function
-    expected_te = gamma_00 + tauinv_fn(W0_test)@np.row_stack((gamma_0x, gamma_0w))
-    D_ = D.copy()
-    
+  === Compute resources ===
+  Python: 3.10.18
+  NumPy: 2.2.6
+  PyTorch: 2.5.0
+  CPU cores: 112
+  CUDA: not available
+  Thread caps (env):
+    OMP_NUM_THREADS=1
+    OPENBLAS_NUM_THREADS=1
+    MKL_NUM_THREADS=1
+    VECLIB_MAXIMUM_THREADS=1
+    NUMEXPR_NUM_THREADS=1
+  Platform: Linux-4.18.0-553.44.1.el8_10.x86_64-x86_64-with-glibc2.28
+  =========================    
 
 
 .. parsed-literal::
 
-    (2000, 4)
-    
+  # -----------------------
+  # Print resources 
+  # -----------------------
+  print_resources()
+  DEVICE = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
 
 .. code:: ipython3
 
-    def _get_learner(n_t):
-        return nn.Sequential(nn.Dropout(p=p), nn.Linear(n_t, n_hidden), nn.LeakyReLU(),
-                             nn.Dropout(p=p), nn.Linear(n_hidden, 1))
-    
-    
-    def _get_adversary(n_z):
-        return nn.Sequential(nn.Dropout(p=p), nn.Linear(n_z, n_hidden), nn.LeakyReLU(),
-                             nn.Dropout(p=p), nn.Linear(n_hidden, 1))
-    
-    
-    agmm_1 = AGMM(_get_learner(4),_get_adversary(4))
-    agmm_2 = AGMM(_get_learner(3),_get_adversary(3))
+  # =========================================================
+  # Data generation
+  # =========================================================
+  # Function dictionary (for reference):
+  # {'abs': 0, '2dpoly': 1, 'sigmoid': 2,
+  #  'sin': 3, 'frequent_sin': 4, 'abs_sqrt': 5, 'step': 6, '3dpoly': 7,
+  #  'linear': 8, 'rand_pw': 9, 'abspos': 10, 'sqrpos': 11, 'band': 12,
+  #  'invband': 13, 'steplinear': 14, 'pwlinear': 15, 'exponential': 16}
+
+  fn_number = 0
+  tau_fn = dgps.get_tau_fn(fn_number)
+  tauinv_fn = dgps.get_tauinv_fn(fn_number)  # kept for parity with your code
+  W, Z, X, M, D, Y, tau_fn = dgps.get_data(2000, tau_fn)
+
+  # Ground-truth value for the target estimand (for log reference)
+  TRUE_PARAM = 4.05
+  print(f"=== Ground truth (for log reference) ===\nTrue parameter for E[Y(1,M(0))] ≈ {TRUE_PARAM:.2f}\n")
+
+
+  # =========================================================
+  # NN architecture helpers (dropout & width are configurable)
+  # =========================================================
+  p = 0.10
+  n_hidden = 100
+
+  def _get_learner(n_t: int) -> nn.Module:
+      return nn.Sequential(
+          nn.Dropout(p=p), nn.Linear(n_t, n_hidden), nn.LeakyReLU(),
+          nn.Dropout(p=p), nn.Linear(n_hidden, 1)
+      )
+
+  def _get_adversary(n_z: int) -> nn.Module:
+      return nn.Sequential(
+          nn.Dropout(p=p), nn.Linear(n_z, n_hidden), nn.LeakyReLU(),
+          nn.Dropout(p=p), nn.Linear(n_hidden, 1)
+      )
+
+
+  # =========================================================
+  # Model builders (dimensions inferred from data)
+  # =========================================================
+  def build_agmm_pair_for_mediated(M, X, W, Z):
+      """
+      Build two AGMM models with correct input dims for the mediated setup.
+      Stage 1 (bridge on treated arm):
+          T = [M, X, W], Z = [M, X, Z]
+      Stage 2:
+          T = [X, W],     Z = [X, Z]
+      """
+      T1_dim = M.shape[1] + X.shape[1] + W.shape[1]
+      Z1_dim = M.shape[1] + X.shape[1] + Z.shape[1]
+      T2_dim = X.shape[1] + W.shape[1]
+      Z2_dim = X.shape[1] + Z.shape[1]
+      m1 = AGMM(_get_learner(T1_dim), _get_adversary(Z1_dim))
+      m2 = AGMM(_get_learner(T2_dim), _get_adversary(Z2_dim))
+      return m1, m2
+
+  def build_agmm2_for_mediated(M, X, W, Z):
+      """For model1 (outcome bridge)."""
+      A_dim = M.shape[1] + X.shape[1] + W.shape[1]   
+      B_dim = X.shape[1] + W.shape[1]                 
+      E_dim = M.shape[1] + X.shape[1] + Z.shape[1]   
+      C_dim = X.shape[1] + Z.shape[1]                 
+      return AGMM2L2(
+          learnerh=_get_learner(B_dim),
+          learnerg=_get_learner(A_dim),
+          adversary1=_get_adversary(E_dim),
+          adversary2=_get_adversary(C_dim),
+      )
+
+  def build_agmm2_for_mediated_q1(M, X, W, Z):
+      """For model_q1 (q-bridge)."""
+      A_prime_dim = X.shape[1] + W.shape[1]                 #  (this goes to learnerg)
+      B_prime_dim = M.shape[1] + X.shape[1] + W.shape[1]    #  (this goes to learnerh)
+      D_prime_dim = X.shape[1] + Z.shape[1]                 #  (this goes to adversary1)
+      C_prime_dim = M.shape[1] + X.shape[1] + Z.shape[1]    #  (this goes to adversary2)
+      return AGMM2L2(
+          learnerh=_get_learner(B_prime_dim),   
+          learnerg=_get_learner(A_prime_dim),   
+          adversary1=_get_adversary(D_prime_dim),  
+          adversary2=_get_adversary(C_prime_dim),  
+      )
+
+.. parsed-literal::
+
+  === Ground truth (for log reference) ===
+  True parameter for E[Y(1,M(0))] ≈ 4.05
 
 .. code:: ipython3
 
-    dml_agmm = DML_mediated(Y, D, M, W, Z, X,
-                            estimator='OR',
-                            estimand='E[Y(1,M(0))]',
-                            model1 = agmm_1,
-                            model2 = agmm_2,
-                            modelq1 = agmm_2,
-                            modelq2 = agmm_1,
-                            n_folds=5, n_rep=1,
-                            CHIM = False,
-                            nn_1 = True,
-                            nn_2 = True,
-                            nn_q1 = True,
-                            nn_q2 = True,
-                            fitargs1 = {'n_epochs': 300, 'bs': 100, 'learner_lr': 1e-4, 'adversary_lr': 1e-4, 'learner_l2': 1e-3, 'adversary_l2': 1e-4, 'adversary_norm_reg' : 1e-3},
-                            fitargs2 = {'n_epochs': 300, 'bs': 100, 'learner_lr': 1e-4, 'adversary_lr': 1e-4, 'learner_l2': 1e-3, 'adversary_l2': 1e-4},
-                            fitargsq1 = {'n_epochs': 300, 'bs': 100, 'learner_lr': 1e-4, 'adversary_lr': 1e-4, 'learner_l2': 1e-3, 'adversary_l2': 1e-4},
-                            fitargsq2 = {'n_epochs': 300, 'bs': 100, 'learner_lr': 1e-4, 'adversary_lr': 1e-4, 'learner_l2': 1e-3, 'adversary_l2': 1e-4},
-                            opts = {'lin_degree': 1, 'burnin': 200})
-    
-    
-    print(dml_agmm.dml())
+  # =========================================================
+  # 1) Sequential estimator (MR) with AGMM
+  # =========================================================
+  m1, m2 = build_agmm_pair_for_mediated(M, X, W, Z)
+  fitargs_seq = {
+      "n_epochs": 300, "bs": 100,
+      "learner_lr": 1e-4, "adversary_lr": 1e-4,
+      "learner_l2": 1e-3, "adversary_l2": 1e-4,
+      "adversary_norm_reg": 1e-3,
+      "device": DEVICE,
+  }
+  dml_agmm = DML_mediated(
+      Y, D, M, W, Z, X,
+      estimator="MR",
+      estimand="E[Y(1,M(0))]",
+      nn_1=[True, True],         # use torch path for both bridge stages
+      nn_q1=[True, True],        # and for q-models
+      model1=[m1, m2],
+      modelq1=[m2, m1],          # your original ordering
+      n_folds=5, n_rep=1,
+      fitargs1=[fitargs_seq, fitargs_seq],
+      fitargsq1=[fitargs_seq, fitargs_seq],
+      opts={"lin_degree": 1, "burnin": 200},
+  )
+  t0 = time.perf_counter()
+  res_seq = dml_agmm.dml()
+  t1 = time.perf_counter()
+  summarize_dml_result("Sequential (MR) with AGMM", res_seq, t1 - t0)
 
 
-.. parsed-literal::
+  # =========================================================
+  # 2) Simultaneous estimator (MR) with AGMM2L2
+  # =========================================================
+  agmm2_model_1  = build_agmm2_for_mediated(M, X, W, Z)
+  agmm2_model_q1 = build_agmm2_for_mediated_q1(M, X, W, Z)
 
-    Rep: 1
-    
+  fitargs_sim = {
+      "n_epochs": 600, "bs": 100,
+      "learner_lr": 1e-4, "adversary_lr": 1e-4,
+      "learner_l2": 1e-3, "adversary_l2": 1e-4,
+      "device": DEVICE,
+  }
+  opts_sim = {"burnin": 400}
 
-.. parsed-literal::
 
-     80%|████████  | 4/5 [05:21<00:47, 47.79s/it] Exception ignored in: <finalize object at 0x227ec129d00; dead>
-    Traceback (most recent call last):
-      File "C:\Program Files\WindowsApps\PythonSoftwareFoundation.Python.3.9_3.9.3568.0_x64__qbz5n2kfra8p0\lib\weakref.py", line 591, in __call__
-        return info.func(*info.args, **(info.kwargs or {}))
-      File "C:\Program Files\WindowsApps\PythonSoftwareFoundation.Python.3.9_3.9.3568.0_x64__qbz5n2kfra8p0\lib\tempfile.py", line 820, in _cleanup
-        cls._rmtree(name)
-      File "C:\Program Files\WindowsApps\PythonSoftwareFoundation.Python.3.9_3.9.3568.0_x64__qbz5n2kfra8p0\lib\tempfile.py", line 816, in _rmtree
-        _shutil.rmtree(name, onerror=onerror)
-      File "C:\Program Files\WindowsApps\PythonSoftwareFoundation.Python.3.9_3.9.3568.0_x64__qbz5n2kfra8p0\lib\shutil.py", line 759, in rmtree
-        return _rmtree_unsafe(path, onerror)
-      File "C:\Program Files\WindowsApps\PythonSoftwareFoundation.Python.3.9_3.9.3568.0_x64__qbz5n2kfra8p0\lib\shutil.py", line 629, in _rmtree_unsafe
-        onerror(os.unlink, fullname, sys.exc_info())
-      File "C:\Program Files\WindowsApps\PythonSoftwareFoundation.Python.3.9_3.9.3568.0_x64__qbz5n2kfra8p0\lib\tempfile.py", line 808, in onerror
-        cls._rmtree(path)
-      File "C:\Program Files\WindowsApps\PythonSoftwareFoundation.Python.3.9_3.9.3568.0_x64__qbz5n2kfra8p0\lib\tempfile.py", line 816, in _rmtree
-        _shutil.rmtree(name, onerror=onerror)
-      File "C:\Program Files\WindowsApps\PythonSoftwareFoundation.Python.3.9_3.9.3568.0_x64__qbz5n2kfra8p0\lib\shutil.py", line 759, in rmtree
-        return _rmtree_unsafe(path, onerror)
-      File "C:\Program Files\WindowsApps\PythonSoftwareFoundation.Python.3.9_3.9.3568.0_x64__qbz5n2kfra8p0\lib\shutil.py", line 610, in _rmtree_unsafe
-        onerror(os.scandir, path, sys.exc_info())
-      File "C:\Program Files\WindowsApps\PythonSoftwareFoundation.Python.3.9_3.9.3568.0_x64__qbz5n2kfra8p0\lib\shutil.py", line 607, in _rmtree_unsafe
-        with os.scandir(path) as scandir_it:
-    NotADirectoryError: [WinError 267] The directory name is invalid: '.\\tmp3q0ij066\\epoch292'
-    100%|██████████| 5/5 [05:23<00:00, 64.69s/it]
-
-.. parsed-literal::
-
-    (4.1756363, 2.2139876, array([4.1104255, 4.240847 ], dtype=float32))
-    
-
-.. parsed-literal::
-
-    
-    
-
-.. code:: ipython3
-
-    fitargs1 = {
-        'n_epochs': 300, 
-        'bs': 100, 
-        'learner_lr': 1e-4, 
-        'adversary_lr': 1e-4, 
-        'learner_l2': 1e-3, 
-        'adversary_l2': 1e-4, 
-        'adversary_norm_reg': 1e-3
-    }
-    
-    fitargs2 = {
-        'n_epochs': 300, 
-        'bs': 100, 
-        'learner_lr': 1e-4, 
-        'adversary_lr': 1e-4, 
-        'learner_l2': 1e-3, 
-        'adversary_l2': 1e-4
-    }
-    
-    Y, D, M, W, X, Z = map(lambda x: torch.Tensor(x), [Y, D, M, W, X, Z])
-    
-    ind = np.where(D == 1)[0]
-    M1 = M[ind]
-    W1 = W[ind]
-    X1 = X[ind, :]
-    Z1 = Z[ind]
-    Y1 = Y[ind]
-    
-    A2 = torch.cat((M1, X1, Z1), 1)
-    A1 = torch.cat((M1, X1, W1), 1)
-    
-    bridge_1 = agmm_1.fit(A2, A1, Y1, **fitargs1)
-    
-    A1 = torch.cat((M, X, W), 1)
-    bridge_1_hat = torch.Tensor(bridge_1.predict(A1.to(device), model='avg', burn_in=200))
-    
-    D, W, X, Z, bridge_1_hat = map(lambda x: torch.Tensor(x), [D, W, X, Z, bridge_1_hat])
-    
-    ind = np.where(D == 0)[0]
-    W0 = W[ind]
-    X0 = X[ind, :]
-    Z0 = Z[ind]
-    bridge_1_hat = bridge_1_hat[ind]
-    
-    B2 = torch.cat((X0, Z0), 1)
-    B1 = torch.cat((X0, W0), 1)
-    
-    bridge_2 = agmm_2.fit(B2, B1, bridge_1_hat, **fitargs2)
-    
-    gamma_0_hat = bridge_2.predict(torch.cat((X, W), 1).to(device), model='avg', burn_in=200)
-    print(np.mean(gamma_0_hat))
-    print(np.var(gamma_0_hat))
-    
-
+  dml2_agmm = DML_mediated(
+      Y, D, M, W, Z, X,
+      estimator="MR",
+      estimand="E[Y(1,M(0))]",
+      model1=agmm2_model_1, nn_1=True,
+      modelq1=agmm2_model_q1, nn_q1=True,
+      fitargs1=fitargs_sim,
+      fitargsq1=fitargs_sim,
+      n_folds=5, n_rep=1, opts=opts_sim,
+  )
+  t0 = time.perf_counter()
+  res_sim = dml2_agmm.dml()
+  t1 = time.perf_counter()
+  summarize_dml_result("Simultaneous (MR) with AGMM2L2", res_sim, t1 - t0)
 
 .. parsed-literal::
 
-    4.175998
-    5.155775
-    
+  Rep: 1
+  100%|██████████| 5/5 [03:17<00:00, 39.59s/it] 
+  [Sequential (MR) with AGMM] time=197.93s
+    theta: 4.0745
+    SE   : 5.2253
+    95% CI: [3.8455, 4.3035]
 
-.. code:: ipython3
-
-    A = torch.tensor(np.column_stack((M,X,W)), dtype=torch.float32)
-    D = torch.tensor(D_, dtype=torch.float32)
-    E = torch.tensor(np.column_stack((M,X,Z)), dtype=torch.float32)
-    B = torch.tensor(np.column_stack((X,W)), dtype=torch.float32)
-    C = torch.tensor(np.column_stack((X,Z)), dtype=torch.float32)
-    
-    
-
-.. code:: ipython3
-
-    fitargs = {
-        'n_epochs': 100, 
-        'bs': 100, 
-        'learner_lr': 0.001, 
-        'adversary_lr': 0.001, 
-        'learner_l2': 1e-3, 
-        'adversary_l2': 1e-4
-    }
-    
-    agmm2_model = AGMM2(learnerh = _get_learner(B.shape[1]), learnerg = _get_learner(A.shape[1]),
-                         adversary1 = _get_adversary(E.shape[1]), adversary2 = _get_adversary(C.shape[1]))
-    
-    
-    agmm2_pred_b, agmm2_pred_a = agmm2_model.fit(A, B, C, E, Y, subsetted=True, subset_ind1=D, **fitargs).predict(B.to(device), A.to(device), model='avg', burn_in=10)
-
-.. code:: ipython3
-
-    print(np.mean(agmm2_pred_b))
-    print(np.var(agmm2_pred_b))
-
-
-.. parsed-literal::
-
-    3.7640064
-    10.023633
+  Rep: 1
+  100%|██████████| 5/5 [11:24<00:00, 136.81s/it]
+  [Simultaneous (MR) with AGMM2L2] time=684.06s
+    theta: 4.1246
+    SE   : 5.2737
+    95% CI: [3.8935, 4.3557]
     

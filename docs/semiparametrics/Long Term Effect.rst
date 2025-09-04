@@ -69,3 +69,10 @@ The long-term counterfactual is
    :template: class.rst
 
    dml_longterm.DML_longterm
+
+**References**
+
+- Athey, S., Chetty, R., Imbens, G., 2020a. `Combining experimental and observational data to estimate treatment effects on long-term outcomes <https://arxiv.org/abs/2006.09676>`_.
+- Athey, S., Chetty, R., Imbens, G., Kang, H., 2020b. `Estimating treatment effects using multiple surrogates: the role of the surrogate score and the surrogate index <https://arxiv.org/abs/1603.09326>`_.
+- Chen, J., Ritzwoller, D. M., 2023. `Semiparametric estimation of long-term treatment effects <https://doi.org/10.1016/j.jeconom.2023.105545>`_, Journal of Econometrics, Volumen 237, Issue 2, Part A.
+

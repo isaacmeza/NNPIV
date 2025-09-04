@@ -4,7 +4,14 @@ Installation & Usage
 .. _installation:
 
 
-To use NNPIV, first install it using setup:
+To use NNPIV, first install it using editable/development install (PEP 660):
+
+.. code-block:: console
+
+   (.venv) $ pip install -e .
+
+
+Alternatively, you can use the following command (deprecated):
 
 .. code-block:: console
 

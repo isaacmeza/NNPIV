@@ -7,8 +7,8 @@ with open("README.rst", "r") as fh:
     long_description = fh.read()
 
 setuptools.setup(
-    name="nnpiv",  # Replace with your own username
-    version="0.0.1",
+    name="nnpiv",  
+    version="0.2.0",
     author="",
     author_email="",
     description="NESTED NONPARAMETRIC INSTRUMENTAL VARIABLE REGRESSION",
