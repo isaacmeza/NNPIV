@@ -1,4 +1,4 @@
-DML (mediated) with Neural Nets — AGMM (sequential) & AGMM2L2 (simultaneous)
+Semiparametrics : DML (mediated) with Neural Nets — AGMM (sequential) & AGMM2L2 (simultaneous)
 =============================
 
 .. code:: ipython3
@@ -130,6 +130,15 @@ DML (mediated) with Neural Nets — AGMM (sequential) & AGMM2L2 (simultaneous)
 
 .. code:: ipython3
 
+  # -----------------------
+  # Print resources 
+  # -----------------------
+  print_resources()
+  DEVICE = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
+
+
+.. parsed-literal::
+
   === Compute resources ===
   Python: 3.10.18
   NumPy: 2.2.6
@@ -145,14 +154,6 @@ DML (mediated) with Neural Nets — AGMM (sequential) & AGMM2L2 (simultaneous)
   Platform: Linux-4.18.0-553.44.1.el8_10.x86_64-x86_64-with-glibc2.28
   =========================    
 
-
-.. parsed-literal::
-
-  # -----------------------
-  # Print resources 
-  # -----------------------
-  print_resources()
-  DEVICE = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
 
 .. code:: ipython3
 
