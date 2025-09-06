@@ -52,6 +52,12 @@ from scipy.optimize import minimize_scalar
 
 DEVICE = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
 toT = lambda a: torch.as_tensor(a, dtype=torch.float32, device=DEVICE)
+def _to_np(a):
+    """
+    Convert a tensor to a numpy array if it is a tensor.
+    """
+    return a.detach().cpu().numpy() if isinstance(a, torch.Tensor) else a
+
 
 def _get(opts, key, default):
     """
@@ -497,7 +503,7 @@ class DML_mediated:
             #Second stage 
             if self.nn_1!=self.nn_2:
                 if self.nn_2==False:
-                    D, W, X, Z, bridge_1_hat = map(lambda x: x.detach().cpu().numpy(), [D, W, X, Z, bridge_1_hat])
+                    D, W, X, Z, bridge_1_hat = map(_to_np, [D, W, X, Z, bridge_1_hat])
                 else:
                     D, W, X, Z, bridge_1_hat = map(toT, [D, W, X, Z, bridge_1_hat])
 
@@ -521,6 +527,7 @@ class DML_mediated:
         else:
             bridge_2 = None
         
+        Y, D, M, W, X, Z = map(_to_np, [Y, D, M, W, X, Z])
         return bridge_1, bridge_2
     
 
@@ -550,6 +557,7 @@ class DML_mediated:
         if self.nn_y==True:
             Y, D, X, Z = map(toT, [Y, D, X, Z])
         else:
+            Y, D, X, Z = map(_to_np, [Y, D, X, Z])
             X = _transform_poly(X, self.opts)
             Z = _transform_poly(Z, self.opts)
 
@@ -563,6 +571,7 @@ class DML_mediated:
         else:
             bridge_1 = model_y1.fit(Z1, X1, Y1)
         
+        Y, D, X, Z = map(_to_np, [Y, D, X, Z])
         return bridge_1
 
     def _propensity_score(self, M, X, W, D):
@@ -586,8 +595,6 @@ class DML_mediated:
             Estimated propensity scores and threshold alpha.
         """
 
-        def _to_np(a):
-            return a.detach().cpu().numpy() if isinstance(a, torch.Tensor) else a
         M, X, W, D = map(_to_np, (M, X, W, D))
 
         model_ps = copy.deepcopy(self.prop_score)
@@ -632,6 +639,7 @@ class DML_mediated:
         else:
             alfa = 0.0
 
+        M, X, W, D = map(toT, (M, X, W, D))
         return ps_hat_0.reshape(-1,1), ps_hat_00.reshape(-1,1), alfa
 
 
@@ -682,6 +690,8 @@ class DML_mediated:
             #First stage
             if self.nn_q1==True:
                 ps_hat_0, ps_hat_00, ps_hat_01, D, M, W, X, Z = map(toT, [ps_hat_0, ps_hat_00, ps_hat_01, D, M, W, X, Z])
+            else:
+                ps_hat_0, ps_hat_00, ps_hat_01, D, M, W, X, Z = map(_to_np, [ps_hat_0, ps_hat_00, ps_hat_01, D, M, W, X, Z])
 
             ind = (torch.nonzero(D.reshape(-1) == 0).squeeze(1) if self.nn_q1 else np.where(D==0)[0])
             ps_hat_0 = ps_hat_0[ind]
@@ -717,7 +727,7 @@ class DML_mediated:
             #Second stage
             if self.nn_q1!=self.nn_q2:
                 if self.nn_q2==False:
-                    D, M, W, X, Z, bridge_1_hat, ps_hat_00, ps_hat_01 = map(lambda x: x.detach().cpu().numpy(), [D, M, W, X, Z, bridge_1_hat, ps_hat_00, ps_hat_01])
+                    D, M, W, X, Z, bridge_1_hat, ps_hat_00, ps_hat_01 = map(_to_np, [D, M, W, X, Z, bridge_1_hat, ps_hat_00, ps_hat_01])
                 else:
                     D, M, W, X, Z, bridge_1_hat, ps_hat_00, ps_hat_01 = map(toT, [D, M, W, X, Z, bridge_1_hat, ps_hat_00, ps_hat_01])
 
@@ -743,6 +753,7 @@ class DML_mediated:
         else:
             bridge_2 = None
 
+        ps_hat_0, ps_hat_00, D, M, W, X, Z = map(_to_np, [ps_hat_0, ps_hat_00, D, M, W, X, Z])
         return bridge_1, bridge_2
     
 
@@ -782,6 +793,7 @@ class DML_mediated:
             A2 = torch.cat((X, W), 1)
             A1 = torch.cat((X, Z), 1)
         else:
+            ps_hat_1, W, X, Z = map(_to_np, [ps_hat_1, W, X, Z])
             A2 = _transform_poly(np.column_stack((X, W)), self.opts)
             A1 = _transform_poly(np.column_stack((X, Z)), self.opts)
 
@@ -790,6 +802,7 @@ class DML_mediated:
         else:
             bridge_1 = model_a1.fit(A2, A1, 1 / ps_hat_1)
 
+        ps_hat_1, W, X, Z = map(_to_np, [ps_hat_1, W, X, Z])
         return bridge_1
 
     def _scores_mediated(self, train_Y, train_D, train_M, train_W, train_X, train_Z, 
@@ -844,6 +857,7 @@ class DML_mediated:
                         gamma_1_hat = gamma_1.predict(torch.cat((test_M, test_X, test_W), 1).to(DEVICE),
                                                     model='avg', burn_in=_get(self.opts, 'burnin', 0)).reshape(-1, 1)
                     else:
+                        test_M, test_X, test_W = map(_to_np, [test_M, test_X, test_W])
                         gamma_1_hat = gamma_1.predict(_transform_poly(np.column_stack((test_M, test_X, test_W)), opts=self.opts)).reshape(-1, 1)
 
                 if self.estimator == 'MR' or self.estimator == 'OR':
@@ -852,6 +866,7 @@ class DML_mediated:
                         gamma_0_hat = gamma_0.predict(torch.cat((test_X, test_W), 1).to(DEVICE),
                                                     model='avg', burn_in=_get(self.opts, 'burnin', 0)).reshape(-1, 1)
                     else:
+                        test_X, test_W = map(_to_np, [test_X, test_W])
                         gamma_0_hat = gamma_0.predict(_transform_poly(np.column_stack((test_X, test_W)), opts=self.opts)).reshape(-1, 1)
 
             else:
@@ -901,6 +916,7 @@ class DML_mediated:
                         q_0_hat = q_0.predict(torch.cat((test_X, test_Z), 1).to(DEVICE),
                                             model='avg', burn_in=_get(self.opts, 'burnin', 0)).reshape(-1, 1)
                     else:
+                        test_X, test_Z = map(_to_np, [test_X, test_Z])
                         q_0_hat = q_0.predict(_transform_poly(np.column_stack((test_X, test_Z)), opts=self.opts)).reshape(-1, 1)
 
                 if self.estimator == 'MR' or self.estimator == 'IPW':
@@ -909,6 +925,7 @@ class DML_mediated:
                         q_1_hat = q_1.predict(torch.cat((test_M, test_X, test_Z), 1).to(DEVICE),
                                             model='avg', burn_in=_get(self.opts, 'burnin', 0)).reshape(-1, 1)
                     else:
+                        test_M, test_X, test_Z = map(_to_np, [test_M, test_X, test_Z])
                         q_1_hat = q_1.predict(_transform_poly(np.column_stack((test_M, test_X, test_Z)), opts=self.opts)).reshape(-1, 1)
 
             else:
@@ -1017,6 +1034,7 @@ class DML_mediated:
                 gamma_1_hat = gamma_1.predict(test_X.to(DEVICE),
                                             model='avg', burn_in=_get(self.opts, 'burnin', 0)).reshape(-1, 1)
             else:
+                test_X = _to_np(test_X)
                 gamma_1_hat = gamma_1.predict(_transform_poly(test_X, opts=self.opts)).reshape(-1, 1)
 
         if self.estimator == 'MR' or self.estimator == 'IPW' or self.estimator == 'hybrid':
@@ -1025,6 +1043,7 @@ class DML_mediated:
                 q_1_hat = q_1.predict(torch.cat((test_X, test_Z), 1).to(DEVICE),
                                     model='avg', burn_in=_get(self.opts, 'burnin', 0)).reshape(-1, 1)
             else:
+                test_X, test_Z = map(_to_np, [test_X, test_Z])
                 q_1_hat = q_1.predict(_transform_poly(np.column_stack((test_X, test_Z)), opts=self.opts)).reshape(-1, 1)
 
         # Calculate the score function depending on the estimator
