@@ -228,7 +228,8 @@ Replication notebooks are located in ``local_notebooks/``:
 
 If you use this package, please cite the associated paper and code artifact.
 
-.. Meza, I., & Singh, R. (2025). Nested Nonparametric Instrumental Variable Regression. `https://doi.org/10.48550/arXiv.2112.14249 <https://doi.org/10.48550/arXiv.2112.14249>`_
+.. [MezaSingh2025] Meza, I., & Singh, R. (2025). *Nested Nonparametric Instrumental Variable Regression*.  
+   `https://doi.org/10.48550/arXiv.2112.14249 <https://doi.org/10.48550/arXiv.2112.14249>`_
 
 
 
