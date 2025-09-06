@@ -76,8 +76,3 @@ based on constructing orthogonal moments for:
 
 - Mediation analysis
 - Long term effect
-
-
-## Installation & Replication
-
-See the full guide in [docs/Installation.rst](./docs/Installation.rst).
