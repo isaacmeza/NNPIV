@@ -1,8 +1,8 @@
 Nested Nonparametric Instrumental Variable Regression
 =====================================================
 
-.. image:: https://readthedocs.org/projects/testingnn/badge/?version=latest
-    :target: https://testingnn.readthedocs.io/en/latest/?badge=latest
+.. image:: https://readthedocs.org/projects/nnpiv/badge/?version=latest
+    :target: https://nnpiv.readthedocs.io/en/latest/?badge=latest
     :alt: Documentation Status
 
 Overview
@@ -77,3 +77,7 @@ based on constructing orthogonal moments for:
 - Mediation analysis
 - Long term effect
 
+
+## Installation & Replication
+
+See the full guide in [docs/Installation.rst](./docs/Installation.rst).
