@@ -1,6 +1,10 @@
 import sys
+from pathlib import Path
+# add the parent of 'simulations/' (the repo root) to sys.path
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
 import argparse
-from simulations.mcpy.SemiParametricsMonteCarlo import SemiParametricsMonteCarlo
+from mcpy.SemiParametricsMonteCarlo import SemiParametricsMonteCarlo
 import importlib
 
 def semiparametrics_main():

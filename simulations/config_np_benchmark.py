@@ -26,11 +26,7 @@ CONFIG = {
         "2SLS": ivfunctions_nested.tsls
     },
     "method_opts": {
-        'lin_degree': 1,
-        'lin_l1': 0.1,
-        'lin_nit': 10000,
-        'budget': 10,
-        'rf_iter': 250
+        'lin_degree': 1
     },
     "metrics": {
         'rmse': ivfunctions_nested.mse,
@@ -39,10 +35,10 @@ CONFIG = {
     "plots": {
         'est': plot_ind,
         'print_metrics': lambda x, y, z: printtable.print_table(x, y, z,
-                                                                 filename='nonparametric_fit/table1_benchmark_lin.csv')
+                                                                 filename='nonparametric_fit/table1_benchmark_2sls.csv')
     },
     "subplots": {
-        'fn_plot': [8,15,2,7,16]
+        'fn_plot': [8,15,2,16]
     },
     "sweep_plots": {
     },

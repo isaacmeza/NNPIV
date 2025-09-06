@@ -30,7 +30,12 @@ n_epochs = 300
 bs = 100
 sigma = 2.0 / g_features
 n_centers = 100
-device = torch.cuda.current_device() if torch.cuda.is_available() else None
+device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
+try:
+    torch.set_num_threads(1)
+    torch.set_num_interop_threads(1)
+except Exception:
+    pass
 print("GPU:", torch.cuda.is_available())
 
 def _get_learner(n_t):
@@ -41,10 +46,6 @@ def _get_adversary(n_z):
     return nn.Sequential(nn.Dropout(p=p), nn.Linear(n_z, n_hidden), nn.LeakyReLU(),
                          nn.Dropout(p=p), nn.Linear(n_hidden, 1))
 
-def _get_adversary_g(n_z):
-    return nn.Sequential(nn.Dropout(p=p), nn.Linear(n_z, n_hidden), nn.LeakyReLU(),
-                         nn.Dropout(p=p), nn.Linear(n_hidden, g_features), nn.ReLU())
-
 
 agmm_1 = AGMM2L2(learnerh = _get_learner(3), learnerg = _get_learner(4),
                      adversary1 = _get_adversary(4), adversary2 = _get_adversary(3))
@@ -53,13 +54,12 @@ agmm_q1 = AGMM2L2(learnerh = _get_learner(4), learnerg = _get_learner(3),
                      adversary1 = _get_adversary(3), adversary2 = _get_adversary(4))
 
 
-
 CONFIG = {
     "target_dir": "semiparametric_cov",
     "reload_results": True,
     "dgp_opts": {
         'dgp_name': 'nn',
-        'fn': [0,1,2,3,4],
+        'fn': [0,1,2,4],
         'n_samples': 2000
     },
     "methods": {

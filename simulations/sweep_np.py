@@ -1,6 +1,10 @@
 import sys
+from pathlib import Path
+# add the parent of 'simulations/' (the repo root) to sys.path
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
 import argparse
-from simulations.mcpy.NonParametricsMonteCarlo import NonParametricsMonteCarlo
+from mcpy.NonParametricsMonteCarlo import NonParametricsMonteCarlo
 import importlib
 
 def monte_carlo_main():

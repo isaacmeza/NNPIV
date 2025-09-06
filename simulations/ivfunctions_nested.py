@@ -259,7 +259,7 @@ def sparse_joint_ridgel1vsl1(data, opts):
 def rkhs2_ridge(data, opts):
     B1_test, A1, A2, B1, B2, Y = data
 
-    model = RKHS2IVL2(kernel='rbf', gamma=.05, delta_scale='auto', delta_exp=.4)
+    model = RKHS2IVL2(kernel='rbf', gamma=.0013, delta_scale='auto', delta_exp=.4)
 
     return model.fit(A1, B1, B2, A2, Y).predict(B1_test).reshape(B1_test.shape[:1] + Y.shape[1:])
 

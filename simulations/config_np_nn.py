@@ -40,7 +40,7 @@ CONFIG = {
                                                                  filename='nonparametric_fit/table1_nn.csv')
     },
     "subplots": {
-        'fn_plot': [8,15,2,7,16]
+        'fn_plot': [8,15,2,16]
     },
     "sweep_plots": {
     },

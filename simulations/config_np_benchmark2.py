@@ -25,18 +25,13 @@ CONFIG = {
     },
     "methods": { 
         "2SLS": ivfunctions_nested.tsls,
-        "Reg2SLS": ivfunctions_nested.regtsls,
-        "RKHS2L2": ivfunctions_nested.rkhs2_ridge,
-        "Sparse2": ivfunctions_nested.sparse_joint_l1vsl1,
-        "AGMM2L2": ivfunctions_nested_nn.agmm2l2,
-        "RFIV2": ivfunctions_nested.rfiv2
+        "Reg2SLS": ivfunctions_nested.regtsls
     },
     "method_opts": {
         'lin_degree': 3,
         'lin_l1': 0.1,
         'lin_nit': 10000,
         'budget': 10,
-        'rf_iter': 250
     },
     "metrics": {
         'rmse': ivfunctions_nested.mse,
@@ -45,10 +40,10 @@ CONFIG = {
     "plots": {
         'est': plot_ind,
         'print_metrics': lambda x, y, z: printtable.print_table(x, y, z,
-                                                                 filename='nonparametric_fit/table_1.csv')
+                                                                 filename='nonparametric_fit/table1_benchmark_series_reg.csv')
     },
     "subplots": {
-        'fn_plot': [8,15,2,7,16]
+        'fn_plot': [8,15,2,16]
     },
     "sweep_plots": {
     },

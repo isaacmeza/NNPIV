@@ -15,23 +15,18 @@ CONFIG = {
     },
     "dgp_opts": {
         'dgp_num': 2,
-        'fn': [2,7,16],
+        'fn': list(iter(fn_dict_paper.values())),
         'n_samples': 2000,
         'n_a': 10,
         'n_b': 10,
         'n_test': 1000,
         'gridtest': 1
     },
-    "methods": {
-        "2SLS": ivfunctions_nested.tsls,
-        "Reg2SLS": ivfunctions_nested.regtsls
+    "methods": { 
+        "ApproxRKHS": ivfunctions_nested.nystromrkhsfit
     },
     "method_opts": {
-        'lin_degree': 3,
-        'lin_l1': 0.1,
-        'lin_nit': 10000,
-        'budget': 10,
-        'rf_iter': 250
+
     },
     "metrics": {
         'rmse': ivfunctions_nested.mse,
@@ -40,10 +35,10 @@ CONFIG = {
     "plots": {
         'est': plot_ind,
         'print_metrics': lambda x, y, z: printtable.print_table(x, y, z,
-                                                                 filename='nonparametric_fit/table1_benchmark.csv')
+                                                                 filename='nonparametric_fit/table1_approxrkhs.csv')
     },
     "subplots": {
-        'fn_plot': [8,15,2,7,16]
+        'fn_plot': [8,15,2,16]
     },
     "sweep_plots": {
     },
