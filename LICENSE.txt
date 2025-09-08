@@ -1,6 +1,5 @@
 NNPIV
 
-Copyright (c) Microsoft Corporation.
 
 MIT License
 
