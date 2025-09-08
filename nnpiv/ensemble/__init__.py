@@ -1,4 +1,3 @@
-# Copyright (c) Microsoft Corporation.
 # Licensed under the MIT License.
 
 from .ensemble import EnsembleIV, EnsembleIVStar, EnsembleIVL2

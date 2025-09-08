@@ -10,7 +10,7 @@ Classes:
     ApproxRKHSIV: Approximate RKHS IV estimator using kernel approximations.
     ApproxRKHSIVCV: Approximate RKHS IV estimator with cross-validation using kernel approximations.
 """
-# Copyright (c) Microsoft Corporation.
+
 # Licensed under the MIT License.
 
 from sklearn.metrics.pairwise import pairwise_kernels, euclidean_distances

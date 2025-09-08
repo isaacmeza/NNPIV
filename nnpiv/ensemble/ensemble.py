@@ -9,7 +9,7 @@ Classes:
 Functions:
     _mysign: A helper function that returns 2 if the input is non-negative and -1 otherwise.
 """
-# Copyright (c) Microsoft Corporation.
+
 # Licensed under the MIT License.
 
 import numpy as np

@@ -1,6 +1,3 @@
-# Copyright (c) Microsoft Corporation.
-# Licensed under the MIT License.
-
 from mcpy.utils import filesafe
 import os
 import numpy as np

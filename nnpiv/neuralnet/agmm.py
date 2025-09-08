@@ -10,7 +10,7 @@ Classes:
     KernelLossAGMM: AGMM with kernel loss.
     MMDGMM: AGMM with Maximum Mean Discrepancy.
 """
-# Copyright (c) Microsoft Corporation.
+
 # Licensed under the MIT License.
 
 import os

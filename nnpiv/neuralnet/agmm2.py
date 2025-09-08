@@ -7,7 +7,7 @@ Classes:
     _BaseSupLossAGMM2L2: Base class for joint estimation of nested NPIV models with L2 regularization.
     AGMM2L2: Adversarial Generalized Method of Moments estimator for nested NPIV with L2 regularization.
 '''
-# Copyright (c) Microsoft Corporation.
+
 # Licensed under the MIT License.
 
 import os

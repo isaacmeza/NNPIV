@@ -8,7 +8,7 @@ Classes:
     RKHS2IVL2: Nested RKHS IV estimator with L2 regularization.
     RKHS2IVL2CV: Nested RKHS IV estimator with L2 regularization and cross-validation.
 """
-# Copyright (c) Microsoft Corporation.
+
 # Licensed under the MIT License.
 
 from sklearn.metrics.pairwise import pairwise_kernels, euclidean_distances

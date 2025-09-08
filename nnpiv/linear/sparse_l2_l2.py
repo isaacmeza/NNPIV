@@ -10,7 +10,7 @@ sparse_l2vsl2
 sparse_ridge_l2vsl2
     Sparse Ridge NPIV estimator using :math:`\ell_2-\ell_2` optimization.
 """
-# Copyright (c) Microsoft Corporation.
+
 # Licensed under the MIT License.
 
 import numpy as np

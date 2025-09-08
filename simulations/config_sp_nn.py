@@ -1,6 +1,3 @@
-# Copyright (c) Microsoft Corporation. All rights reserved.
-# Licensed under the MIT License.
-
 from simulations.dgps_mediated import fn_dict, fn_dict_test 
 
 import numpy as np

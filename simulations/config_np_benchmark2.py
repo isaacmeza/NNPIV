@@ -1,6 +1,3 @@
-# Copyright (c) Microsoft Corporation. All rights reserved.
-# Licensed under the MIT License.
-
 import ivfunctions_nested
 import ivfunctions_nested_nn
 from simulations.dgps_nested import fn_dict_paper 

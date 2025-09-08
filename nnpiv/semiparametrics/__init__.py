@@ -1,4 +1,3 @@
-# Copyright (c) Microsoft Corporation.
 # Licensed under the MIT License.
 
 from .dml_longterm import DML_longterm
