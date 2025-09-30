@@ -35,7 +35,10 @@ the four nuisances associated to the model are
 and the long-term counterfactual is
 
 .. math::
-   \operatorname{LONG}(d) = \mathbb{E}\left\{\int \gamma_{0}(m, X, 1) \mathrm{d} \mathbb{P}(m \mid d, X, 0)\right\}
+   \begin{aligned}
+   \operatorname{LONG}(d) & = \mathbb{E}\left\{\int \gamma_{0}(m, X, 1) \mathrm{d} \mathbb{P}(m \mid d, X, 0)\right\} \\
+   & =\mathbb{E}\left[\nu_0\left(W\right)+\alpha_0(W)\left\{Y-\delta_0(W)\right\}+\eta_0(W)\left\{\delta_0(W)-\nu_0(W)\right\}\right] 
+   \end{aligned}
 
 
 Latent Unconfounded Model
@@ -62,7 +65,10 @@ and the nuisances under this model are given by
 The long-term counterfactual is
 
 .. math::
-   \operatorname{LONG}(d) = \mathbb{E}\left\{\int \gamma_{0}(m, X, 1, d) \mathrm{d} \mathbb{P}(m \mid d, X, 0)\right\}
+   \begin{aligned}
+   \operatorname{LONG}(d) & = \mathbb{E}\left\{\int \gamma_{0}(m, X, 1, d) \mathrm{d} \mathbb{P}(m \mid d, X, 0)\right\} \\
+   & =\mathbb{E}\left[\nu_0\left(W\right)+\alpha_0(W)\left\{Y-\delta_0(W)\right\}+\eta_0(W)\left\{\delta_0(W)-\nu_0(W)\right\}\right] 
+   \end{aligned}
 
 .. autosummary::
    :toctree: _autosummary
