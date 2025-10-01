@@ -156,6 +156,8 @@ class DML_longterm:
         Model for the outcome stage - Can be a joint or sequential estimator; if the latter a list must be given
     nn_1 : bool /(list), optional
         Use neural network for the outcome stage.
+    sample_G : str, optional
+        Estimate treatment effect for the indicated subpopulation (i.e., "G=0", "G=1", "all") 
     alpha : float, optional
         Significance level for confidence intervals.
     n_folds : int, optional
@@ -186,6 +188,7 @@ class DML_longterm:
                  longterm_model='surrogacy',
                  model1=RKHS2IVL2(kernel='rbf', gamma=.0013, delta_scale='auto', delta_exp=10),
                  nn_1=False,
+                 sample_G="all",
                  alpha=0.05,
                  n_folds=5,
                  n_rep=1,
@@ -211,6 +214,7 @@ class DML_longterm:
         self.longterm_model = longterm_model
         self.prop_score = prop_score
         self.CHIM = CHIM
+        self.sample_G = sample_G
         self.alpha = alpha
         self.n_folds = n_folds
         self.n_rep = n_rep
@@ -827,6 +831,10 @@ class DML_longterm:
         ind = np.where(G_train==0)[0]
         X_g0_train = X_train[ind,:]
         D_g0_train = D_train[ind]
+        if self.sample_G != "all":
+            ind = np.where(G_train==1)[0]
+            X_g1_train = X_train[ind,:]
+            D_g1_train = D_train[ind]
         ind = np.where(D_train==1)[0]
         S_d1_train = S_train[ind]
         X_d1_train = X_train[ind,:]
@@ -839,10 +847,20 @@ class DML_longterm:
         #Treatment propensity score
         model_ps.fit(X_g0_train, D_g0_train.flatten())
         pr_d1_g0_x = model_ps.predict_proba(X_test)[:,1]
+        if self.sample_G != "all":
+            model_ps.fit(X_g1_train, D_g1_train.flatten())
+            pr_d1_g1_x = model_ps.predict_proba(X_test)[:,1]
         
         #Selection propensity score
         model_ps.fit(X_train, G_train.flatten())
         pr_g1_x = model_ps.predict_proba(X_test)[:,1]
+
+        if self.sample_G != "all":
+            model_ps.fit(X_d1_train, G_d1_train.flatten())
+            pr_g1_d1_x = model_ps.predict_proba(X_test)[:,1]
+
+            model_ps.fit(X_d0_train, G_d0_train.flatten())
+            pr_g1_d0_x = model_ps.predict_proba(X_test)[:,1]
 
         model_ps.fit(np.column_stack((S_d1_train,X_d1_train)), G_d1_train.flatten())
         pr_g1_d1_sx = model_ps.predict_proba(np.column_stack((S_test,X_test)))[:,1]
@@ -853,6 +871,13 @@ class DML_longterm:
         # Overlap assumption
         pr_d1_g0_x = np.where(pr_d1_g0_x == 1, 0.99, pr_d1_g0_x)
         pr_d1_g0_x = np.where(pr_d1_g0_x == 0, 0.01, pr_d1_g0_x)
+        if self.sample_G != "all":
+            pr_d1_g1_x = np.where(pr_d1_g1_x == 1, 0.99, pr_d1_g1_x)
+            pr_d1_g1_x = np.where(pr_d1_g1_x == 0, 0.01, pr_d1_g1_x)
+            pr_g1_d1_x = np.where(pr_g1_d1_x == 1, 0.99, pr_g1_d1_x)
+            pr_g1_d1_x = np.where(pr_g1_d1_x == 0, 0.01, pr_g1_d1_x)
+            pr_g1_d0_x = np.where(pr_g1_d0_x == 1, 0.99, pr_g1_d0_x)
+            pr_g1_d0_x = np.where(pr_g1_d0_x == 0, 0.01, pr_g1_d0_x)
         pr_g1_d1_sx = np.where(pr_g1_d1_sx == 1, 0.99, pr_g1_d1_sx)
         pr_g1_d1_sx = np.where(pr_g1_d1_sx == 0, 0.01, pr_g1_d1_sx)
         pr_g1_d0_sx = np.where(pr_g1_d0_sx == 1, 0.99, pr_g1_d0_sx)
@@ -861,19 +886,32 @@ class DML_longterm:
         pr_g1_x = np.where(pr_g1_x == 0, 0.01, pr_g1_x)
 
         if self.CHIM==True:
-            g_values = [1/(pr_d1_g0_x*(1-pr_d1_g0_x)), 1/(pr_g1_d1_sx*(1-pr_g1_d1_sx)), 1/(pr_g1_d0_sx*(1-pr_g1_d0_sx)), 1/(pr_g1_x*(1-pr_g1_x))]
-            optimized_alphas = []
+            if self.sample_G == "all":
+                g_values = [1/(pr_d1_g0_x*(1-pr_d1_g0_x)), 1/(pr_g1_d1_sx*(1-pr_g1_d1_sx)), 1/(pr_g1_d0_sx*(1-pr_g1_d0_sx)), 1/(pr_g1_x*(1-pr_g1_x))]
+                optimized_alphas = []
 
-            for g in g_values:
-                def _objective_function(alpha):
-                    return _fun_threshold_alpha(alpha, g)
-                result = minimize_scalar(_objective_function, bounds=(0.001, 0.499))
-                optimized_alphas.append(result.x)
-            alfa = max(optimized_alphas)
+                for g in g_values:
+                    def _objective_function(alpha):
+                        return _fun_threshold_alpha(alpha, g)
+                    result = minimize_scalar(_objective_function, bounds=(0.001, 0.499))
+                    optimized_alphas.append(result.x)
+                alfa = max(optimized_alphas)
+            if self.sample_G != "all":
+                g_values = [1/(pr_d1_g0_x*(1-pr_d1_g0_x)), 1/(pr_d1_g1_x*(1-pr_d1_g1_x)), 1/(pr_g1_d1_x*(1-pr_g1_d1_x)), 1/(pr_g1_d0_x*(1-pr_g1_d0_x)), 1/(pr_g1_d1_sx*(1-pr_g1_d1_sx)), 1/(pr_g1_d0_sx*(1-pr_g1_d0_sx)), 1/(pr_g1_x*(1-pr_g1_x))]
+                optimized_alphas = []
+
+                for g in g_values:
+                    def _objective_function(alpha):
+                        return _fun_threshold_alpha(alpha, g)
+                    result = minimize_scalar(_objective_function, bounds=(0.001, 0.499))
+                    optimized_alphas.append(result.x)
+                alfa = max(optimized_alphas)
         else:
             alfa = 0.0
-
-        return pr_d1_g0_x.reshape(-1,1), pr_g1_d1_sx.reshape(-1,1), pr_g1_d0_sx.reshape(-1,1), pr_g1_x.reshape(-1,1), alfa
+        if self.sample_G == "all":
+            return pr_d1_g0_x.reshape(-1,1), pr_g1_d1_sx.reshape(-1,1), pr_g1_d0_sx.reshape(-1,1), pr_g1_x.reshape(-1,1), alfa
+        if self.sample_G != "all":
+            return pr_d1_g0_x.reshape(-1,1), pr_d1_g1_x.reshape(-1,1), pr_g1_d1_x.reshape(-1,1), pr_g1_d0_x.reshape(-1,1), pr_g1_d1_sx.reshape(-1,1), pr_g1_d0_sx.reshape(-1,1), pr_g1_x.reshape(-1,1), alfa
 
 
     def _propensity_score_surrogacy(self, S_train, X_train, D_train, G_train,
@@ -1055,36 +1093,104 @@ class DML_longterm:
                                 (pr_g1_sx >= alfa) & (pr_g1_sx <= 1 - alfa) &
                                 (pr_g1_x >= alfa) & (pr_g1_x <= 1 - alfa))[0]
                 
-                # IPW to residuals of approximation of first outcome bridge                
-                alfa_1_hat = (test_G * pr_d1_g0_sx * (1-pr_g1_sx)) / (pr_g1_sx * pr_d1_g0_x * (1-pr_g1_x))
-                alfa_0_hat = (test_G * (1-pr_d1_g0_sx) * (1-pr_g1_sx)) / (pr_g1_sx * (1-pr_d1_g0_x) * (1-pr_g1_x))
+                if self.sample_G == "all":
+                    # IPW to residuals of approximation of first outcome bridge                
+                    alfa_1_hat = (test_G * pr_d1_g0_sx * (1-pr_g1_sx)) / (pr_g1_sx * pr_d1_g0_x * (1-pr_g1_x))
+                    alfa_0_hat = (test_G * (1-pr_d1_g0_sx) * (1-pr_g1_sx)) / (pr_g1_sx * (1-pr_d1_g0_x) * (1-pr_g1_x))
 
-                # IPW to residuals of approximation of second outcome bridge
-                eta_1_hat = ((1-test_G) * test_D ) / (pr_d1_g0_x * (1-pr_g1_x))
-                eta_0_hat = ((1-test_G) * (1-test_D) ) / ((1-pr_d1_g0_x) * (1-pr_g1_x))
+                    # IPW to residuals of approximation of second outcome bridge
+                    eta_1_hat = ((1-test_G) * test_D ) / (pr_d1_g0_x * (1-pr_g1_x))
+                    eta_0_hat = ((1-test_G) * (1-test_D) ) / ((1-pr_d1_g0_x) * (1-pr_g1_x))
+                if self.sample_G == "G=0":
+                    # IPW to residuals of approximation of first outcome bridge                
+                    alfa_1_hat = (test_G * pr_d1_g0_sx * (1-pr_g1_sx)) / (pr_g1_sx * pr_d1_g0_x * (1-np.mean(test_G)))
+                    alfa_0_hat = (test_G * (1-pr_d1_g0_sx) * (1-pr_g1_sx)) / (pr_g1_sx * (1-pr_d1_g0_x) * (1-np.mean(test_G)))
+
+                    # IPW to residuals of approximation of second outcome bridge
+                    eta_1_hat = ((1-test_G) * test_D ) / (pr_d1_g0_x * (1-np.mean(test_G)))
+                    eta_0_hat = ((1-test_G) * (1-test_D) ) / ((1-pr_d1_g0_x) * (1-np.mean(test_G)))
+                if self.sample_G == "G=1":
+                    # IPW to residuals of approximation of first outcome bridge                
+                    alfa_1_hat = (test_G * pr_d1_g0_sx * (1-pr_g1_sx) * pr_g1_x) / (pr_g1_sx * pr_d1_g0_x * np.mean(test_G) * (1-pr_g1_x))
+                    alfa_0_hat = (test_G * (1-pr_d1_g0_sx) * (1-pr_g1_sx) * pr_g1_x) / (pr_g1_sx * (1-pr_d1_g0_x) * np.mean(test_G) * (1-pr_g1_x))
+
+                    # IPW to residuals of approximation of second outcome bridge
+                    eta_1_hat = ((1-test_G) * test_D * pr_g1_x) / (pr_d1_g0_x * np.mean(test_G) * (1-pr_g1_x))
+                    eta_0_hat = ((1-test_G) * (1-test_D) * pr_g1_x) / ((1-pr_d1_g0_x) * np.mean(test_G) * (1-pr_g1_x))
             else:
-                pr_d1_g0_x, pr_g1_d1_sx, pr_g1_d0_sx, pr_g1_x, alfa = self._propensity_score_latent(train_S, train_X, train_D, train_G,
-                                                                    test_S, test_X)
-                mask = np.where((pr_d1_g0_x >= alfa) & (pr_d1_g0_x <= 1 - alfa) &
-                                (pr_g1_d1_sx >= alfa) & (pr_g1_d1_sx <= 1 - alfa) &
-                                (pr_g1_d0_sx >= alfa) & (pr_g1_d0_sx <= 1 - alfa) &
-                                (pr_g1_x >= alfa) & (pr_g1_x <= 1 - alfa))[0]
-                
-                # IPW to residuals of approximation of first outcome bridge
-                alfa_1_hat = (test_G * test_D * (1-pr_g1_d1_sx)) / (pr_g1_d1_sx * pr_d1_g0_x * (1-pr_g1_x))
-                alfa_0_hat = (test_G * (1-test_D) * (1-pr_g1_d0_sx)) / (pr_g1_d0_sx * (1-pr_d1_g0_x) * (1-pr_g1_x))
-                
-                # IPW to residuals of approximation of second outcome bridge
-                eta_1_hat = ((1-test_G) * test_D ) / (pr_d1_g0_x * (1-pr_g1_x))
-                eta_0_hat = ((1-test_G) * (1-test_D) ) / ((1-pr_d1_g0_x) * (1-pr_g1_x))
-        
+                if self.sample_G == "all":
+                    pr_d1_g0_x, pr_g1_d1_sx, pr_g1_d0_sx, pr_g1_x, alfa = self._propensity_score_latent(train_S, train_X, train_D, train_G,
+                                                                        test_S, test_X)
+                    mask = np.where((pr_d1_g0_x >= alfa) & (pr_d1_g0_x <= 1 - alfa) &
+                                    (pr_g1_d1_sx >= alfa) & (pr_g1_d1_sx <= 1 - alfa) &
+                                    (pr_g1_d0_sx >= alfa) & (pr_g1_d0_sx <= 1 - alfa) &
+                                    (pr_g1_x >= alfa) & (pr_g1_x <= 1 - alfa))[0]
+                    
+                    # IPW to residuals of approximation of first outcome bridge
+                    alfa_1_hat = (test_G * test_D * (1-pr_g1_d1_sx)) / (pr_g1_d1_sx * pr_d1_g0_x * (1-pr_g1_x))
+                    alfa_0_hat = (test_G * (1-test_D) * (1-pr_g1_d0_sx)) / (pr_g1_d0_sx * (1-pr_d1_g0_x) * (1-pr_g1_x))
+                    
+                    # IPW to residuals of approximation of second outcome bridge
+                    eta_1_hat = ((1-test_G) * test_D ) / (pr_d1_g0_x * (1-pr_g1_x))
+                    eta_0_hat = ((1-test_G) * (1-test_D) ) / ((1-pr_d1_g0_x) * (1-pr_g1_x))
+                if self.sample_G == "G=0":
+                    pr_d1_g0_x, pr_d1_g1_x, pr_g1_d1_x, pr_g1_d0_x, pr_g1_d1_sx, pr_g1_d0_sx, pr_g1_x, alfa = self._propensity_score_latent(train_S, train_X, train_D, train_G,
+                                                                        test_S, test_X)
+                    mask = np.where((pr_d1_g0_x >= alfa) & (pr_d1_g0_x <= 1 - alfa) &
+                                    (pr_d1_g1_x >= alfa) & (pr_d1_g1_x <= 1 - alfa) &
+                                    (pr_g1_d1_x >= alfa) & (pr_g1_d1_x <= 1 - alfa) &
+                                    (pr_g1_d0_x >= alfa) & (pr_g1_d0_x <= 1 - alfa) &
+                                    (pr_g1_d1_sx >= alfa) & (pr_g1_d1_sx <= 1 - alfa) &
+                                    (pr_g1_d0_sx >= alfa) & (pr_g1_d0_sx <= 1 - alfa) &
+                                    (pr_g1_x >= alfa) & (pr_g1_x <= 1 - alfa))[0]
+                    
+                    # IPW to residuals of approximation of first outcome bridge
+                    alfa_1_hat = (test_G * test_D * (1-pr_g1_d1_sx) * (1-pr_g1_x) * pr_g1_d1_x) / (pr_g1_d1_sx * pr_d1_g1_x * (1-pr_g1_x) * (1-pr_g1_d1_x) * (1-np.mean(test_G)))
+                    alfa_0_hat = (test_G * (1-test_D) * (1-pr_g1_d0_sx) * (1-pr_g1_x) * pr_g1_d0_x) / (pr_g1_d0_sx * (1-pr_d1_g1_x) * (1-pr_g1_x) * (1-pr_g1_d0_x) * (1-np.mean(test_G)))
+                    
+                    # IPW to residuals of approximation of second outcome bridge
+                    eta_1_hat = ((1-test_G) * test_D ) / (pr_d1_g0_x * (1-np.mean(test_G)))
+                    eta_0_hat = ((1-test_G) * (1-test_D) ) / ((1-pr_d1_g0_x) * (1-np.mean(test_G)))
+                if self.sample_G == "G=1":
+                    pr_d1_g0_x, pr_d1_g1_x, pr_g1_d1_x, pr_g1_d0_x, pr_g1_d1_sx, pr_g1_d0_sx, pr_g1_x, alfa = self._propensity_score_latent(train_S, train_X, train_D, train_G,
+                                                                        test_S, test_X)
+                    mask = np.where((pr_d1_g0_x >= alfa) & (pr_d1_g0_x <= 1 - alfa) &
+                                    (pr_d1_g1_x >= alfa) & (pr_d1_g1_x <= 1 - alfa) &
+                                    (pr_g1_d1_x >= alfa) & (pr_g1_d1_x <= 1 - alfa) &
+                                    (pr_g1_d0_x >= alfa) & (pr_g1_d0_x <= 1 - alfa) &
+                                    (pr_g1_d1_sx >= alfa) & (pr_g1_d1_sx <= 1 - alfa) &
+                                    (pr_g1_d0_sx >= alfa) & (pr_g1_d0_sx <= 1 - alfa) &
+                                    (pr_g1_x >= alfa) & (pr_g1_x <= 1 - alfa))[0]
+                    
+                    # IPW to residuals of approximation of first outcome bridge
+                    alfa_1_hat = (test_G * test_D * (1-pr_g1_d1_sx) * pr_g1_d1_x) / (pr_g1_d1_sx * pr_d1_g1_x * np.mean(test_G) * (1-pr_g1_d1_x))
+                    alfa_0_hat = (test_G * (1-test_D) * (1-pr_g1_d0_sx) * pr_g1_d0_x) / (pr_g1_d0_sx * (1-pr_d1_g1_x) * np.mean(test_G) * (1-pr_g1_d0_x))
+                    
+                    # IPW to residuals of approximation of second outcome bridge
+                    eta_1_hat = ((1-test_G) * test_D * pr_g1_x) / (pr_d1_g0_x * np.mean(test_G) * (1-pr_g1_x))
+                    eta_0_hat = ((1-test_G) * (1-test_D) * pr_g1_x) / ((1-pr_d1_g0_x) * np.mean(test_G) * (1-pr_g1_x))
+
         # Calculate the score function depending on the estimator
         if self.estimator == 'MR':
-            y1_hat = nu_1_hat + alfa_1_hat * (test_Y - delta_d1_hat) + eta_1_hat * (delta_d1_hat - nu_1_hat)
-            y0_hat = nu_0_hat + alfa_0_hat * (test_Y - delta_d0_hat) + eta_0_hat * (delta_d0_hat - nu_0_hat)
+            if self.sample_G == "all":
+                y1_hat = nu_1_hat + alfa_1_hat * (test_Y - delta_d1_hat) + eta_1_hat * (delta_d1_hat - nu_1_hat)
+                y0_hat = nu_0_hat + alfa_0_hat * (test_Y - delta_d0_hat) + eta_0_hat * (delta_d0_hat - nu_0_hat)
+            if self.sample_G == "G=0": 
+                y1_hat = ((1-test_G) / np.mean(1-test_G)) * nu_1_hat + alfa_1_hat * (test_Y - delta_d1_hat) + eta_1_hat * (delta_d1_hat - nu_1_hat)
+                y0_hat = ((1-test_G) / np.mean(1-test_G)) * nu_0_hat + alfa_0_hat * (test_Y - delta_d0_hat) + eta_0_hat * (delta_d0_hat - nu_0_hat)
+            if self.sample_G == "G=1":
+                y1_hat = (test_G / np.mean(test_G)) * nu_1_hat + alfa_1_hat * (test_Y - delta_d1_hat) + eta_1_hat * (delta_d1_hat - nu_1_hat)
+                y0_hat = (test_G / np.mean(test_G)) * nu_0_hat + alfa_0_hat * (test_Y - delta_d0_hat) + eta_0_hat * (delta_d0_hat - nu_0_hat)
+
             psi_hat = y1_hat - y0_hat
         if self.estimator == 'OR':
-            psi_hat = nu_1_hat - nu_0_hat 
+            if self.sample_G == "all":
+                psi_hat = nu_1_hat - nu_0_hat 
+            if self.sample_G == "G=0":
+                psi_hat = ((1-test_G) / np.mean(1-test_G)) * (nu_1_hat - nu_0_hat)
+            if self.sample_G == "G=1":
+                psi_hat = (test_G / np.mean(test_G)) * (nu_1_hat - nu_0_hat)
+
         if self.estimator == 'hybrid':
             psi_hat = eta_1_hat * delta_d1_hat - eta_0_hat * delta_d0_hat
         if self.estimator == 'IPW':

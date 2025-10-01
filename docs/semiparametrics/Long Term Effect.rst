@@ -11,6 +11,13 @@ If the analyst has access to an additional observational sample that includes th
 
 The long-term effect defined for the experimental or observational subpopulation is similar, introducing the fixed local weighting :math:`\ell(G)=\mathbb{1}_{G=0} / \mathbb{P}(G=0)` or :math:`\ell(G)=\mathbb{1}_{G=1} / \mathbb{P}(G=1)`, respectively.
 
+.. note::
+
+   In addition to the population ATE, the implementation supports **conditional long‑term ATEs** within the experimental or observational subpopulations:
+   \(\mathbb{E}[Y^{(1)}-Y^{(0)} \mid G=0]\) and \(\mathbb{E}[Y^{(1)}-Y^{(0)} \mid G=1]\).
+   Set ``sample_G="G=0"`` or ``sample_G="G=1"`` to target these effects; use ``sample_G="all"`` for the population ATE. Identification and the influence‑function estimators follow by replacing expectations with their \(g\)-local versions using
+   \(\ell_g(G)=\mathbb{1}\{G=g\}/\mathbb{P}(G=g)\). The associated nuisance components for the Surrogacy and Latent‑Unconfounded models are given in **Theorem 3.1** and **Theorem B.2** of Chen & Ritzwoller (2023).
+
 Surrogacy Model
 ----------------
 
