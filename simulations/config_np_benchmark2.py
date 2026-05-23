@@ -26,9 +26,8 @@ CONFIG = {
     },
     "method_opts": {
         'lin_degree': 3,
-        'lin_l1': 0.1,
-        'lin_nit': 10000,
-        'budget': 10,
+        'reg_cv': 2,
+        'reg_n_alphas': 50
     },
     "metrics": {
         'rmse': ivfunctions_nested.mse,
@@ -45,7 +44,7 @@ CONFIG = {
     "sweep_plots": {
     },
     "mc_opts": {
-        'n_experiments': 500,  # number of monte carlo experiments
+        'n_experiments': 2500,  # number of monte carlo experiments
         "seed": 123,
     },
     "cluster_opts": {

@@ -81,17 +81,18 @@ def gen_data(opts):
     """
     opts : the dgp_opts from the config file
     """
+    n_test = int(opts['n_test'])
     tau_fn = dgps.get_tau_fn(opts['fn'])
     A1, A2, B1, B2, Y, tau_fn = dgps.get_data(opts['n_samples'], opts['n_a'],
                                     opts['n_b'], tau_fn, opts['dgp_num'])
 
     if opts['gridtest']:
-        B1_test = np.zeros((opts['n_test'], B1.shape[1]))
+        B1_test = np.zeros((n_test, B1.shape[1]))
         B1_test += np.median(B1, axis=0, keepdims=True)
         B1_test[:, 0] = np.linspace(np.percentile(
-            B1[:, 0], 5), np.percentile(B1[:, 0], 95), 1000)
+            B1[:, 0], 5), np.percentile(B1[:, 0], 95), n_test)
     else:
-        _, _, B1_test, _, _, _ = dgps.get_data(opts['n_test'], opts['n_a'],
+        _, _, B1_test, _, _, _ = dgps.get_data(n_test, opts['n_a'],
                                     opts['n_b'], tau_fn, opts['dgp_num'])
         B1_test = B1_test[np.argsort(B1_test[:, 0])]
     expected_te = tau_fn(B1_test)

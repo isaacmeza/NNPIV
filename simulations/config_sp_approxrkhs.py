@@ -4,7 +4,7 @@ import numpy as np
 from nnpiv.rkhs import ApproxRKHSIVCV
 
 model = ApproxRKHSIVCV(
-    kernel_approx="nystrom", n_components=200,
+    kernel_approx="nystrom", n_components=0.10,
     kernel="rbf", gamma=0.1, delta_scale="auto",
     delta_exp=0.4, alpha_scales=np.geomspace(1, 10000, 10), cv=5
 )
@@ -29,7 +29,7 @@ CONFIG = {
     },
     "estimator": 'joint',
     "mc_opts": {
-        'n_experiments': 500,  # number of monte carlo experiments
+        'n_experiments': 2500,  # number of monte carlo experiments
         "seed": 123,
     }
 }

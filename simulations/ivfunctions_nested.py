@@ -27,6 +27,7 @@ def gen_data(opts):
     """
     opts : the dgp_opts from the config file
     """
+    n_test = int(opts['n_test'])
     tau_fn = dgps.get_tau_fn(opts['fn'])
     if _get(opts, 'sparse', 0) == 1:
         n_a = opts['n_a']
@@ -39,12 +40,12 @@ def gen_data(opts):
                                     n_b, tau_fn, opts['dgp_num'])
 
     if opts['gridtest']:
-        B1_test = np.zeros((opts['n_test'], B1.shape[1]))
+        B1_test = np.zeros((n_test, B1.shape[1]))
         B1_test += np.median(B1, axis=0, keepdims=True)
         B1_test[:, 0] = np.linspace(np.percentile(
-            B1[:, 0], 5), np.percentile(B1[:, 0], 95), 1000)
+            B1[:, 0], 5), np.percentile(B1[:, 0], 95), n_test)
     else:
-        _, _, B1_test, _, _, _ = dgps.get_data(opts['n_test'], n_a,
+        _, _, B1_test, _, _, _ = dgps.get_data(n_test, n_a,
                                     n_b, tau_fn, opts['dgp_num'])
         B1_test = B1_test[np.argsort(B1_test[:, 0])]
     expected_te = tau_fn(B1_test)
@@ -78,7 +79,7 @@ def nystromrkhsfit(data, opts):
     opts: the method_opts from the config file
     """
     alpha_scales = np.geomspace(1, 10000, 10)
-    model = ApproxRKHSIVCV(kernel_approx='nystrom', n_components=_get(opts, 'nstrm_n_comp', 100),
+    model = ApproxRKHSIVCV(kernel_approx='nystrom', n_components=_get(opts, 'nstrm_n_comp', 0.10),
                            kernel='rbf', gamma=.1, delta_scale='auto',
                            delta_exp=.4, alpha_scales=alpha_scales, cv=5)
     return nested_npivfit(data, model)
@@ -205,21 +206,23 @@ def regtsls(data, opts):
     B1_test, A1, A2, B1, B2, Y = data
     trans = PolynomialFeatures(degree=_get(
         opts, 'lin_degree', 1), include_bias=False)
+    reg_cv = max(2, int(_get(opts, 'reg_cv', 3)))
+    reg_n_alphas = max(5, int(_get(opts, 'reg_n_alphas', 100)))
     #First stage
     polyA1 = trans.fit_transform(A1)
     first = Pipeline([('poly', PolynomialFeatures(degree=_get(opts, 'lin_degree', 1))),
-                      ('elasticnet', MultiTaskElasticNetCV(cv=3))])
+                      ('elasticnet', MultiTaskElasticNetCV(cv=reg_cv, alphas=reg_n_alphas))])
     first.fit(A2, polyA1)
-    second = ElasticNetCV(cv=3)
+    second = ElasticNetCV(cv=reg_cv, alphas=reg_n_alphas)
     second.fit(first.predict(A2), Y.ravel())
     bridge_fs = second.predict(trans.fit_transform(A1))
 
     #Second stage
     polyB1 = trans.fit_transform(B1)
     first = Pipeline([('poly', PolynomialFeatures(degree=_get(opts, 'lin_degree', 1))),
-                      ('elasticnet', MultiTaskElasticNetCV(cv=3))])
+                      ('elasticnet', MultiTaskElasticNetCV(cv=reg_cv, alphas=reg_n_alphas))])
     first.fit(B2, polyB1)
-    second = ElasticNetCV(cv=3)
+    second = ElasticNetCV(cv=reg_cv, alphas=reg_n_alphas)
     second.fit(first.predict(B2), bridge_fs.ravel())
 
     polyB1_test = trans.fit_transform(B1_test)

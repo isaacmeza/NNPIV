@@ -47,7 +47,7 @@ from tqdm import tqdm  # Import tqdm
 import copy
 import torch
 from nnpiv.rkhs import RKHS2IVCV, ApproxRKHSIVCV, RKHS2IVL2
-from joblib import Parallel, delayed
+from joblib import Parallel, delayed, cpu_count
 from scipy.optimize import minimize_scalar
 
 DEVICE = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
@@ -183,6 +183,9 @@ class DML_mediated:
         Number of folds for estimation.
     n_rep : int, optional
         Number of repetitions for estimation.
+    inner_n_jobs : int, optional
+        Number of parallel jobs for inner fold processing. If None, defaults to
+        min(n_folds, available_cores).
     random_seed : int, optional
         Seed for random number generator.
     prop_score : estimator, optional
@@ -227,6 +230,7 @@ class DML_mediated:
                  alpha=0.05,
                  n_folds=5,
                  n_rep=1,
+                 inner_n_jobs=None,
                  random_seed=123,
                  prop_score=LogisticRegression(),
                  CHIM=False,
@@ -260,6 +264,7 @@ class DML_mediated:
         self.alpha = alpha
         self.n_folds = n_folds
         self.n_rep = n_rep
+        self.inner_n_jobs = self._resolve_inner_n_jobs(inner_n_jobs)
         self.random_seed = random_seed
         self.verbose = verbose
         self.fitargsy = fitargsy
@@ -361,6 +366,23 @@ class DML_mediated:
             if self.v_values is None:
                 warnings.warn(f"v_values is None. Computing localization around mean(V).", UserWarning)
                 self.v_values = np.mean(self.V, axis=0)    
+
+    def _resolve_inner_n_jobs(self, inner_n_jobs):
+        if inner_n_jobs is None:
+            return max(1, min(int(self.n_folds), int(cpu_count())))
+
+        if isinstance(inner_n_jobs, bool):
+            raise ValueError(f"inner_n_jobs must be an integer >= 1, got {inner_n_jobs!r}.")
+
+        try:
+            value = int(inner_n_jobs)
+        except Exception as exc:
+            raise ValueError(f"inner_n_jobs must be an integer >= 1, got {inner_n_jobs!r}.") from exc
+
+        if value < 1:
+            raise ValueError(f"inner_n_jobs must be an integer >= 1, got {inner_n_jobs!r}.")
+
+        return min(value, int(self.n_folds))
             
     def _calculate_confidence_interval(self, theta, theta_var, theta_cov):
         """
@@ -1165,7 +1187,7 @@ class DML_mediated:
             
             kf = KFold(n_splits=self.n_folds, shuffle=True, random_state=self.random_seed+rep)
             if self.V is None:
-                fold_results = Parallel(n_jobs=-1, backend='threading')(
+                fold_results = Parallel(n_jobs=self.inner_n_jobs, backend='threading')(
                     delayed(self._process_fold)(
                         fold_idx, 
                         (self.Y[train_index], self.D[train_index], self.M[train_index], self.W[train_index],
@@ -1175,7 +1197,7 @@ class DML_mediated:
                         for fold_idx, (train_index, test_index) in enumerate(kf.split(self.Y))
                 )
             else:   
-                fold_results = Parallel(n_jobs=-1, backend='threading')(
+                fold_results = Parallel(n_jobs=self.inner_n_jobs, backend='threading')(
                     delayed(self._process_fold)(
                         fold_idx, 
                         (self.Y[train_index], self.D[train_index], self.M[train_index], self.W[train_index],

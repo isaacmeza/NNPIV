@@ -28,16 +28,24 @@ The project is PEP 517/518 compliant (``pyproject.toml``).
 
 .. code-block:: bash
 
-   # (conda/mamba strongly recommended)
-   mamba create -n nnpiv_env python=3.10 -y
-   mamba activate nnpiv_env
+   # From repository root
+   python3.14 -m venv .venv
+   source .venv/bin/activate
+   python -m pip install --upgrade pip
+
+For cluster jobs, the Slurm runner keeps using:
+
+.. code-block:: bash
+
+   module load python/3.13
+   mamba activate nnpiv_venv
 
 1.2. Install dependencies
 ~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. code-block:: bash
 
-   # Base requirements (CPU-only friendly)
+   # Base requirements (CPU-only friendly, Python 3.14)
    pip install -r requirements.txt
 
    # (Optional) If you are on a cluster, you can also use the cluster pin file
@@ -117,8 +125,9 @@ Example: long-term effects via DML + RKHS.
 
 - ``simulations/``
   - ``config_*.py`` — configuration files (DGP, estimators, seeds, output paths)
-  - ``local_script_np.sh`` / ``local_script_sp.sh`` — local runners
-  - ``run_np.sbatch`` / ``run_sp.sbatch`` — Slurm runners
+  - ``run_simulations_local.sh`` — canonical local execution script
+  - ``run_simulations.sbatch`` — canonical Slurm execution script
+  - ``submit_simulations.sh`` — submission helper with resource profiles
   - ``sweep_np.py`` / ``sweep_sp.py`` — experiment drivers
   - ``./nonparametric_fit/`` — results
   - ``./semiparametric_cov/`` — results
@@ -131,16 +140,24 @@ Run **locally**:
 .. code-block:: bash
 
    cd simulations
-   sh local_script_np.sh config_np_benchmark
+   ./run_simulations_local.sh --config config_np_benchmark
+
+Smoke test locally:
+
+.. code-block:: bash
+
+   cd simulations
+   ./run_simulations_local.sh --config config_np_benchmark --smoke-test
 
 Run on **Slurm**:
 
 .. code-block:: bash
 
    cd simulations
-   sbatch run_np.sbatch config_np_benchmark
+   ./submit_simulations.sh --profile sapphire --config config_np_benchmark
 
-(Replace ``config_np_benchmark`` with any other ``config_*.py``.)
+(Config input can be ``config_x``, ``config_x.py``, or a path like
+``simulations/config_x.py``.)
 
 4.3. Semiparametric coverage simulations (Table 2)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -150,16 +167,54 @@ Run **locally**:
 .. code-block:: bash
 
    cd simulations
-   sh local_script_sp.sh config_sp_benchmark
+   ./run_simulations_local.sh --config config_sp_benchmark
+
+Smoke test locally:
+
+.. code-block:: bash
+
+   cd simulations
+   ./run_simulations_local.sh --config config_sp_benchmark --smoke-test
 
 Run on **Slurm**:
 
 .. code-block:: bash
 
    cd simulations
-   sbatch run_sp.sbatch config_sp_benchmark
+   ./submit_simulations.sh --profile sapphire --config config_sp_benchmark
 
-4.4. Notes on parallelism & threads
+4.4. Unified Slurm options
+~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Run all configs as a Slurm array:
+
+.. code-block:: bash
+
+   cd simulations
+   ./submit_simulations.sh --profile test --all-configs --smoke-test
+
+Run all configs locally:
+
+.. code-block:: bash
+
+   cd simulations
+   ./run_simulations_local.sh --all-configs --smoke-test
+
+Track per-config runtime locally (printed summary + CSV log):
+
+.. code-block:: bash
+
+   cd simulations
+   ./run_simulations_local.sh --all-configs --smoke-test --timing-log ./timings_smoke.csv
+
+Override replication count and seed:
+
+.. code-block:: bash
+
+   cd simulations
+   ./submit_simulations.sh --profile shared --config config_np_nn --n-experiments 50 --seed 999
+
+4.5. Notes on parallelism & threads
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 To avoid oversubscription with joblib/NumPy/BLAS/OpenMP, we cap native threads
@@ -207,10 +262,9 @@ Replication notebooks are located in ``local_notebooks/``:
    NNPIV/
    ├─ nnpiv/                    # package
    ├─ simulations/              # simulation configs + runners
-   │  ├─ run_np.sbatch          # Slurm: nonparametric
-   │  ├─ run_sp.sbatch          # Slurm: semiparametric
-   │  ├─ local_script_np.sh     # Local: nonparametric
-   │  ├─ local_script_sp.sh     # Local: semiparametric
+   │  ├─ run_simulations_local.sh # Local execution runner
+   │  ├─ run_simulations.sbatch # Slurm execution runner
+   │  ├─ submit_simulations.sh  # Slurm submission helper
    │  ├─ sweep_np.py            # driver (NP)
    │  ├─ sweep_sp.py            # driver (SP)
    │  └─ config_*.py            # experiment configs

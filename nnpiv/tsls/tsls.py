@@ -60,9 +60,11 @@ class regtsls:
     This class implements the regularized TSLS estimator using Elastic Net regression.
     """
 
-    def __init__(self):
+    def __init__(self, cv=2, n_alphas=50):
         self.coef_ = None
         self.intercept_ = None
+        self.cv = max(2, int(cv))
+        self.n_alphas = max(5, int(n_alphas))
         
     def fit(self, Z, T, Y):
         """
@@ -76,10 +78,10 @@ class regtsls:
         Returns:
             self: Fitted estimator.
         """
-        first = MultiTaskElasticNetCV(cv=3)
+        first = MultiTaskElasticNetCV(cv=self.cv, alphas=self.n_alphas)
         first.fit(Z, T)
         predicted_T = first.predict(Z)
-        second = ElasticNetCV(cv=3)
+        second = ElasticNetCV(cv=self.cv, alphas=self.n_alphas)
         second.fit(predicted_T, Y.ravel())
         self.coef_ = second.coef_
         self.intercept_ = second.intercept_

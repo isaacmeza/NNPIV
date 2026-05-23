@@ -420,7 +420,9 @@ class ApproxRKHSIV(_BaseRKHSIV):
 
     Parameters:
         kernel_approx (str): Kernel approximation method ('nystrom' or 'rbfsampler').
-        n_components (int): Number of approximation components.
+        n_components (int or float): Number of approximation components.
+            If integer-like and >= 1, treated as a fixed component count.
+            If float in (0, 1], treated as the sample fraction with a floor of 10.
         kernel (str or callable): Kernel function or string identifier.
         gamma (str or float): Length scale for the kernel.
         degree (int): Degree for polynomial kernels.
@@ -445,18 +447,60 @@ class ApproxRKHSIV(_BaseRKHSIV):
         self.delta_exp = delta_exp
         self.alpha_scale = alpha_scale
 
-    def _get_new_approx_instance(self):
+    def _resolve_n_components(self, n_samples=None):
+        """
+        Resolve the effective approximation dimension from ``self.n_components``.
+
+        Supports two input modes:
+        - integer-like >= 1: fixed component count
+        - float in (0, 1]: fraction of sample size (rounded, with floor 10)
+
+        The resolved count is always capped by ``n_samples`` when provided.
+        """
+        try:
+            value = float(self.n_components)
+        except Exception as exc:
+            raise ValueError("`n_components` must be numeric.") from exc
+
+        if value <= 0:
+            raise ValueError("`n_components` must be > 0.")
+
+        if value <= 1:
+            if n_samples is None:
+                raise ValueError("Fractional `n_components` requires `n_samples`.")
+            n_samples_i = int(n_samples)
+            if n_samples_i <= 0:
+                raise ValueError("`n_samples` must be a positive integer.")
+            resolved = max(10, int(round(n_samples_i * value)))
+        elif value.is_integer():
+            resolved = int(value)
+        else:
+            raise ValueError(
+                "`n_components` must be integer-like >= 1 or a fraction in (0, 1]."
+            )
+
+        if n_samples is not None:
+            resolved = min(resolved, int(n_samples))
+
+        return max(1, resolved)
+
+    def _get_new_approx_instance(self, n_samples=None):
         """
         Create a new kernel approximation instance.
+
+        Parameters:
+            n_samples (int, optional): Sample count used to resolve/cap components.
 
         Returns:
             object: Kernel approximation instance.
         """
         if (self.kernel_approx == 'rbfsampler') and (self.kernel == 'rbf'):
-            return RBFSampler(gamma=self.gamma, n_components=self.n_components, random_state=1)
+            n_components = self._resolve_n_components(n_samples=n_samples)
+            return RBFSampler(gamma=self.gamma, n_components=n_components, random_state=1)
         elif self.kernel_approx == 'nystrom':
+            n_components = self._resolve_n_components(n_samples=n_samples)
             return Nystroem(kernel=self.kernel, gamma=self.gamma, coef0=self.coef0, degree=self.degree, kernel_params=self.kernel_params,
-                            random_state=1, n_components=self.n_components)
+                            random_state=1, n_components=n_components)
         else:
             raise AttributeError("Invalid kernel approximator")
 
@@ -475,14 +519,16 @@ class ApproxRKHSIV(_BaseRKHSIV):
         n = Y.shape[0]
         delta = self._get_delta(n)
         alpha = self._get_alpha(delta, self._get_alpha_scale())
-        self.featZ = self._get_new_approx_instance()
+        self.featZ = self._get_new_approx_instance(n_samples=n)
         RootKf = self.featZ.fit_transform(Z)
-        self.featT = self._get_new_approx_instance()
+        self.featT = self._get_new_approx_instance(n_samples=n)
         RootKh = self.featT.fit_transform(T)
+        n_feat_f = RootKf.shape[1]
+        n_feat_h = RootKh.shape[1]
         Q = np.linalg.pinv(RootKf.T @ RootKf /
-                           (2 * n * delta**2) + np.eye(self.n_components) / 2)
+                           (2 * n * delta**2) + np.eye(n_feat_f) / 2)
         A = RootKh.T @ RootKf
-        W = (A @ Q @ A.T + alpha * np.eye(self.n_components))
+        W = (A @ Q @ A.T + alpha * np.eye(n_feat_h))
         B = A @ Q @ RootKf.T @ Y
         self.a = np.linalg.pinv(W) @ B
         self.fitted_delta = delta
@@ -515,11 +561,12 @@ class ApproxRKHSIV(_BaseRKHSIV):
         """
         n = Y.shape[0]
         delta = self._get_delta(n)
-        featZ = self._get_new_approx_instance()
+        featZ = self._get_new_approx_instance(n_samples=n)
         RootKf = featZ.fit_transform(Z)
         RootKh = self.featT.fit_transform(T)
+        n_feat_f = RootKf.shape[1]
         Q = np.linalg.pinv(RootKf.T @ RootKf /
-                           (2 * n * delta**2) + np.eye(self.n_components) / 2)
+                           (2 * n * delta**2) + np.eye(n_feat_f) / 2)
         Y_pred = self.predict(T)
         res = RootKf.T @ (Y - Y_pred)
         return (res.T @ Q @ res)[0, 0] / n**2
@@ -533,7 +580,9 @@ class ApproxRKHSIVCV(ApproxRKHSIV):
 
     Parameters:
         kernel_approx (str): Kernel approximation method ('nystrom' or 'rbfsampler').
-        n_components (int): Number of approximation components.
+        n_components (int or float): Number of approximation components.
+            If integer-like and >= 1, treated as a fixed component count.
+            If float in (0, 1], treated as the sample fraction with a floor of 10.
         kernel (str or callable): Kernel function or string identifier.
         gamma (str or float): Length scale for the kernel.
         degree (int): Degree for polynomial kernels.
@@ -576,9 +625,9 @@ class ApproxRKHSIVCV(ApproxRKHSIV):
         """
         n = Y.shape[0]
 
-        self.featZ = self._get_new_approx_instance()
+        self.featZ = self._get_new_approx_instance(n_samples=n)
         RootKf = self.featZ.fit_transform(Z)
-        self.featT = self._get_new_approx_instance()
+        self.featT = self._get_new_approx_instance(n_samples=n)
         RootKh = self.featT.fit_transform(T)
 
         alpha_scales = self._get_alpha_scales()
@@ -591,10 +640,13 @@ class ApproxRKHSIVCV(ApproxRKHSIV):
         for it, (train, test) in enumerate(KFold(n_splits=self.cv).split(Z)):
             RootKf_train, RootKf_test = RootKf[train], RootKf[test]
             RootKh_train, RootKh_test = RootKh[train], RootKh[test]
+            n_feat_f_train = RootKf_train.shape[1]
+            n_feat_f_test = RootKf_test.shape[1]
+            n_feat_h_train = RootKh_train.shape[1]
             Q_train = np.linalg.pinv(
-                RootKf_train.T @ RootKf_train / (2 * n_train * (delta_train**2)) + np.eye(self.n_components) / 2)
+                RootKf_train.T @ RootKf_train / (2 * n_train * (delta_train**2)) + np.eye(n_feat_f_train) / 2)
             Q_test = np.linalg.pinv(
-                RootKf_test.T @ RootKf_test / (2 * n_test * (delta_test**2)) + np.eye(self.n_components) / 2)
+                RootKf_test.T @ RootKf_test / (2 * n_test * (delta_test**2)) + np.eye(n_feat_f_test) / 2)
             A_train = RootKh_train.T @ RootKf_train
             AQA_train = A_train @ Q_train @ A_train.T
             B_train = A_train @ Q_train @ RootKf_train.T @ Y[train]
@@ -602,7 +654,7 @@ class ApproxRKHSIVCV(ApproxRKHSIV):
             for alpha_scale in alpha_scales:
                 alpha = self._get_alpha(delta_train, alpha_scale)
                 a = np.linalg.pinv(AQA_train + alpha *
-                                   np.eye(self.n_components)) @ B_train
+                                   np.eye(n_feat_h_train)) @ B_train
                 res = RootKf_test.T @ (Y[test] - RootKh_test @ a)
                 scores[it].append((res.T @ Q_test @ res)[
                                   0, 0] / (len(test)**2))
@@ -614,10 +666,12 @@ class ApproxRKHSIVCV(ApproxRKHSIV):
         delta = self._get_delta(n)
         self.best_alpha = self._get_alpha(delta, self.best_alpha_scale)
 
+        n_feat_f = RootKf.shape[1]
+        n_feat_h = RootKh.shape[1]
         Q = np.linalg.pinv(RootKf.T @ RootKf /
-                           (2 * n * delta**2) + np.eye(self.n_components) / 2)
+                           (2 * n * delta**2) + np.eye(n_feat_f) / 2)
         A = RootKh.T @ RootKf
-        W = (A @ Q @ A.T + self.best_alpha * np.eye(self.n_components))
+        W = (A @ Q @ A.T + self.best_alpha * np.eye(n_feat_h))
         B = A @ Q @ RootKf.T @ Y
         self.a = np.linalg.pinv(W) @ B
         self.fitted_delta = delta

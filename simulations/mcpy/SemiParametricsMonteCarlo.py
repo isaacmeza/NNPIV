@@ -1,5 +1,6 @@
 import sys
 import os
+from numbers import Integral
 
 # Add the simulations/mcpy directory to the Python path
 sys.path.append(os.path.abspath(os.path.join(os.getcwd(), '../../simulations')))
@@ -22,6 +23,95 @@ import time
 
 def _get(opts, key, default):
     return opts[key] if (key in opts) else default
+
+
+def _require_positive_int(value, name):
+    if isinstance(value, bool) or not isinstance(value, Integral):
+        raise ValueError(f"{name} must be an integer >= 1, got {value!r}.")
+    if int(value) < 1:
+        raise ValueError(f"{name} must be an integer >= 1, got {value!r}.")
+    return int(value)
+
+
+def _resolve_inner_n_jobs(config, outer_effective_n_jobs, n_folds):
+    method_opts = config.get("method_opts", {})
+    explicit_inner_n_jobs = method_opts.get("inner_n_jobs")
+    if explicit_inner_n_jobs is not None:
+        inner_n_jobs = _require_positive_int(explicit_inner_n_jobs, "method_opts.inner_n_jobs")
+        return min(inner_n_jobs, n_folds)
+
+    if outer_effective_n_jobs > 1:
+        return 1
+
+    available_cores = max(1, int(joblib.cpu_count()))
+    return min(n_folds, available_cores)
+
+
+def _finite_1d(values):
+    """Return finite numeric values as a flat float array."""
+    arr = np.asarray(values, dtype=float).reshape(-1)
+    return arr[np.isfinite(arr)]
+
+
+def _percentile_slice(values, lower_q=None, upper_q=None):
+    """Filter values by percentile bounds, falling back to finite values if empty."""
+    arr = _finite_1d(values)
+    if arr.size == 0:
+        return arr
+
+    mask = np.ones(arr.shape, dtype=bool)
+    if lower_q is not None:
+        lower = np.percentile(arr, lower_q)
+        mask &= arr >= lower
+    if upper_q is not None:
+        upper = np.percentile(arr, upper_q)
+        mask &= arr <= upper
+
+    filtered = arr[mask]
+    return filtered if filtered.size > 0 else arr
+
+
+def _safe_mean_std_median(values):
+    arr = _finite_1d(values)
+    if arr.size == 0:
+        return np.nan, np.nan, np.nan
+    return float(np.mean(arr)), float(np.std(arr)), float(np.median(arr))
+
+
+def _warn_if_nonfinite_method_outputs(results, fn_number, model_name):
+    """Emit a warning when a method run produced only non-finite estimates."""
+    if not results:
+        print(
+            f"[WARN] Empty results for method={model_name}, fn={fn_number}. "
+            "No experiments were returned."
+        )
+        return
+
+    theta_vals = _finite_1d([run[0] for run in results])
+    variance_vals = _finite_1d([run[1] for run in results])
+
+    ci_finite = 0
+    for run in results:
+        try:
+            ci = run[2]
+            lo, hi = ci
+            if np.isfinite(lo) and np.isfinite(hi):
+                ci_finite += 1
+        except Exception:
+            continue
+
+    n_runs = len(results)
+    if theta_vals.size == 0 and variance_vals.size == 0 and ci_finite == 0:
+        print(
+            f"[WARN] All estimates are non-finite for method={model_name}, fn={fn_number} "
+            f"(theta 0/{n_runs}, variance 0/{n_runs}, CI 0/{n_runs}). "
+            "Results CSV will contain NaNs for summary statistics."
+        )
+    elif theta_vals.size == 0 or variance_vals.size == 0 or ci_finite == 0:
+        print(
+            f"[WARN] Partially non-finite outputs for method={model_name}, fn={fn_number} "
+            f"(theta {theta_vals.size}/{n_runs}, variance {variance_vals.size}/{n_runs}, CI {ci_finite}/{n_runs})."
+        )
 
 
 def _check_valid_config(config):
@@ -47,7 +137,7 @@ class SemiParametricsMonteCarlo:
         config['param_str'] += '_' + '_'.join([str(k) for k, _ in self.config['methods'].items()])
         return
 
-    def experiment(self, exp_id, fn_number, model_instance):
+    def experiment(self, exp_id, fn_number, model_instance, n_folds, inner_n_jobs):
         ''' Runs an experiment on a single randomly generated instance and sample and returns
         the parameter estimates for each method 
         '''
@@ -61,7 +151,8 @@ class SemiParametricsMonteCarlo:
                                 estimand='E[Y(1,M(0))]',
                                 model1 = model_instance[0],
                                 modelq1 = model_instance[1],
-                                n_folds=5, n_rep=1, verbose=False,
+                                n_folds=n_folds, n_rep=1, verbose=False,
+                                inner_n_jobs=inner_n_jobs,
                                 CHIM = _get(self.config['method_opts'], 'CHIM', False),
                                 nn_1 = _get(self.config['method_opts'], 'nn_1', False),
                                 nn_q1 = _get(self.config['method_opts'], 'nn_q1', False),
@@ -81,6 +172,17 @@ class SemiParametricsMonteCarlo:
         the parameter estimates for each method across all experiments
         '''
         random_seed = self.config['mc_opts']['seed']
+        n_folds = 5
+        mc_n_jobs = _get(self.config['mc_opts'], 'n_jobs', -1)
+        if mc_n_jobs is None:
+            mc_n_jobs = -1
+        try:
+            outer_effective_n_jobs = joblib.effective_n_jobs(mc_n_jobs)
+        except Exception as exc:
+            raise ValueError(
+                f"mc_opts.n_jobs must be an integer compatible with joblib, got {mc_n_jobs!r}."
+            ) from exc
+        inner_n_jobs = _resolve_inner_n_jobs(self.config, outer_effective_n_jobs, n_folds)
 
         if not os.path.exists(self.config['target_dir']):
             os.makedirs(self.config['target_dir'])
@@ -103,11 +205,19 @@ class SemiParametricsMonteCarlo:
                     results = joblib.load(results_file)
                 else:
                     # Parallelize the loop
-                    results = Parallel(n_jobs=_get(self.config['mc_opts'], 'n_jobs', -1), verbose=1)(
-                        delayed(self.experiment)(random_seed + exp_id , fn_number, model_instance) 
+                    results = Parallel(n_jobs=mc_n_jobs, verbose=1)(
+                        delayed(self.experiment)(
+                            random_seed + exp_id,
+                            fn_number,
+                            model_instance,
+                            n_folds,
+                            inner_n_jobs,
+                        )
                         for exp_id in range(self.config['mc_opts']['n_experiments']))
 
                     joblib.dump(results, results_file)
+
+                _warn_if_nonfinite_method_outputs(results, fn_number, model_name)
 
                 k = 0
                 for sim_run in results:    
@@ -154,51 +264,69 @@ class SemiParametricsMonteCarlo:
             studentized[i] = {}
             for j in range(num_j):
 
-                #Mean variance
-                # Calculate the 99th percentiles
-                percentile_99 = np.percentile(result_distributions[1][i][j], 99)
-                # Filter the data to include values less than 99th percentile range
-                filtered_data = result_distributions[1][i][j][(result_distributions[1][i][j] <= percentile_99)]
+                # Mean variance: winsorize upper tail and guard against non-finite entries.
+                variance_vals = _percentile_slice(result_distributions[1][i][j], upper_q=99)
+                mean_variance[i][j], sd_mean_variance[i][j], median_variance[i][j] = _safe_mean_std_median(variance_vals)
 
-                mean_variance[i][j] = np.mean(filtered_data)
-                sd_mean_variance[i][j] = np.std(filtered_data)
-                median_variance[i][j] = np.median(filtered_data)
+                # Mean estimate: trim extremes and guard against empty slices.
+                estimate_vals = _percentile_slice(result_distributions[0][i][j], lower_q=1, upper_q=99)
+                mean_estimate[i][j], sd_mean_estimate[i][j], median_estimate[i][j] = _safe_mean_std_median(estimate_vals)
 
-                #Mean estimate
-                # Calculate the 1st and 99th percentiles
-                percentile_1 = np.percentile(result_distributions[0][i][j], 1)
-                percentile_99 = np.percentile(result_distributions[0][i][j], 99)
-                # Filter the data to include values within the 1st to 99th percentile range
-                filtered_data = result_distributions[0][i][j][(result_distributions[0][i][j] >= percentile_1) & (result_distributions[0][i][j] <= percentile_99)]
+                # Bias / MSE
+                bias_vals = estimate_vals - 4.05
+                if bias_vals.size == 0:
+                    bias[i][j] = np.nan
+                    sd_bias[i][j] = np.nan
+                    median_bias[i][j] = np.nan
+                    mse[i][j] = np.nan
+                    sd_mse[i][j] = np.nan
+                else:
+                    bias[i][j] = float(np.mean(bias_vals))
+                    sd_bias[i][j] = float(np.std(bias_vals))
+                    median_bias[i][j] = float(np.median(bias_vals))
+                    mse[i][j] = float(np.mean(bias_vals**2))
+                    sd_mse[i][j] = float(np.std(bias_vals**2))
 
-                mean_estimate[i][j] = np.mean(filtered_data)
-                sd_mean_estimate[i][j] = np.std(filtered_data)
-                median_estimate[i][j] = np.median(filtered_data)
-
-                #Bias
-                bias[i][j] = np.mean(filtered_data-4.05)
-                sd_bias[i][j] = np.std(filtered_data-4.05)
-                median_bias[i][j] = np.median(filtered_data-4.05)
-                #MSE
-                mse[i][j] = np.mean((filtered_data-4.05)**2)
-                sd_mse[i][j] = np.std((filtered_data-4.05)**2)
-                #Studentized
-                studentized[i][j] = (result_distributions[0][i][j]-4.05)/(sd_bias[i][j])
+                # Studentized values: avoid divide-by-zero / invalid values.
+                raw_estimates = _finite_1d(result_distributions[0][i][j])
+                if raw_estimates.size > 0 and np.isfinite(sd_bias[i][j]) and sd_bias[i][j] > 0:
+                    studentized_vals = (raw_estimates - 4.05) / sd_bias[i][j]
+                    studentized[i][j] = _finite_1d(studentized_vals)
+                else:
+                    studentized[i][j] = np.array([], dtype=float)
 
                 #Coverage
                 c_i = result_distributions[2][i][j]
-                ub = np.array([interval[1] for interval in c_i])
-                lb = np.array([interval[0] for interval in c_i])
-                coverage[i][j] =  np.mean((ub >= 4.05) * (lb <= 4.05))
-                #Length
-                lengths = ub-lb
-                interval_lengths[i][j] = np.mean(lengths)
-                sd_interval_lengths[i][j] = np.std(lengths)
-                interval_median[i][j] = np.median(lengths)
+                valid_intervals = []
+                for interval in c_i:
+                    if interval is None or len(interval) != 2:
+                        continue
+                    lo, hi = interval
+                    if np.isfinite(lo) and np.isfinite(hi):
+                        valid_intervals.append((lo, hi))
+
+                if len(valid_intervals) > 0:
+                    ub = np.array([interval[1] for interval in valid_intervals], dtype=float)
+                    lb = np.array([interval[0] for interval in valid_intervals], dtype=float)
+                    coverage[i][j] = float(np.mean((ub >= 4.05) * (lb <= 4.05)))
+                    lengths = ub - lb
+                    interval_lengths[i][j] = float(np.mean(lengths))
+                    sd_interval_lengths[i][j] = float(np.std(lengths))
+                    interval_median[i][j] = float(np.median(lengths))
+                else:
+                    coverage[i][j] = np.nan
+                    interval_lengths[i][j] = np.nan
+                    sd_interval_lengths[i][j] = np.nan
+                    interval_median[i][j] = np.nan
 
                 #Average time
-                average_time[i][j] = np.mean(result_distributions[3][i][j])
-                sd_average_time[i][j] = np.std(result_distributions[3][i][j])
+                time_vals = _finite_1d(result_distributions[3][i][j])
+                if time_vals.size > 0:
+                    average_time[i][j] = float(np.mean(time_vals))
+                    sd_average_time[i][j] = float(np.std(time_vals))
+                else:
+                    average_time[i][j] = np.nan
+                    sd_average_time[i][j] = np.nan
                 
         #---------------------------------------------------------------------------------------
 
@@ -277,17 +405,15 @@ class SemiParametricsMonteCarlo:
         for fn_number in self.config['dgp_opts']['fn']:
             j = 0
             for model_name, model_instance in self.config['methods'].items():
-
-                # Calculate the 2.5th and 97.5th percentiles
-                percentile_25 = np.percentile(studentized[i][j], 2.5)
-                percentile_975 = np.percentile(studentized[i][j], 97.5)
-
-                # Create a filtered dataset containing values within the 2.5th and 97.5th percentiles
-                filtered_data = studentized[i][j][(studentized[i][j] >= percentile_25) & (studentized[i][j] <= percentile_975)]
+                studentized_vals = _finite_1d(studentized[i][j])
+                filtered_data = _percentile_slice(studentized_vals, lower_q=2.5, upper_q=97.5)
 
                 fig, ax = plt.subplots(1, 1)
                 ax.plot(x, t.pdf(x, df), 'r-', lw=2, label='t pdf')
-                ax.hist(filtered_data, density=True, bins=int(np.sqrt(self.config['mc_opts']['n_experiments'])), histtype='stepfilled')
+                if filtered_data.size > 0:
+                    ax.hist(filtered_data, density=True, bins=max(1, int(np.sqrt(self.config['mc_opts']['n_experiments']))), histtype='stepfilled')
+                else:
+                    ax.text(0.5, 0.5, 'No finite studentized values', ha='center', va='center', transform=ax.transAxes)
                 ax.set_xlabel('Value')
                 ax.set_ylabel('Density')
                 ax.set_title(f'Studentized Distribution (DGP function {fn_number}, Method {model_name})')
@@ -308,10 +434,18 @@ class SemiParametricsMonteCarlo:
 def semiparametrics_main():
     parser = argparse.ArgumentParser(description='Process some integers.')
     parser.add_argument('--config', type=str, help='config file')
+    parser.add_argument(
+        '--force-rerun',
+        action='store_true',
+        help='Ignore cached .jbl results and recompute, overwriting cache files.',
+    )
     args = parser.parse_args(sys.argv[1:])
 
     config = importlib.import_module(args.config)
-    SemiParametricsMonteCarlo(config.CONFIG).run()
+    runtime_config = deepcopy(config.CONFIG)
+    if args.force_rerun:
+        runtime_config['reload_results'] = False
+    SemiParametricsMonteCarlo(runtime_config).run()
 
 
 if __name__ == "__main__":

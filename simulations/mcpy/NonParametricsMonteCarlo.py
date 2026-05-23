@@ -171,10 +171,18 @@ class NonParametricsMonteCarlo:
 def nonparametrics_main():
     parser = argparse.ArgumentParser(description='Process some integers.')
     parser.add_argument('--config', type=str, help='config file')
+    parser.add_argument(
+        '--force-rerun',
+        action='store_true',
+        help='Ignore cached .jbl results and recompute, overwriting cache files.',
+    )
     args = parser.parse_args(sys.argv[1:])
 
     config = importlib.import_module(args.config)
-    MonteCarlo(config.CONFIG).run()
+    runtime_config = deepcopy(config.CONFIG)
+    if args.force_rerun:
+        runtime_config['reload_results'] = False
+    MonteCarlo(runtime_config).run()
 
 
 if __name__ == "__main__":
