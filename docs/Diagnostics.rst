@@ -1,4 +1,4 @@
-Pre-estimation diagnostics
+Estimation diagnostics
 ==========================
 
 NNPIV includes estimator-agnostic diagnostics under :mod:`nnpiv.diagnostics`.
