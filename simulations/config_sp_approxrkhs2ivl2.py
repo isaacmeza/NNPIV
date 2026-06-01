@@ -37,5 +37,6 @@ CONFIG = {
     "mc_opts": {
         "n_experiments": 2500,
         "seed": 123,
+        "skip_failed_runs": True,
     },
 }

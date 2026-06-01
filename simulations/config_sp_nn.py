@@ -74,5 +74,6 @@ CONFIG = {
     "mc_opts": {
         'n_experiments': 2500,  # number of monte carlo experiments
         "seed": 123,
+        "skip_failed_runs": True,
     }
 }

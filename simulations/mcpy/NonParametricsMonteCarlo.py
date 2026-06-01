@@ -18,6 +18,14 @@ def _get(opts, key, default):
     return opts[key] if (key in opts) else default
 
 
+def _is_failed_np_run(run):
+    if run is None:
+        return True
+    if not isinstance(run, (tuple, list)) or len(run) != 2:
+        return True
+    return False
+
+
 def _check_valid_config(config):
     assert 'dgps' in config, "config dict must contain dgps"
     assert 'dgp_opts' in config, "config dict must contain dgp_opts"
@@ -52,6 +60,10 @@ class MonteCarlo:
     def _diagnostics_enabled(self):
         diag_opts = self.config.get("diagnostics_opts", {})
         return bool(_get(diag_opts, "enabled", False))
+
+    def _skip_failed_runs_enabled(self):
+        mc_opts = self.config.get("mc_opts", {})
+        return bool(_get(mc_opts, "skip_failed_runs", False))
 
     def _extract_pre_diag_arrays(self, data):
         diag_opts = self.config.get("diagnostics_opts", {})
@@ -197,19 +209,28 @@ class MonteCarlo:
         ''' Runs an experiment on a single randomly generated instance and sample and returns
         the parameter estimates for each method and the evaluated metrics for each method
         '''
-        np.random.seed(exp_id)
+        try:
+            np.random.seed(exp_id)
 
-        param_estimates = {}
-        true_params = {}
-        for dgp_name, dgp_fn in self.config['dgps'].items():
-            data, true_param = dgp_fn(self.config['dgp_opts'])
-            true_params[dgp_name] = true_param
-            param_estimates[dgp_name] = {}
-            for method_name, method in self.config['methods'].items():
-                param_estimates[dgp_name][method_name] = method(
-                    data, self.config['method_opts'])
+            param_estimates = {}
+            true_params = {}
+            for dgp_name, dgp_fn in self.config['dgps'].items():
+                data, true_param = dgp_fn(self.config['dgp_opts'])
+                true_params[dgp_name] = true_param
+                param_estimates[dgp_name] = {}
+                for method_name, method in self.config['methods'].items():
+                    param_estimates[dgp_name][method_name] = method(
+                        data, self.config['method_opts'])
 
-        return param_estimates, true_params
+            return param_estimates, true_params
+        except Exception as exc:
+            if self._skip_failed_runs_enabled():
+                print(
+                    f"[WARN] Skipping failed nonparametric run: exp_id={exp_id}, "
+                    f"error={type(exc).__name__}: {exc}"
+                )
+                return None
+            raise
 
     def run(self):
         ''' Runs multiple experiments in parallel on randomly generated instances and samples and returns
@@ -246,18 +267,32 @@ class MonteCarlo:
                 for exp_id in range(self.config['mc_opts']['n_experiments']))
             joblib.dump(results, results_file)
 
+        failed_runs = sum(1 for run in results if _is_failed_np_run(run))
+        if failed_runs > 0:
+            print(
+                f"[WARN] skipped {failed_runs}/{len(results)} failed nonparametric runs."
+            )
+        results = [run for run in results if not _is_failed_np_run(run)]
+        if len(results) == 0:
+            raise RuntimeError(
+                "All nonparametric runs failed; no valid results available for aggregation."
+            )
+
         param_estimates = {}
         metric_results = {}
+        n_valid = len(results)
         for dgp_name in self.config['dgps'].keys():
             param_estimates[dgp_name] = {}
             metric_results[dgp_name] = {}
             for method_name in self.config['methods'].keys():
                 param_estimates[dgp_name][method_name] = np.array(
-                    [results[i][0][dgp_name][method_name] for i in range(self.config['mc_opts']['n_experiments'])])
+                    [results[i][0][dgp_name][method_name] for i in range(n_valid)])
                 metric_results[dgp_name][method_name] = {}
                 for metric_name, metric_fn in self.config['metrics'].items():
-                    metric_results[dgp_name][method_name][metric_name] = np.array([metric_fn(results[i][0][dgp_name][method_name], results[i][1][dgp_name])
-                                                                                   for i in range(self.config['mc_opts']['n_experiments'])])
+                    metric_results[dgp_name][method_name][metric_name] = np.array([
+                        metric_fn(results[i][0][dgp_name][method_name], results[i][1][dgp_name])
+                        for i in range(n_valid)
+                    ])
 
         for plot_name, plot_fn in self.config['plots'].items():
             plot_fn(param_estimates, metric_results, self.config)

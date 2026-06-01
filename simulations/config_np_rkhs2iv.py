@@ -40,6 +40,7 @@ CONFIG = {
     "mc_opts": {
         "n_experiments": 2500,  # number of monte carlo experiments
         "seed": 123,
+        "skip_failed_runs": True,
     },
     "cluster_opts": {
         "node_id": __NODEID__,
