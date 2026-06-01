@@ -155,10 +155,43 @@ class _BaseRKHS2IV:
         return np.flatnonzero(np.isin(fold_indices, global_indices, assume_unique=False))
 
     def _projector_from_kernel(self, K, ridge):
+        K = np.asarray(K, dtype=float)
+        if K.ndim != 2 or K.shape[0] != K.shape[1]:
+            raise ValueError("Kernel matrix must be square.")
+        if not np.all(np.isfinite(K)):
+            raise ValueError("Kernel matrix contains non-finite values.")
+
+        # Numerical symmetry guard: pairwise kernels can carry tiny asymmetry.
+        K = 0.5 * (K + K.T)
         n = K.shape[0]
+
         if ridge:
-            return np.linalg.pinv(K + np.eye(n)) @ K
-        return np.linalg.pinv(K) @ K
+            A = K + np.eye(n)
+            try:
+                return np.linalg.solve(A, K)
+            except np.linalg.LinAlgError:
+                pass
+
+            # Jitter fallback for rare SVD/solve failures on ill-conditioned folds.
+            scale = max(1.0, float(np.trace(A)) / max(n, 1))
+            for eps in (1e-12, 1e-10, 1e-8, 1e-6):
+                try:
+                    return np.linalg.solve(A + (eps * scale) * np.eye(n), K)
+                except np.linalg.LinAlgError:
+                    continue
+            return np.linalg.pinv(A, hermitian=True) @ K
+
+        try:
+            return np.linalg.pinv(K, hermitian=True) @ K
+        except np.linalg.LinAlgError:
+            scale = max(1.0, float(np.trace(K)) / max(n, 1))
+            for eps in (1e-12, 1e-10, 1e-8, 1e-6):
+                try:
+                    Kj = K + (eps * scale) * np.eye(n)
+                    return np.linalg.pinv(Kj, hermitian=True) @ K
+                except np.linalg.LinAlgError:
+                    continue
+            raise
 
     def _lifted_subset_projector(self, K_block, subset_local_indices, scale_n, ridge):
         subset_local_indices = np.asarray(subset_local_indices, dtype=int)

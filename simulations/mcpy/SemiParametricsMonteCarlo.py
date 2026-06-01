@@ -142,6 +142,20 @@ def _summarize_interval_metrics(intervals, true_param):
     return coverage, float(np.mean(lengths)), float(np.std(lengths))
 
 
+def _is_failed_sim_run(run):
+    if run is None:
+        return True
+    if not isinstance(run, (list, tuple)) or len(run) < 3:
+        return True
+    try:
+        theta = float(np.asarray(run[0]).reshape(-1)[0])
+        var = float(np.asarray(run[1]).reshape(-1)[0])
+        ci = run[2]
+        return (not np.isfinite(theta)) and (not np.isfinite(var)) and (ci is None)
+    except Exception:
+        return True
+
+
 def _check_valid_config(config):
     assert 'dgp_opts' in config, "config dict must contain dgp_opts"
     assert 'method_opts' in config, "config dict must contain method_opts"
@@ -168,6 +182,10 @@ class SemiParametricsMonteCarlo:
     def _diagnostics_enabled(self):
         diag_opts = self.config.get("diagnostics_opts", {})
         return bool(_get(diag_opts, "enabled", False))
+
+    def _skip_failed_runs_enabled(self):
+        mc_opts = self.config.get("mc_opts", {})
+        return bool(_get(mc_opts, "skip_failed_runs", False))
 
     def _run_pre_estimation_diagnostic_A(self, fn_number):
         diag_opts = self.config.get("diagnostics_opts", {})
@@ -335,41 +353,50 @@ class SemiParametricsMonteCarlo:
         ''' Runs an experiment on a single randomly generated instance and sample and returns
         the parameter estimates for each method 
         '''
-        np.random.seed(exp_id)
-        
-        tau_fn = dgps.get_tau_fn(fn_number)
-        W, Z, X, M, D, Y, tau_fn = dgps.get_data(_get(self.config['dgp_opts'], 'n_samples', 2000), tau_fn)
+        try:
+            np.random.seed(exp_id)
+            
+            tau_fn = dgps.get_tau_fn(fn_number)
+            W, Z, X, M, D, Y, tau_fn = dgps.get_data(_get(self.config['dgp_opts'], 'n_samples', 2000), tau_fn)
 
-        dml_model = self._build_dml_model(
-            model_instance, n_folds=n_folds, inner_n_jobs=inner_n_jobs,
-            Y=Y, D=D, M=M, W=W, Z=Z, X=X
-        )
-                  
-        start_time = time.time()
-        theta, var, ci = dml_model.dml()
-        end_time = time.time()
-        elapsed_time = end_time - start_time
-        theta = float(np.asarray(theta).reshape(-1)[0])
-        var = float(np.asarray(var).reshape(-1)[0])
-        ci = _valid_interval(ci)
-
-        bootstrap_reps = _get(self.config['mc_opts'], 'bootstrap_reps', 0)
-        bootstrap_percentile_ci = None
-        bootstrap_studentized_ci = None
-        if int(bootstrap_reps) > 0:
-            rng = np.random.default_rng(exp_id + 100_000)
-            bootstrap_percentile_ci, bootstrap_studentized_ci = self._bootstrap_cis(
-                rng=rng,
-                model_instance=model_instance,
-                n_folds=n_folds,
-                inner_n_jobs=inner_n_jobs,
-                Y=Y, D=D, M=M, W=W, Z=Z, X=X,
-                theta_hat=theta,
-                var_hat=var,
-                n_bootstrap=int(bootstrap_reps),
+            dml_model = self._build_dml_model(
+                model_instance, n_folds=n_folds, inner_n_jobs=inner_n_jobs,
+                Y=Y, D=D, M=M, W=W, Z=Z, X=X
             )
+                      
+            start_time = time.time()
+            theta, var, ci = dml_model.dml()
+            end_time = time.time()
+            elapsed_time = end_time - start_time
+            theta = float(np.asarray(theta).reshape(-1)[0])
+            var = float(np.asarray(var).reshape(-1)[0])
+            ci = _valid_interval(ci)
 
-        return (theta, var, ci, elapsed_time, bootstrap_percentile_ci, bootstrap_studentized_ci)
+            bootstrap_reps = _get(self.config['mc_opts'], 'bootstrap_reps', 0)
+            bootstrap_percentile_ci = None
+            bootstrap_studentized_ci = None
+            if int(bootstrap_reps) > 0:
+                rng = np.random.default_rng(exp_id + 100_000)
+                bootstrap_percentile_ci, bootstrap_studentized_ci = self._bootstrap_cis(
+                    rng=rng,
+                    model_instance=model_instance,
+                    n_folds=n_folds,
+                    inner_n_jobs=inner_n_jobs,
+                    Y=Y, D=D, M=M, W=W, Z=Z, X=X,
+                    theta_hat=theta,
+                    var_hat=var,
+                    n_bootstrap=int(bootstrap_reps),
+                )
+
+            return (theta, var, ci, elapsed_time, bootstrap_percentile_ci, bootstrap_studentized_ci)
+        except Exception as exc:
+            if self._skip_failed_runs_enabled():
+                print(
+                    f"[WARN] Skipping failed run: exp_id={exp_id}, fn={fn_number}, "
+                    f"error={type(exc).__name__}: {exc}"
+                )
+                return (np.nan, np.nan, None, np.nan, None, None)
+            raise
 
     def run(self):
         ''' Runs multiple experiments in parallel on randomly generated instances and samples and returns
@@ -434,6 +461,13 @@ class SemiParametricsMonteCarlo:
                         for exp_id in range(self.config['mc_opts']['n_experiments']))
 
                     joblib.dump(results, results_file)
+
+                failed_runs = sum(1 for run in results if _is_failed_sim_run(run))
+                if failed_runs > 0:
+                    print(
+                        f"[WARN] method={model_name}, fn={fn_number}: "
+                        f"skipped {failed_runs}/{len(results)} failed runs."
+                    )
 
                 _warn_if_nonfinite_method_outputs(results, fn_number, model_name)
 
