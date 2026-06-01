@@ -1,9 +1,11 @@
 # -*- coding: utf-8 -*-
 
 """
-Forked from the repository:
+DeepIV reference subpackage used by the neural-network module.
+
+This code was forked from:
 https://github.com/jhartford/DeepIV
-By Jason Hartford on April 15, 2020
+by Jason Hartford on April 15, 2020.
 """
 
 __author__ = """Jason Hartford"""

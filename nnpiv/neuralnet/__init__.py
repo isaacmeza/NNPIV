@@ -1,5 +1,12 @@
 # Licensed under the MIT License.
 
+"""
+Public neural-network estimator API for nested NPIV.
+
+This module re-exports adversarial GMM estimators (single and joint) and
+reference architecture helpers used by neural-network experiments.
+"""
+
 from .agmm_earlystop import AGMMEarlyStop, KernelLayerMMDGMMEarlyStop,\
     CentroidMMDGMMEarlyStop, KernelLossAGMMEarlyStop
 from .agmm import AGMM, KernelLayerMMDGMM, CentroidMMDGMM, KernelLossAGMM, MMDGMM

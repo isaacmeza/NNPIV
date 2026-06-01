@@ -1,5 +1,12 @@
 # Licensed under the MIT License.
 
+"""
+Public linear/sparse estimator API for nested NPIV.
+
+This module re-exports optimization-based sparse linear estimators and their
+ridge/L1/L2 variants used in sequential and simultaneous formulations.
+"""
+
 from .sparse_linear import OptimisticHedgeVsOptimisticHedge,\
     StochasticOptimisticHedgeVsOptimisticHedge,\
     ProxGradientVsHedge,\

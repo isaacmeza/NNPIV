@@ -1,26 +1,7 @@
 Universal Diagnostics API
 =========================
 
-The public package-level entry points are:
-
 .. currentmodule:: nnpiv.diagnostics
-
-.. autosummary::
-   :toctree: _autosummary
-   :template: function.rst
-
-   relative_wellposedness_diagnostic
-   relative_wellposedness_sieve_diagnostic
-   relative_wellposedness_effective_diagnostic
-   relative_wellposedness_effective_sieve_diagnostic
-   relative_wellposedness_from_data
-   relative_wellposedness_effective_from_data
-   relative_wellposedness_sieve_from_data
-   relative_wellposedness_effective_sieve_from_data
-   relative_wellposedness_from_nested_npiv
-   relative_wellposedness_effective_from_nested_npiv
-   relative_wellposedness_sieve_from_nested_npiv
-   relative_wellposedness_effective_sieve_from_nested_npiv
 
 Diagnostic A: Relative Well-posedness
 -------------------------------------
@@ -334,6 +315,14 @@ Practical interpretation:
 * large values suggest weak finite-sample curvature for simultaneous estimation;
 * instability as :math:`J` grows or :math:`\eta \downarrow 0` suggests possible span-level failure of relative well-posedness.
 
+.. autosummary::
+   :toctree: _autosummary
+   :template: function.rst
+
+   relative_wellposedness_diagnostic
+   relative_wellposedness_from_data
+   relative_wellposedness_from_nested_npiv
+
 Growing-sieve diagnostic (J and eta paths)
 ------------------------------------------
 
@@ -382,6 +371,14 @@ Because finite-sample conditional-mean regressions are re-estimated at each
 ``J``, the raw empirical path may show small local non-monotonicity; the
 cummax path is the finite-sample monotone envelope.
 
+.. autosummary::
+   :toctree: _autosummary
+   :template: function.rst
+
+   relative_wellposedness_sieve_diagnostic
+   relative_wellposedness_sieve_from_data
+   relative_wellposedness_sieve_from_nested_npiv
+
 Post-estimation error-direction diagnostic (kappa_eff)
 ------------------------------------------------------
 
@@ -397,6 +394,17 @@ restricted empirical diagnostic is
 In finite dimensions, ``relative_wellposedness_effective_diagnostic`` projects
 :math:`e_g` onto the same feature span and computes this ratio with the same
 estimated :math:`\widehat\Sigma_S,\widehat\Sigma_T`.
+
+.. autosummary::
+   :toctree: _autosummary
+   :template: function.rst
+
+   relative_wellposedness_effective_diagnostic
+   relative_wellposedness_effective_from_data
+   relative_wellposedness_effective_from_nested_npiv
+
+Post-estimation sieve path (kappa_eff by J and eta)
+---------------------------------------------------
 
 .. code-block:: python
 
@@ -453,6 +461,14 @@ Plotting the pre/post paths is then straightforward:
    ax[1].set_ylabel("kappa_eff")
    ax[1].legend()
    plt.tight_layout()
+
+.. autosummary::
+   :toctree: _autosummary
+   :template: function.rst
+
+   relative_wellposedness_effective_sieve_diagnostic
+   relative_wellposedness_effective_sieve_from_data
+   relative_wellposedness_effective_sieve_from_nested_npiv
 
 Availability and workflow
 -------------------------

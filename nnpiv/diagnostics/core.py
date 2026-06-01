@@ -431,21 +431,88 @@ def relative_wellposedness_diagnostic(
     return_top_direction=False,
     return_details=False,
 ):
-    """
-    Finite-dimensional relative well-posedness diagnostic.
+    r"""
+    Compute the finite-dimensional relative well-posedness diagnostic ``kappa``.
 
-    This computes the largest generalized-eigenvalue style ratio:
+    Parameters
+    ----------
+    A : array-like of shape (n,) or (n, d_a)
+        First-stage endogenous block used to build featureized functions
+        :math:`b(A)`.
+    C : array-like of shape (n,) or (n, d_c)
+        Second-stage instrument block for estimating
+        :math:`m_T(C)=E[b(A)\\mid C]`.
+    C_prime : array-like of shape (n,) or (n, d_cp)
+        First-stage instrument block for estimating
+        :math:`m_S(C')=E[b(A)\\mid C']`.
+    feature_map : {'rff', 'polynomial'} or callable, default='rff'
+        Feature construction for :math:`b(A)`. A callable must return one row
+        per sample in ``A``.
+    n_features : int, default=300
+        Number of random Fourier features when ``feature_map='rff'``.
+    gamma : float or 'auto', default='auto'
+        RBF bandwidth parameter used by random Fourier features.
+    poly_degree : int, default=3
+        Polynomial degree when ``feature_map='polynomial'``.
+    poly_include_bias : bool, default=False
+        Whether to include the bias term in polynomial features.
+    ridge_alpha : float, default=1.0
+        Ridge penalty used in the conditional-mean regressions.
+    eta : float, default=1e-6
+        Stabilization magnitude in ``Sigma_S + eta * R``. Must be positive.
+    eta_mode : {'sigma_i', 'identity'}, default='sigma_i'
+        Stabilizer choice. ``'sigma_i'`` uses the empirical feature second
+        moment ``Sigma_I``; ``'identity'`` uses ``I``.
+    null_eig_atol : float, default=1e-10
+        Absolute tolerance for identifying near-null eigendirections of
+        ``Sigma_s``.
+    null_eig_rtol : float, default=1e-8
+        Relative tolerance (scaled by ``max_eig_sigma_s``) for near-null
+        eigendirections.
+    null_leakage_tol : float, default=1e-10
+        Threshold used to flag nullspace leakage from ``Sigma_t`` into the
+        near-null eigenspace of ``Sigma_s``.
+    random_state : int, default=123
+        Random seed used by random Fourier feature generation.
+    feature_builder : callable, optional
+        Legacy alias for callable feature construction. If provided, called as
+        ``feature_builder(A)``.
+    feature_matrix : array-like of shape (n, p), optional
+        Precomputed feature matrix for ``A``. If provided, bypasses
+        ``feature_map`` construction.
+    mask_s : array-like, optional
+        Optional subset selector for the ``S`` side. Can be a boolean mask,
+        0/1 mask, or integer index vector.
+    mask_t : array-like, optional
+        Optional subset selector for the ``T`` side. Same accepted formats as
+        ``mask_s``.
+    return_top_direction : bool, default=False
+        If ``True``, include the maximizing generalized-eigenvector direction
+        and its induced norms in the output.
+    return_details : bool, default=False
+        If ``True``, include intermediate matrices and fitted conditional means
+        in the output.
 
-      kappa_{J,eta}^2
-      =
-      lambda_max((Sigma_S + eta R)^(-1/2) Sigma_T (Sigma_S + eta R)^(-1/2))
+    Returns
+    -------
+    dict
+        Dictionary with diagnostic scalars including ``kappa2``, ``kappa``,
+        stability flags, and metadata. Optional keys are added when
+        ``return_top_direction`` and/or ``return_details`` are enabled.
 
-    where R is either Identity (``eta_mode='identity'``) or ``Sigma_I``
-    (``eta_mode='sigma_i'``) with:
-      Sigma_I = E[b(A)b(A)^T]
+    Notes
+    -----
+    The core target is
 
-    where Sigma_S and Sigma_T are built from conditional means of featureized A:
-      m_S(C') = E[b(A) | C'],  m_T(C) = E[b(A) | C].
+    .. math::
+
+       \kappa_{J,\eta}^2
+       =
+       \lambda_{\max}\!\left[
+       (\Sigma_S + \eta R)^{-1/2}\Sigma_T(\Sigma_S + \eta R)^{-1/2}
+       \right],
+
+    where :math:`R` is either ``I`` or :math:`\Sigma_I`.
     """
     A = _as_2d_float(A, "A")
     C = _as_2d_float(C, "C")
@@ -632,13 +699,45 @@ def relative_wellposedness_sieve_diagnostic(
     stability_growth_tol=5.0,
     **kwargs,
 ):
-    """
-    Run Diagnostic A over a growing finite-dimensional sieve.
+    r"""
+    Run the pre-estimation diagnostic over a sieve and eta path.
 
-    For ``feature_map='rff'`` the sieve grid controls ``n_features``.
-    For ``feature_map='polynomial'`` the sieve grid controls ``poly_degree``.
-    Grid entries can also be dictionaries of keyword overrides passed to
-    ``relative_wellposedness_diagnostic``.
+    Parameters
+    ----------
+    A, C, C_prime : array-like
+        Inputs passed to :func:`relative_wellposedness_diagnostic`. Arrays must
+        be row-aligned with common sample size ``n``.
+    sieve_grid : iterable, optional
+        Sieve values. For ``feature_map='rff'``, entries map to ``n_features``.
+        For ``feature_map='polynomial'``, entries map to ``poly_degree``.
+        Entries may also be dictionaries of per-call keyword overrides.
+        If ``None``, defaults are chosen by feature map.
+    eta_grid : float or iterable of float, optional
+        Stabilization values. If ``None``, uses ``eta`` from ``kwargs`` (or
+        ``1e-6``).
+    enforce_nested_rff : bool, default=True
+        If ``True`` and applicable, compute one large RFF map and reuse nested
+        prefixes across sieve values for speed and consistency.
+    stability_growth_tol : float, default=5.0
+        Growth threshold used in the summary ``stable_flag`` calculation.
+    **kwargs
+        Additional arguments forwarded to
+        :func:`relative_wellposedness_diagnostic`.
+
+    Returns
+    -------
+    dict
+        Dictionary with two keys:
+
+        - ``rows``: list of row-level diagnostics for each ``(eta, sieve)``
+          pair.
+        - ``summary``: aggregate stability metrics and path metadata.
+
+    Notes
+    -----
+    This function is a path wrapper around
+    :func:`relative_wellposedness_diagnostic`; it does not alter the underlying
+    diagnostic definition.
     """
     feature_map = kwargs.get("feature_map", "rff")
     grid = _default_sieve_grid(feature_map) if sieve_grid is None else list(sieve_grid)
@@ -763,16 +862,47 @@ def relative_wellposedness_effective_diagnostic(
     mask_t=None,
     return_details=False,
 ):
-    """
-    Post-estimation error-direction diagnostic.
+    r"""
+    Compute the post-estimation effective-direction diagnostic ``kappa_eff``.
 
-    Computes the relative condition number on the projected first-stage error
-    direction e_g = (g_hat - g_0):
+    Parameters
+    ----------
+    A : array-like of shape (n,) or (n, d_a)
+        First-stage endogenous block used to construct feature functions.
+    C : array-like of shape (n,) or (n, d_c)
+        Second-stage instrument block.
+    C_prime : array-like of shape (n,) or (n, d_cp)
+        First-stage instrument block.
+    e_g : array-like of shape (n,) or (n, 1)
+        Estimated first-stage error direction, typically
+        :math:`\widehat g - g_0`.
+    feature_map, n_features, gamma, poly_degree, poly_include_bias, ridge_alpha, eta, eta_mode, random_state, feature_builder, feature_matrix
+        Same interpretation as in :func:`relative_wellposedness_diagnostic`.
+    projection_ridge : float, default=1e-8
+        Ridge used when projecting ``e_g`` into the feature span.
+    mask_s, mask_t : array-like, optional
+        Optional stage-specific subset selectors, using the same mask/index
+        formats accepted by :func:`relative_wellposedness_diagnostic`.
+    return_details : bool, default=False
+        If ``True``, include projected coefficients and intermediate matrices.
 
-      kappa_eff = ||T_g e_g||_2 / ||S e_g||_2
+    Returns
+    -------
+    dict
+        Dictionary containing ``kappa_eff``, regularized counterpart
+        ``kappa_eff_reg``, associated norms, and metadata.
 
-    using a finite-dimensional projection of e_g onto the same feature span used
-    for Diagnostic A.
+    Notes
+    -----
+    The core quantity is
+
+    .. math::
+
+       \kappa_{\mathrm{eff}}
+       =
+       \frac{\|T_g e_g\|_2}{\|S e_g\|_2},
+
+    computed after projecting ``e_g`` onto the selected finite feature span.
     """
     A = _as_2d_float(A, "A")
     C = _as_2d_float(C, "C")
@@ -864,7 +994,36 @@ def relative_wellposedness_effective_sieve_diagnostic(
     **kwargs,
 ):
     """
-    Sieve/eta path for post-estimation error-direction diagnostic kappa_eff.
+    Run ``kappa_eff`` over a sieve and eta path.
+
+    Parameters
+    ----------
+    A, C, C_prime : array-like
+        Inputs passed to :func:`relative_wellposedness_effective_diagnostic`.
+        Arrays must share the same number of rows.
+    e_g : array-like of shape (n,) or (n, 1)
+        Estimated first-stage error direction.
+    sieve_grid : iterable, optional
+        Sieve values interpreted as in
+        :func:`relative_wellposedness_sieve_diagnostic`.
+    eta_grid : float or iterable of float, optional
+        Stabilization values for path evaluation.
+    enforce_nested_rff : bool, default=True
+        Reuse nested RFF prefixes when possible.
+    **kwargs
+        Additional keyword arguments forwarded to
+        :func:`relative_wellposedness_effective_diagnostic`.
+
+    Returns
+    -------
+    dict
+        Dictionary with ``rows`` (path-level outputs) and ``summary``
+        (aggregated metadata and maxima).
+
+    Notes
+    -----
+    This is the post-estimation analogue of
+    :func:`relative_wellposedness_sieve_diagnostic`.
     """
     feature_map = kwargs.get("feature_map", "rff")
     grid = _default_sieve_grid(feature_map) if sieve_grid is None else list(sieve_grid)
@@ -972,30 +1131,40 @@ def relative_wellposedness_from_data(
     **kwargs,
 ):
     """
-    Plug-and-play wrapper for Diagnostic A using dataset-level block selectors.
+    Run the pre-estimation diagnostic from dataset-level selectors.
 
     Parameters
     ----------
     data : DataFrame, mapping, or 2D array-like
-        Source dataset.
-    A, C, C_prime :
+        Source container holding all blocks.
+    A, C, C_prime
         Block selectors for each argument required by
-        ``relative_wellposedness_diagnostic``.
-    B :
-        Optional extra block selector for consistency with ``(A, B, C, C')``
-        notation used in nested NPIV pipelines. Diagnostic A does not use ``B``
-        directly, so this argument is accepted and ignored.
+        :func:`relative_wellposedness_diagnostic`.
+    B
+        Optional selector accepted only for interface consistency with
+        ``(A, B, C, C')`` notation. It is intentionally ignored by this
+        diagnostic.
 
         Supported selector forms:
-        - callable: ``selector(data) -> array-like``
-        - direct matrix/vector array-like
-        - for DataFrame/mapping data: column name or list of column names
-        - for DataFrame/array-like data: integer column index, list of indices, or slice
-    mask_s, mask_t :
-        Optional subset selectors. Can be array-like masks/indices, column names
-        (for DataFrame/mapping), or callables.
-    **kwargs :
-        Forwarded to ``relative_wellposedness_diagnostic``.
+        - callable ``selector(data) -> array-like``
+        - direct array-like matrix/vector
+        - DataFrame/mapping columns (string or list of strings)
+        - DataFrame/array-style integer selectors (int, list[int], slice)
+    mask_s, mask_t : array-like, str, or callable, optional
+        Optional subset selectors for stage-specific sample restrictions.
+    **kwargs
+        Forwarded to :func:`relative_wellposedness_diagnostic`.
+
+    Returns
+    -------
+    dict
+        Output dictionary returned by
+        :func:`relative_wellposedness_diagnostic`.
+
+    Notes
+    -----
+    ``A``, ``C``, and ``C_prime`` must resolve to arrays with the same row
+    count.
     """
     _ = B  # accepted for block-interface consistency; not used by Diagnostic A
 
@@ -1028,7 +1197,34 @@ def relative_wellposedness_effective_from_data(
     **kwargs,
 ):
     """
-    Dataset-block wrapper for post-estimation kappa_eff diagnostic.
+    Run the post-estimation ``kappa_eff`` diagnostic from dataset selectors.
+
+    Parameters
+    ----------
+    data : DataFrame, mapping, or 2D array-like
+        Source container holding all blocks.
+    e_g
+        Selector for the first-stage error direction block.
+    A, C, C_prime
+        Selectors resolved and passed to
+        :func:`relative_wellposedness_effective_diagnostic`.
+    B
+        Optional selector accepted for interface consistency with
+        ``(A, B, C, C')`` notation; ignored by this diagnostic.
+    mask_s, mask_t : array-like, str, or callable, optional
+        Optional subset selectors for stage-specific sample restrictions.
+    **kwargs
+        Forwarded to :func:`relative_wellposedness_effective_diagnostic`.
+
+    Returns
+    -------
+    dict
+        Output dictionary returned by
+        :func:`relative_wellposedness_effective_diagnostic`.
+
+    Notes
+    -----
+    Resolved ``A``, ``C``, ``C_prime``, and ``e_g`` must be row-aligned.
     """
     _ = B
     A_mat = _extract_block_matrix(data, A, "A")
@@ -1060,7 +1256,32 @@ def relative_wellposedness_sieve_from_data(
     **kwargs,
 ):
     """
-    Dataset-block wrapper for ``relative_wellposedness_sieve_diagnostic``.
+    Run the sieve-path pre-estimation diagnostic from dataset selectors.
+
+    Parameters
+    ----------
+    data : DataFrame, mapping, or 2D array-like
+        Source container holding all blocks.
+    A, C, C_prime
+        Selectors resolved and passed to
+        :func:`relative_wellposedness_sieve_diagnostic`.
+    B
+        Optional selector accepted for interface consistency with
+        ``(A, B, C, C')`` notation; ignored by this diagnostic.
+    mask_s, mask_t : array-like, str, or callable, optional
+        Optional subset selectors for stage-specific sample restrictions.
+    **kwargs
+        Forwarded to :func:`relative_wellposedness_sieve_diagnostic`.
+
+    Returns
+    -------
+    dict
+        Output dictionary returned by
+        :func:`relative_wellposedness_sieve_diagnostic`.
+
+    Notes
+    -----
+    Selector semantics match :func:`relative_wellposedness_from_data`.
     """
     _ = B
 
@@ -1093,7 +1314,34 @@ def relative_wellposedness_effective_sieve_from_data(
     **kwargs,
 ):
     """
-    Dataset-block wrapper for post-estimation kappa_eff sieve diagnostic.
+    Run the sieve-path post-estimation ``kappa_eff`` diagnostic from selectors.
+
+    Parameters
+    ----------
+    data : DataFrame, mapping, or 2D array-like
+        Source container holding all blocks.
+    e_g
+        Selector for the first-stage error direction block.
+    A, C, C_prime
+        Selectors resolved and passed to
+        :func:`relative_wellposedness_effective_sieve_diagnostic`.
+    B
+        Optional selector accepted for interface consistency with
+        ``(A, B, C, C')`` notation; ignored by this diagnostic.
+    mask_s, mask_t : array-like, str, or callable, optional
+        Optional subset selectors for stage-specific sample restrictions.
+    **kwargs
+        Forwarded to :func:`relative_wellposedness_effective_sieve_diagnostic`.
+
+    Returns
+    -------
+    dict
+        Output dictionary returned by
+        :func:`relative_wellposedness_effective_sieve_diagnostic`.
+
+    Notes
+    -----
+    Selector semantics match :func:`relative_wellposedness_from_data`.
     """
     _ = B
     A_mat = _extract_block_matrix(data, A, "A")
@@ -1124,21 +1372,30 @@ def relative_wellposedness_from_nested_npiv(
     **kwargs,
 ):
     """
-    Convenience wrapper for the canonical nested NPIV data layout
-    ``(A, D, B, C, Y, tau_fn)`` used in simulations/notebooks.
+    Run the pre-estimation diagnostic for canonical nested NPIV blocks.
 
     Parameters
     ----------
-    A, D, B, C :
+    A, D, B, C
         Blocks from nested NPIV data generation where ``A`` is first-stage
         endogenous treatment, ``D`` first-stage instrument, ``B`` second-stage
         endogenous treatment, and ``C`` second-stage instrument.
         Diagnostic A uses ``A``, ``C`` and ``D`` (as :math:`C'`); ``B`` is
         accepted for interface consistency but not used directly.
-    mask_s, mask_t :
+    mask_s, mask_t : array-like, optional
         Optional subset masks/indices for stage-specific diagnostics.
-    **kwargs :
-        Forwarded to ``relative_wellposedness_diagnostic``.
+    **kwargs
+        Forwarded to :func:`relative_wellposedness_diagnostic`.
+
+    Returns
+    -------
+    dict
+        Output dictionary returned by
+        :func:`relative_wellposedness_diagnostic`.
+
+    Notes
+    -----
+    This wrapper maps ``D`` to ``C_prime`` and ignores ``B``.
     """
     _ = B  # accepted for block-interface consistency; not used by Diagnostic A
     return relative_wellposedness_diagnostic(
@@ -1163,7 +1420,29 @@ def relative_wellposedness_effective_from_nested_npiv(
     **kwargs,
 ):
     """
-    Post-estimation kappa_eff wrapper for canonical nested NPIV layout.
+    Run post-estimation ``kappa_eff`` for canonical nested NPIV blocks.
+
+    Parameters
+    ----------
+    A, D, B, C
+        Canonical nested NPIV blocks. ``D`` is mapped to ``C_prime``.
+    e_g : array-like of shape (n,) or (n, 1)
+        First-stage error direction used by
+        :func:`relative_wellposedness_effective_diagnostic`.
+    mask_s, mask_t : array-like, optional
+        Optional subset masks/indices for stage-specific diagnostics.
+    **kwargs
+        Forwarded to :func:`relative_wellposedness_effective_diagnostic`.
+
+    Returns
+    -------
+    dict
+        Output dictionary returned by
+        :func:`relative_wellposedness_effective_diagnostic`.
+
+    Notes
+    -----
+    ``B`` is accepted for interface consistency and ignored.
     """
     _ = B
     return relative_wellposedness_effective_diagnostic(
@@ -1188,8 +1467,26 @@ def relative_wellposedness_sieve_from_nested_npiv(
     **kwargs,
 ):
     """
-    Growing-sieve wrapper for the canonical nested NPIV data layout
-    ``(A, D, B, C, Y, tau_fn)``.
+    Run the pre-estimation sieve-path diagnostic for canonical nested NPIV.
+
+    Parameters
+    ----------
+    A, D, B, C
+        Canonical nested NPIV blocks. ``D`` is mapped to ``C_prime``.
+    mask_s, mask_t : array-like, optional
+        Optional subset masks/indices for stage-specific diagnostics.
+    **kwargs
+        Forwarded to :func:`relative_wellposedness_sieve_diagnostic`.
+
+    Returns
+    -------
+    dict
+        Output dictionary returned by
+        :func:`relative_wellposedness_sieve_diagnostic`.
+
+    Notes
+    -----
+    ``B`` is accepted for interface consistency and ignored.
     """
     _ = B
     return relative_wellposedness_sieve_diagnostic(
@@ -1214,7 +1511,29 @@ def relative_wellposedness_effective_sieve_from_nested_npiv(
     **kwargs,
 ):
     """
-    Post-estimation kappa_eff sieve wrapper for canonical nested NPIV layout.
+    Run the post-estimation sieve-path ``kappa_eff`` diagnostic for nested NPIV.
+
+    Parameters
+    ----------
+    A, D, B, C
+        Canonical nested NPIV blocks. ``D`` is mapped to ``C_prime``.
+    e_g : array-like of shape (n,) or (n, 1)
+        First-stage error direction used by
+        :func:`relative_wellposedness_effective_sieve_diagnostic`.
+    mask_s, mask_t : array-like, optional
+        Optional subset masks/indices for stage-specific diagnostics.
+    **kwargs
+        Forwarded to :func:`relative_wellposedness_effective_sieve_diagnostic`.
+
+    Returns
+    -------
+    dict
+        Output dictionary returned by
+        :func:`relative_wellposedness_effective_sieve_diagnostic`.
+
+    Notes
+    -----
+    ``B`` is accepted for interface consistency and ignored.
     """
     _ = B
     return relative_wellposedness_effective_sieve_diagnostic(
