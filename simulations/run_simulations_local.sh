@@ -7,10 +7,14 @@ usage() {
 Usage:
   ./run_simulations_local.sh --config <config_name_or_path> [options]
   ./run_simulations_local.sh --all-configs [options]
+  ./run_simulations_local.sh --all-np-configs [options]
+  ./run_simulations_local.sh --all-sp-configs [options]
 
 Core options:
   --config <config>            Single config to run
   --all-configs                Run all simulations/config_*.py in sorted order
+  --all-np-configs             Run all simulations/config_np_*.py in sorted order
+  --all-sp-configs             Run all simulations/config_sp_*.py in sorted order
   --mode <auto|np|sp>          Runner mode (default: auto)
   --node-id <int>              Placeholder replacement for __NODEID__ (default: 0)
   --n-nodes <int>              Placeholder replacement for __NNODES__ (default: 1)
@@ -34,13 +38,19 @@ USAGE
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+CALLER_PWD="$(pwd)"
 
 MODE="auto"
 CONFIG=""
 ALL_CONFIGS=0
+ALL_NP_CONFIGS=0
+ALL_SP_CONFIGS=0
 NODE_ID=0
 N_NODES=1
 PYTHON_BIN="${PYTHON:-python}"
+if [[ -z "${PYTHON:-}" ]] && ! command -v "${PYTHON_BIN}" >/dev/null 2>&1 && command -v python3 >/dev/null 2>&1; then
+  PYTHON_BIN="python3"
+fi
 TIMING_LOG=""
 
 N_EXPERIMENTS=""
@@ -69,6 +79,14 @@ while [[ $# -gt 0 ]]; do
       ;;
     --all-configs)
       ALL_CONFIGS=1
+      shift
+      ;;
+    --all-np-configs)
+      ALL_NP_CONFIGS=1
+      shift
+      ;;
+    --all-sp-configs)
+      ALL_SP_CONFIGS=1
       shift
       ;;
     --mode)
@@ -144,12 +162,21 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-if [[ ${ALL_CONFIGS} -eq 1 && -n "${CONFIG}" ]]; then
-  echo "Use either --config or --all-configs, not both." >&2
-  exit 1
+SELECTION_COUNT=0
+if [[ -n "${CONFIG}" ]]; then
+  ((SELECTION_COUNT += 1))
 fi
-if [[ ${ALL_CONFIGS} -eq 0 && -z "${CONFIG}" ]]; then
-  echo "You must provide one of --config or --all-configs." >&2
+if [[ ${ALL_CONFIGS} -eq 1 ]]; then
+  ((SELECTION_COUNT += 1))
+fi
+if [[ ${ALL_NP_CONFIGS} -eq 1 ]]; then
+  ((SELECTION_COUNT += 1))
+fi
+if [[ ${ALL_SP_CONFIGS} -eq 1 ]]; then
+  ((SELECTION_COUNT += 1))
+fi
+if [[ ${SELECTION_COUNT} -ne 1 ]]; then
+  echo "Provide exactly one of: --config, --all-configs, --all-np-configs, --all-sp-configs." >&2
   exit 1
 fi
 if [[ "${MODE}" != "auto" && "${MODE}" != "np" && "${MODE}" != "sp" ]]; then
@@ -157,7 +184,15 @@ if [[ "${MODE}" != "auto" && "${MODE}" != "np" && "${MODE}" != "sp" ]]; then
   exit 1
 fi
 
-if ! command -v "${PYTHON_BIN}" >/dev/null 2>&1; then
+if [[ "${PYTHON_BIN}" == */* ]]; then
+  if [[ "${PYTHON_BIN}" != /* ]]; then
+    PYTHON_BIN="${CALLER_PWD}/${PYTHON_BIN}"
+  fi
+  if [[ ! -x "${PYTHON_BIN}" ]]; then
+    echo "Python executable not found or not executable: ${PYTHON_BIN}" >&2
+    exit 1
+  fi
+elif ! command -v "${PYTHON_BIN}" >/dev/null 2>&1; then
   echo "Python executable not found: ${PYTHON_BIN}" >&2
   exit 1
 fi
@@ -378,14 +413,21 @@ run_one_config() {
   return "${status_code}"
 }
 
-if [[ ${ALL_CONFIGS} -eq 1 ]]; then
+if [[ ${ALL_CONFIGS} -eq 1 || ${ALL_NP_CONFIGS} -eq 1 || ${ALL_SP_CONFIGS} -eq 1 ]]; then
+  CONFIG_GLOB="config_*.py"
+  if [[ ${ALL_NP_CONFIGS} -eq 1 ]]; then
+    CONFIG_GLOB="config_np_*.py"
+  elif [[ ${ALL_SP_CONFIGS} -eq 1 ]]; then
+    CONFIG_GLOB="config_sp_*.py"
+  fi
+
   configs=()
   while IFS= read -r line; do
     [[ -n "${line}" ]] || continue
     configs+=("${line%.py}")
   done < <(
     cd "${SCRIPT_DIR}"
-    for f in config_*.py; do
+    for f in ${CONFIG_GLOB}; do
       [[ -e "${f}" ]] || continue
       echo "${f}"
     done | sort

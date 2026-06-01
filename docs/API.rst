@@ -8,7 +8,7 @@ Longitudinal Analysis
    :maxdepth: 2
 
    mliv_overview
-
+   diagnostics/Universal
 
 
 Semiparametrics
@@ -17,6 +17,4 @@ Semiparametrics
    :maxdepth: 2
 
    module_overview
-
-   
 

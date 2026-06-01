@@ -8,6 +8,7 @@ Contents
    Home <self>
    Installation
    Longitudinal
+   Diagnostics
    Semiparametrics
    API 
 

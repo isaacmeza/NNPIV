@@ -1,6 +1,8 @@
 import os
 import sys
+import json
 import numpy as np
+import pandas as pd
 from joblib import Parallel, delayed
 import joblib
 import argparse
@@ -9,6 +11,7 @@ from itertools import product
 import collections
 from copy import deepcopy
 from mcpy.utils import filesafe
+from nnpiv.diagnostics import relative_wellposedness_diagnostic
 
 
 def _get(opts, key, default):
@@ -46,6 +49,150 @@ class MonteCarlo:
             [filesafe(method_name) for method_name in self.config['methods'].keys()])
         return
 
+    def _diagnostics_enabled(self):
+        diag_opts = self.config.get("diagnostics_opts", {})
+        return bool(_get(diag_opts, "enabled", False))
+
+    def _extract_pre_diag_arrays(self, data):
+        diag_opts = self.config.get("diagnostics_opts", {})
+
+        # Dict pathway: either explicit A/C/C_prime, or nested aliases A1/A2/B2.
+        if isinstance(data, dict):
+            if all(k in data for k in ("A", "C", "C_prime")):
+                return np.asarray(data["A"]), np.asarray(data["C"]), np.asarray(data["C_prime"]), "dict_A_C_Cprime"
+            if all(k in data for k in ("A1", "A2", "B2")):
+                return np.asarray(data["A1"]), np.asarray(data["B2"]), np.asarray(data["A2"]), "dict_A1_A2_B2"
+            raise ValueError(
+                "Diagnostic A data dict must contain either keys (A, C, C_prime) "
+                "or (A1, A2, B2)."
+            )
+
+        # Tuple/list pathway defaulting to nested_npiv data layout:
+        # (B1_test, A1, A2, B1, B2, Y) -> A=A1, C_prime=A2, C=B2
+        if isinstance(data, (tuple, list)):
+            a_idx = int(_get(diag_opts, "a_index", 1))
+            cprime_idx = int(_get(diag_opts, "cprime_index", 2))
+            c_idx = int(_get(diag_opts, "c_index", 4))
+            max_idx = max(a_idx, cprime_idx, c_idx)
+            if len(data) <= max_idx:
+                raise ValueError(
+                    "Diagnostic A tuple indexing is out of bounds. "
+                    f"Got len(data)={len(data)} and required max index={max_idx}."
+                )
+            return (
+                np.asarray(data[a_idx]),
+                np.asarray(data[c_idx]),
+                np.asarray(data[cprime_idx]),
+                "tuple_indexed",
+            )
+
+        raise ValueError(
+            "Unsupported DGP data type for diagnostics. "
+            f"Expected dict/tuple/list, got {type(data).__name__}."
+        )
+
+    def _run_pre_estimation_diagnostic_A(self, dgp_name, dgp_fn):
+        diag_opts = self.config.get("diagnostics_opts", {})
+        n_aux = int(_get(diag_opts, "n_aux_samples", _get(self.config["dgp_opts"], "n_samples", 2000)))
+        seed_base = int(_get(diag_opts, "seed", _get(self.config["mc_opts"], "seed", 123)))
+        fn_value = _get(self.config["dgp_opts"], "fn", -1)
+        try:
+            fn_scalar = int(fn_value)
+        except Exception:
+            fn_scalar = -1
+        name_hash = sum(ord(ch) for ch in str(dgp_name))
+        aux_seed = int(seed_base + 100_003 * max(0, fn_scalar) + 1_009 * name_hash)
+
+        aux_opts = deepcopy(self.config["dgp_opts"])
+        aux_opts["n_samples"] = n_aux
+
+        np_state = np.random.get_state()
+        try:
+            np.random.seed(aux_seed)
+            data, _ = dgp_fn(aux_opts)
+        finally:
+            np.random.set_state(np_state)
+
+        A, C, C_prime, extraction_mode = self._extract_pre_diag_arrays(data)
+
+        diag = relative_wellposedness_diagnostic(
+            A=A,
+            C=C,
+            C_prime=C_prime,
+            feature_map=_get(diag_opts, "feature_map", "rff"),
+            n_features=int(_get(diag_opts, "n_features", 300)),
+            gamma=_get(diag_opts, "gamma", "auto"),
+            poly_degree=int(_get(diag_opts, "poly_degree", 3)),
+            poly_include_bias=bool(_get(diag_opts, "poly_include_bias", False)),
+            ridge_alpha=float(_get(diag_opts, "ridge_alpha", 1.0)),
+            eta=float(_get(diag_opts, "eta", 1e-6)),
+            random_state=int(_get(diag_opts, "random_state", 123)),
+            return_details=False,
+        )
+
+        feature_meta = diag.get("feature_meta", {})
+        return {
+            "diagnostic_name": "relative_wellposedness_A",
+            "runner": "nonparametric",
+            "dgp_name": str(dgp_name),
+            "fn_number": fn_scalar,
+            "stage": "nested_npiv_default",
+            "aux_seed": int(aux_seed),
+            "n_aux_samples": int(n_aux),
+            "data_extraction_mode": extraction_mode,
+            "feature_map": feature_meta.get("feature_map", ""),
+            "feature_gamma": feature_meta.get("gamma", None),
+            "kappa2": diag["kappa2"],
+            "kappa": diag["kappa"],
+            "eta": diag["eta"],
+            "ridge_alpha": diag["ridge_alpha"],
+            "n_total": diag["n_total"],
+            "n_s": diag["n_s"],
+            "n_t": diag["n_t"],
+            "n_features": diag["n_features"],
+            "null_like_dim_sigma_s": diag["null_like_dim_sigma_s"],
+            "max_diag_ratio_sigma_t_over_sigma_s": diag["max_diag_ratio_sigma_t_over_sigma_s"],
+            "unstable_flag": diag["unstable_flag"],
+            "min_eig_sigma_s_eta": diag["min_eig_sigma_s_eta"],
+            "max_eig_whitened": diag["max_eig_whitened"],
+        }
+
+    def _save_pre_diagnostics(self, rows):
+        if len(rows) == 0:
+            return None, None
+
+        diag_opts = self.config.get("diagnostics_opts", {})
+        if not bool(_get(diag_opts, "save_csv", True)):
+            return None, None
+
+        os.makedirs(self.config["target_dir"], exist_ok=True)
+        df = pd.DataFrame(rows)
+        csv_path = os.path.join(
+            self.config["target_dir"],
+            f"pre_diagnostics_relative_wellposedness_{self.config['param_str']}.csv",
+        )
+        json_path = os.path.join(
+            self.config["target_dir"],
+            f"pre_diagnostics_relative_wellposedness_{self.config['param_str']}.json",
+        )
+        df.to_csv(csv_path, index=False)
+
+        payload = {"rows": []}
+        for row in rows:
+            clean_row = {}
+            for key, value in row.items():
+                if isinstance(value, np.generic):
+                    clean_row[key] = value.item()
+                else:
+                    clean_row[key] = value
+            payload["rows"].append(clean_row)
+
+        with open(json_path, "w", encoding="utf-8") as f:
+            json.dump(payload, f, indent=2, allow_nan=True)
+
+        print("Pre-estimation diagnostics saved to", csv_path)
+        return csv_path, json_path
+
     def experiment(self, exp_id):
         ''' Runs an experiment on a single randomly generated instance and sample and returns
         the parameter estimates for each method and the evaluated metrics for each method
@@ -74,6 +221,21 @@ class MonteCarlo:
         if not os.path.exists(self.config['target_dir']):
             os.makedirs(self.config['target_dir'])
 
+        pre_diagnostics_rows = []
+        if self._diagnostics_enabled():
+            for dgp_name, dgp_fn in self.config['dgps'].items():
+                try:
+                    pre_diagnostics_rows.append(self._run_pre_estimation_diagnostic_A(dgp_name, dgp_fn))
+                except Exception as exc:
+                    pre_diagnostics_rows.append({
+                        "diagnostic_name": "relative_wellposedness_A",
+                        "runner": "nonparametric",
+                        "dgp_name": str(dgp_name),
+                        "fn_number": int(_get(self.config["dgp_opts"], "fn", -1)) if str(_get(self.config["dgp_opts"], "fn", "-1")).lstrip("-").isdigit() else -1,
+                        "stage": "nested_npiv_default",
+                        "error": str(exc),
+                    })
+
         results_file = os.path.join(
             self.config['target_dir'], 'results_{}.jbl'.format(self.config['param_str']))
         if self.config['reload_results'] and os.path.exists(results_file):
@@ -99,6 +261,9 @@ class MonteCarlo:
 
         for plot_name, plot_fn in self.config['plots'].items():
             plot_fn(param_estimates, metric_results, self.config)
+
+        if self._diagnostics_enabled():
+            self._save_pre_diagnostics(pre_diagnostics_rows)
 
         return param_estimates, metric_results
 

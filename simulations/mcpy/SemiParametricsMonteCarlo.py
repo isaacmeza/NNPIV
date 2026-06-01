@@ -1,5 +1,6 @@
 import sys
 import os
+import json
 from numbers import Integral
 
 # Add the simulations/mcpy directory to the Python path
@@ -19,6 +20,7 @@ from copy import deepcopy
 from mcpy.utils import filesafe
 import simulations.dgps_mediated as dgps
 from nnpiv.semiparametrics import DML_mediated
+from nnpiv.diagnostics import relative_wellposedness_diagnostic
 import time
 
 def _get(opts, key, default):
@@ -114,6 +116,32 @@ def _warn_if_nonfinite_method_outputs(results, fn_number, model_name):
         )
 
 
+def _valid_interval(interval):
+    if interval is None or len(interval) != 2:
+        return None
+    lo, hi = interval
+    lo = float(np.asarray(lo).reshape(-1)[0])
+    hi = float(np.asarray(hi).reshape(-1)[0])
+    if not (np.isfinite(lo) and np.isfinite(hi)):
+        return None
+    return lo, hi
+
+
+def _summarize_interval_metrics(intervals, true_param):
+    valid = []
+    for interval in intervals:
+        parsed = _valid_interval(interval)
+        if parsed is not None:
+            valid.append(parsed)
+    if len(valid) == 0:
+        return np.nan, np.nan, np.nan
+    lb = np.array([v[0] for v in valid], dtype=float)
+    ub = np.array([v[1] for v in valid], dtype=float)
+    lengths = ub - lb
+    coverage = float(np.mean((ub >= true_param) * (lb <= true_param)))
+    return coverage, float(np.mean(lengths)), float(np.std(lengths))
+
+
 def _check_valid_config(config):
     assert 'dgp_opts' in config, "config dict must contain dgp_opts"
     assert 'method_opts' in config, "config dict must contain method_opts"
@@ -137,6 +165,172 @@ class SemiParametricsMonteCarlo:
         config['param_str'] += '_' + '_'.join([str(k) for k, _ in self.config['methods'].items()])
         return
 
+    def _diagnostics_enabled(self):
+        diag_opts = self.config.get("diagnostics_opts", {})
+        return bool(_get(diag_opts, "enabled", False))
+
+    def _run_pre_estimation_diagnostic_A(self, fn_number):
+        diag_opts = self.config.get("diagnostics_opts", {})
+        n_aux = int(_get(diag_opts, "n_aux_samples", _get(self.config["dgp_opts"], "n_samples", 2000)))
+        seed_base = int(_get(diag_opts, "seed", _get(self.config["mc_opts"], "seed", 123)))
+        aux_seed = seed_base + 100_003 * int(fn_number)
+
+        np_state = np.random.get_state()
+        try:
+            np.random.seed(aux_seed)
+            tau_fn = dgps.get_tau_fn(fn_number)
+            W, Z, X, M, D, _, _ = dgps.get_data(n_aux, tau_fn)
+        finally:
+            np.random.set_state(np_state)
+
+        A = np.column_stack((M, X, W))
+        C = np.column_stack((X, Z))
+        C_prime = np.column_stack((M, X, Z))
+
+        d_flat = np.asarray(D).reshape(-1)
+        mask_s = (d_flat == 1).astype(int)
+        mask_t = (d_flat == 0).astype(int)
+
+        diag = relative_wellposedness_diagnostic(
+            A=A,
+            C=C,
+            C_prime=C_prime,
+            feature_map=_get(diag_opts, "feature_map", "rff"),
+            n_features=int(_get(diag_opts, "n_features", 300)),
+            gamma=_get(diag_opts, "gamma", "auto"),
+            poly_degree=int(_get(diag_opts, "poly_degree", 3)),
+            poly_include_bias=bool(_get(diag_opts, "poly_include_bias", False)),
+            ridge_alpha=float(_get(diag_opts, "ridge_alpha", 1.0)),
+            eta=float(_get(diag_opts, "eta", 1e-6)),
+            random_state=int(_get(diag_opts, "random_state", 123)),
+            mask_s=mask_s,
+            mask_t=mask_t,
+            return_details=False,
+        )
+
+        feature_meta = diag.get("feature_meta", {})
+        return {
+            "diagnostic_name": "relative_wellposedness_A",
+            "runner": "semiparametric",
+            "dgp_name": _get(self.config["dgp_opts"], "dgp_name", ""),
+            "fn_number": int(fn_number),
+            "stage": "mediated_joint_default",
+            "aux_seed": int(aux_seed),
+            "n_aux_samples": int(n_aux),
+            "feature_map": feature_meta.get("feature_map", ""),
+            "feature_gamma": feature_meta.get("gamma", None),
+            "kappa2": diag["kappa2"],
+            "kappa": diag["kappa"],
+            "eta": diag["eta"],
+            "ridge_alpha": diag["ridge_alpha"],
+            "n_total": diag["n_total"],
+            "n_s": diag["n_s"],
+            "n_t": diag["n_t"],
+            "n_features": diag["n_features"],
+            "null_like_dim_sigma_s": diag["null_like_dim_sigma_s"],
+            "max_diag_ratio_sigma_t_over_sigma_s": diag["max_diag_ratio_sigma_t_over_sigma_s"],
+            "unstable_flag": diag["unstable_flag"],
+            "min_eig_sigma_s_eta": diag["min_eig_sigma_s_eta"],
+            "max_eig_whitened": diag["max_eig_whitened"],
+        }
+
+    def _save_pre_diagnostics(self, rows):
+        if len(rows) == 0:
+            return None, None
+
+        diag_opts = self.config.get("diagnostics_opts", {})
+        if not bool(_get(diag_opts, "save_csv", True)):
+            return None, None
+
+        df = pd.DataFrame(rows)
+        csv_path = os.path.join(
+            self.config["target_dir"],
+            f"pre_diagnostics_relative_wellposedness_{self.config['param_str']}.csv",
+        )
+        json_path = os.path.join(
+            self.config["target_dir"],
+            f"pre_diagnostics_relative_wellposedness_{self.config['param_str']}.json",
+        )
+        df.to_csv(csv_path, index=False)
+
+        payload = {"rows": []}
+        for row in rows:
+            clean_row = {}
+            for key, value in row.items():
+                if isinstance(value, np.generic):
+                    clean_row[key] = value.item()
+                else:
+                    clean_row[key] = value
+            payload["rows"].append(clean_row)
+
+        with open(json_path, "w", encoding="utf-8") as f:
+            json.dump(payload, f, indent=2, allow_nan=True)
+
+        print("Pre-estimation diagnostics saved to", csv_path)
+        return csv_path, json_path
+
+    def _build_dml_model(self, model_instance, n_folds, inner_n_jobs, Y, D, M, W, Z, X):
+        return DML_mediated(
+            Y=Y, D=D, M=M, W=W, Z=Z, X1=X,
+            estimator='MR',
+            estimand='E[Y(1,M(0))]',
+            model1=model_instance[0],
+            modelq1=model_instance[1],
+            n_folds=n_folds, n_rep=1, verbose=False,
+            inner_n_jobs=inner_n_jobs,
+            CHIM=_get(self.config['method_opts'], 'CHIM', False),
+            nn_1=_get(self.config['method_opts'], 'nn_1', False),
+            nn_q1=_get(self.config['method_opts'], 'nn_q1', False),
+            fitargs1=_get(self.config['method_opts'], 'fitargs', None),
+            fitargsq1=_get(self.config['method_opts'], 'fitargs', None),
+            opts=_get(self.config['method_opts'], 'opts', None),
+        )
+
+    def _bootstrap_cis(self, rng, model_instance, n_folds, inner_n_jobs,
+                       Y, D, M, W, Z, X, theta_hat, var_hat, n_bootstrap):
+        n = Y.shape[0]
+        theta_boot = []
+        se_boot = []
+        for _ in range(n_bootstrap):
+            inds = rng.integers(0, n, size=n)
+            dml_boot = self._build_dml_model(
+                model_instance, n_folds=n_folds, inner_n_jobs=inner_n_jobs,
+                Y=Y[inds], D=D[inds], M=M[inds], W=W[inds], Z=Z[inds], X=X[inds],
+            )
+            try:
+                theta_b, var_b, _ = dml_boot.dml()
+            except Exception:
+                continue
+            theta_b = float(np.asarray(theta_b).reshape(-1)[0])
+            var_b = float(np.asarray(var_b).reshape(-1)[0])
+            if not (np.isfinite(theta_b) and np.isfinite(var_b) and var_b >= 0):
+                continue
+            theta_boot.append(theta_b)
+            se_boot.append(np.sqrt(var_b / n))
+
+        theta_boot = np.asarray(theta_boot, dtype=float)
+        se_boot = np.asarray(se_boot, dtype=float)
+        if theta_boot.size < 2:
+            return None, None
+
+        pct_lo = float(np.percentile(theta_boot, 2.5))
+        pct_hi = float(np.percentile(theta_boot, 97.5))
+        percentile_ci = (pct_lo, pct_hi)
+
+        se_hat = np.sqrt(max(var_hat, 0.0) / n)
+        if not np.isfinite(se_hat) or se_hat <= 0:
+            return percentile_ci, None
+
+        mask = np.isfinite(se_boot) & (se_boot > 0)
+        if np.sum(mask) < 2:
+            return percentile_ci, None
+
+        t_boot = (theta_boot[mask] - theta_hat) / se_boot[mask]
+        t_lo = float(np.percentile(t_boot, 2.5))
+        t_hi = float(np.percentile(t_boot, 97.5))
+        studentized_ci = (float(theta_hat - t_hi * se_hat), float(theta_hat - t_lo * se_hat))
+        return percentile_ci, studentized_ci
+
     def experiment(self, exp_id, fn_number, model_instance, n_folds, inner_n_jobs):
         ''' Runs an experiment on a single randomly generated instance and sample and returns
         the parameter estimates for each method 
@@ -146,33 +340,43 @@ class SemiParametricsMonteCarlo:
         tau_fn = dgps.get_tau_fn(fn_number)
         W, Z, X, M, D, Y, tau_fn = dgps.get_data(_get(self.config['dgp_opts'], 'n_samples', 2000), tau_fn)
 
-        dml_model = DML_mediated(Y=Y, D=D, M=M, W=W, Z=Z, X1=X,
-                                estimator='MR',
-                                estimand='E[Y(1,M(0))]',
-                                model1 = model_instance[0],
-                                modelq1 = model_instance[1],
-                                n_folds=n_folds, n_rep=1, verbose=False,
-                                inner_n_jobs=inner_n_jobs,
-                                CHIM = _get(self.config['method_opts'], 'CHIM', False),
-                                nn_1 = _get(self.config['method_opts'], 'nn_1', False),
-                                nn_q1 = _get(self.config['method_opts'], 'nn_q1', False),
-                                fitargs1 = _get(self.config['method_opts'], 'fitargs', None),
-                                fitargsq1 = _get(self.config['method_opts'], 'fitargs', None),
-                                opts = _get(self.config['method_opts'], 'opts', None))
+        dml_model = self._build_dml_model(
+            model_instance, n_folds=n_folds, inner_n_jobs=inner_n_jobs,
+            Y=Y, D=D, M=M, W=W, Z=Z, X=X
+        )
                   
         start_time = time.time()
         theta, var, ci = dml_model.dml()
         end_time = time.time()
         elapsed_time = end_time - start_time
+        theta = float(np.asarray(theta).reshape(-1)[0])
+        var = float(np.asarray(var).reshape(-1)[0])
+        ci = _valid_interval(ci)
 
-        return (theta, var, ci, elapsed_time)
+        bootstrap_reps = _get(self.config['mc_opts'], 'bootstrap_reps', 0)
+        bootstrap_percentile_ci = None
+        bootstrap_studentized_ci = None
+        if int(bootstrap_reps) > 0:
+            rng = np.random.default_rng(exp_id + 100_000)
+            bootstrap_percentile_ci, bootstrap_studentized_ci = self._bootstrap_cis(
+                rng=rng,
+                model_instance=model_instance,
+                n_folds=n_folds,
+                inner_n_jobs=inner_n_jobs,
+                Y=Y, D=D, M=M, W=W, Z=Z, X=X,
+                theta_hat=theta,
+                var_hat=var,
+                n_bootstrap=int(bootstrap_reps),
+            )
+
+        return (theta, var, ci, elapsed_time, bootstrap_percentile_ci, bootstrap_studentized_ci)
 
     def run(self):
         ''' Runs multiple experiments in parallel on randomly generated instances and samples and returns
         the parameter estimates for each method across all experiments
         '''
         random_seed = self.config['mc_opts']['seed']
-        n_folds = 5
+        n_folds = int(_get(self.config['mc_opts'], 'n_folds', 5))
         mc_n_jobs = _get(self.config['mc_opts'], 'n_jobs', -1)
         if mc_n_jobs is None:
             mc_n_jobs = -1
@@ -187,11 +391,25 @@ class SemiParametricsMonteCarlo:
         if not os.path.exists(self.config['target_dir']):
             os.makedirs(self.config['target_dir'])
 
-        result_distributions = np.empty((4, len(self.config['dgp_opts']['fn']), 
+        pre_diagnostics_rows = []
+
+        result_distributions = np.empty((6, len(self.config['dgp_opts']['fn']), 
             len(self.config['methods']), self.config['mc_opts']['n_experiments']), dtype=object)
             
         ii = 0
         for fn_number in self.config['dgp_opts']['fn']:
+            if self._diagnostics_enabled():
+                try:
+                    pre_diagnostics_rows.append(self._run_pre_estimation_diagnostic_A(fn_number))
+                except Exception as exc:
+                    pre_diagnostics_rows.append({
+                        "diagnostic_name": "relative_wellposedness_A",
+                        "runner": "semiparametric",
+                        "dgp_name": _get(self.config["dgp_opts"], "dgp_name", ""),
+                        "fn_number": int(fn_number),
+                        "stage": "mediated_joint_default",
+                        "error": str(exc),
+                    })
             j = 0
             for model_name, model_instance in self.config['methods'].items():
                 filename_jbl = '_'.join(
@@ -222,7 +440,7 @@ class SemiParametricsMonteCarlo:
                 k = 0
                 for sim_run in results:    
                     # [m][ii][j][k] : parameter | fn number | method | run 
-                    for m in range(4) :  
+                    for m in range(6) :  
                         result_distributions[m][ii][j][k] = sim_run[m]
                     k += 1
                 j += 1
@@ -231,6 +449,8 @@ class SemiParametricsMonteCarlo:
         #---------------------------------------------------------------------------------------
 
         # Initialize arrays to store the calculated values
+        true_param = float(_get(self.config['dgp_opts'], 'true_param', 4.05))
+        n_samples = int(_get(self.config['dgp_opts'], 'n_samples', 2000))
         num_i = len(self.config['dgp_opts']['fn'])
         num_j = len(self.config['methods'])
 
@@ -251,11 +471,21 @@ class SemiParametricsMonteCarlo:
 
         studentized = {}
 
-        coverage = np.zeros((num_i, num_j))
+        empirical_sd = np.zeros((num_i, num_j))
+        mean_reported_se = np.zeros((num_i, num_j))
+        se_ratio = np.zeros((num_i, num_j))
 
-        interval_lengths = np.zeros((num_i, num_j))
-        sd_interval_lengths = np.zeros((num_i, num_j))
-        interval_median = np.zeros((num_i, num_j))
+        coverage_normal = np.zeros((num_i, num_j))
+        interval_lengths_normal = np.zeros((num_i, num_j))
+        sd_interval_lengths_normal = np.zeros((num_i, num_j))
+
+        coverage_bootstrap_percentile = np.zeros((num_i, num_j))
+        interval_lengths_bootstrap_percentile = np.zeros((num_i, num_j))
+        sd_interval_lengths_bootstrap_percentile = np.zeros((num_i, num_j))
+
+        coverage_bootstrap_studentized = np.zeros((num_i, num_j))
+        interval_lengths_bootstrap_studentized = np.zeros((num_i, num_j))
+        sd_interval_lengths_bootstrap_studentized = np.zeros((num_i, num_j))
 
         average_time = np.zeros((num_i, num_j))
         sd_average_time = np.zeros((num_i, num_j))
@@ -268,12 +498,13 @@ class SemiParametricsMonteCarlo:
                 variance_vals = _percentile_slice(result_distributions[1][i][j], upper_q=99)
                 mean_variance[i][j], sd_mean_variance[i][j], median_variance[i][j] = _safe_mean_std_median(variance_vals)
 
-                # Mean estimate: trim extremes and guard against empty slices.
-                estimate_vals = _percentile_slice(result_distributions[0][i][j], lower_q=1, upper_q=99)
+                # Mean estimate and empirical SD from finite values.
+                estimate_vals = _finite_1d(result_distributions[0][i][j])
                 mean_estimate[i][j], sd_mean_estimate[i][j], median_estimate[i][j] = _safe_mean_std_median(estimate_vals)
+                empirical_sd[i][j] = float(np.std(estimate_vals, ddof=1)) if estimate_vals.size > 1 else np.nan
 
                 # Bias / MSE
-                bias_vals = estimate_vals - 4.05
+                bias_vals = estimate_vals - true_param
                 if bias_vals.size == 0:
                     bias[i][j] = np.nan
                     sd_bias[i][j] = np.nan
@@ -290,34 +521,35 @@ class SemiParametricsMonteCarlo:
                 # Studentized values: avoid divide-by-zero / invalid values.
                 raw_estimates = _finite_1d(result_distributions[0][i][j])
                 if raw_estimates.size > 0 and np.isfinite(sd_bias[i][j]) and sd_bias[i][j] > 0:
-                    studentized_vals = (raw_estimates - 4.05) / sd_bias[i][j]
+                    studentized_vals = (raw_estimates - true_param) / sd_bias[i][j]
                     studentized[i][j] = _finite_1d(studentized_vals)
                 else:
                     studentized[i][j] = np.array([], dtype=float)
 
-                #Coverage
-                c_i = result_distributions[2][i][j]
-                valid_intervals = []
-                for interval in c_i:
-                    if interval is None or len(interval) != 2:
-                        continue
-                    lo, hi = interval
-                    if np.isfinite(lo) and np.isfinite(hi):
-                        valid_intervals.append((lo, hi))
-
-                if len(valid_intervals) > 0:
-                    ub = np.array([interval[1] for interval in valid_intervals], dtype=float)
-                    lb = np.array([interval[0] for interval in valid_intervals], dtype=float)
-                    coverage[i][j] = float(np.mean((ub >= 4.05) * (lb <= 4.05)))
-                    lengths = ub - lb
-                    interval_lengths[i][j] = float(np.mean(lengths))
-                    sd_interval_lengths[i][j] = float(np.std(lengths))
-                    interval_median[i][j] = float(np.median(lengths))
+                # Mean reported SE and SD/SE ratio.
+                var_vals = _finite_1d(result_distributions[1][i][j])
+                se_vals = np.sqrt(np.maximum(var_vals, 0.0) / max(1, n_samples))
+                mean_reported_se[i][j] = float(np.mean(se_vals)) if se_vals.size > 0 else np.nan
+                if np.isfinite(empirical_sd[i][j]) and np.isfinite(mean_reported_se[i][j]) and mean_reported_se[i][j] > 0:
+                    se_ratio[i][j] = float(empirical_sd[i][j] / mean_reported_se[i][j])
                 else:
-                    coverage[i][j] = np.nan
-                    interval_lengths[i][j] = np.nan
-                    sd_interval_lengths[i][j] = np.nan
-                    interval_median[i][j] = np.nan
+                    se_ratio[i][j] = np.nan
+
+                # Coverage and CI length summaries for normal and bootstrap CIs.
+                cov, mean_len, sd_len = _summarize_interval_metrics(result_distributions[2][i][j], true_param)
+                coverage_normal[i][j] = cov
+                interval_lengths_normal[i][j] = mean_len
+                sd_interval_lengths_normal[i][j] = sd_len
+
+                cov, mean_len, sd_len = _summarize_interval_metrics(result_distributions[4][i][j], true_param)
+                coverage_bootstrap_percentile[i][j] = cov
+                interval_lengths_bootstrap_percentile[i][j] = mean_len
+                sd_interval_lengths_bootstrap_percentile[i][j] = sd_len
+
+                cov, mean_len, sd_len = _summarize_interval_metrics(result_distributions[5][i][j], true_param)
+                coverage_bootstrap_studentized[i][j] = cov
+                interval_lengths_bootstrap_studentized[i][j] = mean_len
+                sd_interval_lengths_bootstrap_studentized[i][j] = sd_len
 
                 #Average time
                 time_vals = _finite_1d(result_distributions[3][i][j])
@@ -336,18 +568,26 @@ class SemiParametricsMonteCarlo:
             "Mean Estimate": [],
             "SD Estimate": [],
             "Median Estimate": [],
+            "Empirical SD": [],
             "Mean Variance": [],
             "SD Variance": [],
             "Median Variance": [],
+            "Mean Reported SE": [],
+            "SE Ratio": [],
             "Bias": [],
             "SD Bias": [],
             "Median Bias": [],
             "MSE": [],
             "SD MSE": [],
-            "Coverage": [],
-            "Interval Length": [],
-            "SD Interval Length": [],
-            "Interval Median": [],
+            "Normal Coverage": [],
+            "Normal CI Length": [],
+            "SD Normal CI Length": [],
+            "Percentile Bootstrap Coverage": [],
+            "Percentile Bootstrap CI Length": [],
+            "SD Percentile Bootstrap CI Length": [],
+            "Studentized Bootstrap Coverage": [],
+            "Studentized Bootstrap CI Length": [],
+            "SD Studentized Bootstrap CI Length": [],
             "Average Time": [],
             "SD Average Time": []
         }
@@ -361,18 +601,26 @@ class SemiParametricsMonteCarlo:
                 results_dict["Mean Estimate"].append(mean_estimate[i][j])
                 results_dict["SD Estimate"].append(sd_mean_estimate[i][j])
                 results_dict["Median Estimate"].append(median_estimate[i][j])
+                results_dict["Empirical SD"].append(empirical_sd[i][j])
                 results_dict["Mean Variance"].append(mean_variance[i][j])
                 results_dict["SD Variance"].append(sd_mean_variance[i][j])
                 results_dict["Median Variance"].append(median_variance[i][j])
+                results_dict["Mean Reported SE"].append(mean_reported_se[i][j])
+                results_dict["SE Ratio"].append(se_ratio[i][j])
                 results_dict["Bias"].append(bias[i][j])
                 results_dict["SD Bias"].append(sd_bias[i][j])
                 results_dict["Median Bias"].append(median_bias[i][j])
                 results_dict["MSE"].append(mse[i][j])
                 results_dict["SD MSE"].append(sd_mse[i][j])
-                results_dict["Coverage"].append(coverage[i][j])
-                results_dict["Interval Length"].append(interval_lengths[i][j])
-                results_dict["SD Interval Length"].append(sd_interval_lengths[i][j])
-                results_dict["Interval Median"].append(interval_median[i][j])
+                results_dict["Normal Coverage"].append(coverage_normal[i][j])
+                results_dict["Normal CI Length"].append(interval_lengths_normal[i][j])
+                results_dict["SD Normal CI Length"].append(sd_interval_lengths_normal[i][j])
+                results_dict["Percentile Bootstrap Coverage"].append(coverage_bootstrap_percentile[i][j])
+                results_dict["Percentile Bootstrap CI Length"].append(interval_lengths_bootstrap_percentile[i][j])
+                results_dict["SD Percentile Bootstrap CI Length"].append(sd_interval_lengths_bootstrap_percentile[i][j])
+                results_dict["Studentized Bootstrap Coverage"].append(coverage_bootstrap_studentized[i][j])
+                results_dict["Studentized Bootstrap CI Length"].append(interval_lengths_bootstrap_studentized[i][j])
+                results_dict["SD Studentized Bootstrap CI Length"].append(sd_interval_lengths_bootstrap_studentized[i][j])
                 results_dict["Average Time"].append(average_time[i][j])
                 results_dict["SD Average Time"].append(sd_average_time[i][j])
 
@@ -392,42 +640,46 @@ class SemiParametricsMonteCarlo:
         results_df.to_csv(results_csv_filename, index=False)
         print("Results saved to", results_csv_filename)
 
+        if self._diagnostics_enabled():
+            self._save_pre_diagnostics(pre_diagnostics_rows)
+
         #---------------------------------------------------------------------------------------
 
-        df = self.config['mc_opts']['n_experiments'] - 1
-        x = np.linspace(t.ppf(0.01, df), t.ppf(0.99, df), 100)
+        if not _get(self.config['mc_opts'], 'skip_plots', False):
+            df = self.config['mc_opts']['n_experiments'] - 1
+            x = np.linspace(t.ppf(0.01, df), t.ppf(0.99, df), 100)
 
-        dgp_name = self.config['dgp_opts']['dgp_name']
-        folder_plots = os.path.join(self.config['target_dir'], f'plots_{dgp_name}')
-        os.makedirs(folder_plots, exist_ok=True)
+            dgp_name = self.config['dgp_opts']['dgp_name']
+            folder_plots = os.path.join(self.config['target_dir'], f'plots_{dgp_name}')
+            os.makedirs(folder_plots, exist_ok=True)
 
-        i = 0
-        for fn_number in self.config['dgp_opts']['fn']:
-            j = 0
-            for model_name, model_instance in self.config['methods'].items():
-                studentized_vals = _finite_1d(studentized[i][j])
-                filtered_data = _percentile_slice(studentized_vals, lower_q=2.5, upper_q=97.5)
+            i = 0
+            for fn_number in self.config['dgp_opts']['fn']:
+                j = 0
+                for model_name, model_instance in self.config['methods'].items():
+                    studentized_vals = _finite_1d(studentized[i][j])
+                    filtered_data = _percentile_slice(studentized_vals, lower_q=2.5, upper_q=97.5)
 
-                fig, ax = plt.subplots(1, 1)
-                ax.plot(x, t.pdf(x, df), 'r-', lw=2, label='t pdf')
-                if filtered_data.size > 0:
-                    ax.hist(filtered_data, density=True, bins=max(1, int(np.sqrt(self.config['mc_opts']['n_experiments']))), histtype='stepfilled')
-                else:
-                    ax.text(0.5, 0.5, 'No finite studentized values', ha='center', va='center', transform=ax.transAxes)
-                ax.set_xlabel('Value')
-                ax.set_ylabel('Density')
-                ax.set_title(f'Studentized Distribution (DGP function {fn_number}, Method {model_name})')
-                ax.legend()
-                
-                # Save the plot
-                plot_filename = f"{folder_plots}/plot_{self.config['dgp_opts']['dgp_name']}_{self.config['dgp_opts']['n_samples']}_fn_{fn_number}_method_{model_name}.png"
-                plt.savefig(plot_filename)
-                print(f'Plot saved as {plot_filename}')
-                
-                plt.close()  # Close the plot to avoid memory leaks
+                    fig, ax = plt.subplots(1, 1)
+                    ax.plot(x, t.pdf(x, df), 'r-', lw=2, label='t pdf')
+                    if filtered_data.size > 0:
+                        ax.hist(filtered_data, density=True, bins=max(1, int(np.sqrt(self.config['mc_opts']['n_experiments']))), histtype='stepfilled')
+                    else:
+                        ax.text(0.5, 0.5, 'No finite studentized values', ha='center', va='center', transform=ax.transAxes)
+                    ax.set_xlabel('Value')
+                    ax.set_ylabel('Density')
+                    ax.set_title(f'Studentized Distribution (DGP function {fn_number}, Method {model_name})')
+                    ax.legend()
 
-                j += 1
-            i += 1
+                    # Save the plot
+                    plot_filename = f"{folder_plots}/plot_{self.config['dgp_opts']['dgp_name']}_{self.config['dgp_opts']['n_samples']}_fn_{fn_number}_method_{model_name}.png"
+                    plt.savefig(plot_filename)
+                    print(f'Plot saved as {plot_filename}')
+
+                    plt.close()  # Close the plot to avoid memory leaks
+
+                    j += 1
+                i += 1
 
                         
 

@@ -5,6 +5,7 @@ __all__ = ['ensemble',
            'linear',
            'neuralnet',
            'rkhs',
+           'diagnostics',
            'shape',
            'tsls',
            'semiparametrics']

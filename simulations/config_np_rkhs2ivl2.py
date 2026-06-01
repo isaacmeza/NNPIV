@@ -11,36 +11,37 @@ CONFIG = {
         "dgp2": ivfunctions_nested.gen_data
     },
     "dgp_opts": {
-        'dgp_num': 2,
-        'fn': list(iter(fn_dict_paper.values())),
-        'n_samples': 2000,
-        'n_a': 10,
-        'n_b': 10,
-        'n_test': 1000,
-        'gridtest': 1
+        "dgp_num": 2,
+        "fn": list(iter(fn_dict_paper.values())),
+        "n_samples": 2000,
+        "n_a": 10,
+        "n_b": 10,
+        "n_test": 1000,
+        "gridtest": 1
     },
     "methods": { 
-        "RKHS2L2": ivfunctions_nested.rkhs2_ridge
+        "RKHS2IVL2": ivfunctions_nested.rkhs2_ridge
     },
     "method_opts": {
 
     },
     "metrics": {
-        'rmse': ivfunctions_nested.mse,
-        'raw': raw_metric
+        "rmse": ivfunctions_nested.mse,
+        "raw": raw_metric
     },
     "plots": {
-        'est': plot_ind,
-        'print_metrics': lambda x, y, z: printtable.print_table(x, y, z,
-                                                                 filename='nonparametric_fit/table1_rkhs.csv')
+        "est": plot_ind,
+        "print_metrics": lambda x, y, z: printtable.print_table(
+            x, y, z, filename="nonparametric_fit/table1_rkhs2ivl2.csv"
+        )
     },
     "subplots": {
-        'fn_plot': [8,15,2,16]
+        "fn_plot": [8, 15, 2, 16]
     },
     "sweep_plots": {
     },
     "mc_opts": {
-        'n_experiments': 2500,  # number of monte carlo experiments
+        "n_experiments": 2500,  # number of monte carlo experiments
         "seed": 123,
     },
     "cluster_opts": {

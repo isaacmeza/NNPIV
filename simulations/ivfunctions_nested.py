@@ -13,7 +13,7 @@ from nnpiv.linear import OptimisticHedgeVsOptimisticHedge, StochasticOptimisticH
 from nnpiv.linear import L2OptimisticHedgeVsOGD, L2ProxGradient
 
 from nnpiv.linear import sparse2_l1vsl1, sparse2_ridge_l1vsl1
-from nnpiv.rkhs import RKHS2IVL2
+from nnpiv.rkhs import RKHS2IV, RKHS2IVL2, ApproxRKHS2IV, ApproxRKHS2IVL2
 from nnpiv.ensemble import Ensemble2IV
 
 from sklearn.pipeline import Pipeline
@@ -261,6 +261,51 @@ def rkhs2_ridge(data, opts):
     B1_test, A1, A2, B1, B2, Y = data
 
     model = RKHS2IVL2(kernel='rbf', gamma=.0013, delta_scale='auto', delta_exp=.4)
+
+    return model.fit(A1, B1, B2, A2, Y).predict(B1_test).reshape(B1_test.shape[:1] + Y.shape[1:])
+
+
+def rkhs2(data, opts):
+    B1_test, A1, A2, B1, B2, Y = data
+
+    model = RKHS2IV(
+        kernel='rbf',
+        gamma=.0013,
+        delta_scale='auto',
+        delta_exp=.4,
+    )
+
+    return model.fit(A1, B1, B2, A2, Y).predict(B1_test).reshape(B1_test.shape[:1] + Y.shape[1:])
+
+
+def approx_rkhs2_ridge(data, opts):
+    B1_test, A1, A2, B1, B2, Y = data
+
+    model = ApproxRKHS2IVL2(
+        kernel_approx='nystrom',
+        n_components=_get(opts, 'nstrm_n_comp', 0.20),
+        kernel='rbf',
+        gamma=.0013,
+        delta_scale='auto',
+        delta_exp=.4,
+        alpha_scale=_get(opts, 'rkhs2iv_alpha_scale', 1),
+    )
+
+    return model.fit(A1, B1, B2, A2, Y).predict(B1_test).reshape(B1_test.shape[:1] + Y.shape[1:])
+
+
+def approx_rkhs2(data, opts):
+    B1_test, A1, A2, B1, B2, Y = data
+
+    model = ApproxRKHS2IV(
+        kernel_approx='nystrom',
+        n_components=_get(opts, 'nstrm_n_comp', 0.20),
+        kernel='rbf',
+        gamma=.0013,
+        delta_scale='auto',
+        delta_exp=.4,
+        alpha_scale=_get(opts, 'rkhs2iv_alpha_scale', 1),
+    )
 
     return model.fit(A1, B1, B2, A2, Y).predict(B1_test).reshape(B1_test.shape[:1] + Y.shape[1:])
 

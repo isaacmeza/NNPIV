@@ -72,6 +72,16 @@ We study the estimator
    rkhsiv.RKHSIVL2
    rkhsiv.RKHSIVL2CV
 
+**Remark (Nystrom/RFF approximation)**
+Low-rank feature approximations for the L2 sequential estimator are also implemented.
+
+.. autosummary::
+   :toctree: _autosummary
+   :template: class.rst
+
+   rkhsiv.ApproxRKHSIVL2
+   rkhsiv.ApproxRKHSIVL2CV
+
 Closed form - Estimator 3
 -------------------------
 
@@ -216,12 +226,33 @@ To lighten notation, let :math:`K_C^{\dagger} K_C = P_C`.
         \hat{\beta} = \left[ K_A \left\{ - P_C + \left( P_{C'} + P_C + \mu' \right) K_A \left( K_B P_C K_A \right)^{\dagger} K_B \left( P_C + \mu \right) \right\} K_B \right]^{\dagger} K_A P_{C'} Y \\
         \hat{\alpha} = \left( K_B P_C K_A \right)^{\dagger} K_B \left( P_C + \mu \right) K_B \hat{\beta}
 
+Implementation note: in the package, Appendix J / Algorithm 2 is implemented by
+``RKHS2IVL2`` and ``RKHS2IVL2CV``. The low-rank feature approximations of the same
+estimator are ``ApproxRKHS2IVL2`` and ``ApproxRKHS2IVL2CV``.
+
+Class mapping summary:
+
+- ``RKHS2IVL2`` and ``RKHS2IVL2CV``: Appendix J / Algorithm 2 closed-form estimator.
+- ``ApproxRKHS2IVL2`` and ``ApproxRKHS2IVL2CV``: low-rank approximations of the same
+  Algorithm 2 estimator.
+- ``RKHS2IV`` and ``RKHS2IVCV``: alternate simultaneous estimator (distinct objective;
+  not Appendix J / Algorithm 2), documented below.
+- ``ApproxRKHS2IV`` and ``ApproxRKHS2IVCV``: low-rank approximations of the alternate
+  simultaneous estimator (distinct objective; not Appendix J / Algorithm 2).
+
+Pre-estimation diagnostics are package-level and estimator-agnostic; see
+:doc:`/diagnostics/Universal`.
+For finite-sample calibration checks, compare normal and bootstrap CIs and inspect
+bias/SE decomposition diagnostics.
+
 .. autosummary::
    :toctree: _autosummary
    :template: class.rst
 
    rkhs2iv.RKHS2IVL2
    rkhs2iv.RKHS2IVL2CV
+   rkhs2iv.ApproxRKHS2IVL2
+   rkhs2iv.ApproxRKHS2IVL2CV
 
 **Proof**
 
@@ -500,6 +531,11 @@ We study the RKHS-norm regularized *joint* estimator:
         P_C &= \left(K_C+\lambda\right)^{\dagger}K_C \\
         P_{C'} &= \left(K_{C'}+\lambda'\right)^{\dagger}K_{C'}
 
+Implementation note: ``RKHS2IV`` and ``RKHS2IVCV`` implement this alternate
+simultaneous estimator, and ``ApproxRKHS2IV`` / ``ApproxRKHS2IVCV`` are the
+corresponding low-rank feature approximations. This branch is distinct from
+Appendix J / Algorithm 2 above.
+
 
 .. autosummary::
    :toctree: _autosummary
@@ -507,6 +543,8 @@ We study the RKHS-norm regularized *joint* estimator:
 
    rkhs2iv.RKHS2IV
    rkhs2iv.RKHS2IVCV
+   rkhs2iv.ApproxRKHS2IV
+   rkhs2iv.ApproxRKHS2IVCV
 
 Remark: Subsetted estimator
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^

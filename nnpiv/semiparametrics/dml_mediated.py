@@ -968,7 +968,7 @@ class DML_mediated:
                 A_train, E_train, B_train, C_train, train_D = map(lambda x: x[mask], 
                                                     [A_train, E_train, B_train, C_train, train_D])
                 
-                if self.nn_1 == True:
+                if self.nn_q1 == True:
                     A_train, E_train, B_train, C_train, train_D, ps_hat_0, ps_hat_00, ps_hat_01, B_test, A_test = map(
                         toT, [A_train, E_train, B_train, C_train, train_D, ps_hat_0, ps_hat_00, ps_hat_01, B_test, A_test]
                     )
@@ -981,13 +981,17 @@ class DML_mediated:
                     B_test = _transform_poly(B_test, self.opts)
                     A_test = _transform_poly(A_test, self.opts)
 
-                if self.fitargs1 is not None:
+                if self.fitargsq1 is not None:
                     #Using weights in the action stage
-                    model_q1.fit(A_train, B_train, C_train, E_train, 1/ps_hat_0, W=(ps_hat_00/ps_hat_01), subsetted=True, subset_ind1=1-train_D, **self.fitargs1)
+                    model_q1.fit(
+                        A_train, B_train, C_train, E_train, 1/ps_hat_0,
+                        W=(ps_hat_00/ps_hat_01), subsetted=True, subset_ind1=1-train_D,
+                        **self.fitargsq1
+                    )
                 else:
                     model_q1.fit(A_train, B_train, C_train, E_train, 1/ps_hat_0, W=(ps_hat_00/ps_hat_01), subsetted=True, subset_ind1=1-train_D)
 
-                if self.nn_1 == True:
+                if self.nn_q1 == True:
                     q_1_hat, q_0_hat = model_q1.predict(B_test.to(DEVICE), A_test.to(DEVICE), model='avg', burn_in=_get(self.opts, 'burnin', 0))
                     q_0_hat = q_0_hat.reshape(-1, 1)
                     q_1_hat = q_1_hat.reshape(-1, 1)

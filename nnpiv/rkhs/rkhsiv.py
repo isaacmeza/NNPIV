@@ -9,6 +9,8 @@ Classes:
     RKHSIVL2CV: RKHS IV estimator with L2 regularization and cross-validation.
     ApproxRKHSIV: Approximate RKHS IV estimator using kernel approximations.
     ApproxRKHSIVCV: Approximate RKHS IV estimator with cross-validation using kernel approximations.
+    ApproxRKHSIVL2: Approximate RKHS IV estimator with L2 regularization.
+    ApproxRKHSIVL2CV: Approximate RKHS IV estimator with L2 regularization and cross-validation.
 """
 
 # Licensed under the MIT License.
@@ -17,11 +19,46 @@ from sklearn.metrics.pairwise import pairwise_kernels, euclidean_distances
 from sklearn.model_selection import KFold
 from sklearn.kernel_approximation import Nystroem, RBFSampler
 import numpy as np
-import scipy
 
 
 def _check_auto(param):
     return (isinstance(param, str) and (param == 'auto'))
+
+
+def _to_column_vector(y):
+    arr = np.asarray(y)
+    if arr.ndim == 1:
+        return arr.reshape(-1, 1)
+    if arr.ndim == 2 and arr.shape[1] == 1:
+        return arr
+    raise ValueError(
+        "`Y` must be a 1D array or a 2D column vector with shape (n, 1). "
+        f"Got shape={arr.shape!r}."
+    )
+
+
+def _to_scalar(x):
+    arr = np.asarray(x)
+    if arr.size != 1:
+        raise ValueError(
+            "Expected scalar quadratic form, got array with "
+            f"shape={arr.shape!r} and size={arr.size}."
+        )
+    return float(arr.reshape(-1)[0])
+
+
+def _sqrt_psd_matrix(K):
+    """
+    Numerically stable real square-root for symmetric PSD matrices.
+
+    Kernel matrices can be theoretically PSD but have tiny negative/complex
+    artifacts in floating point arithmetic. This routine symmetrizes ``K``,
+    clips negative eigenvalues to zero, and returns a real square-root.
+    """
+    K_sym = 0.5 * (K + K.T)
+    evals, evecs = np.linalg.eigh(K_sym)
+    evals = np.clip(evals, 0.0, None)
+    return (evecs * np.sqrt(evals)) @ evecs.T
 
 
 class _BaseRKHSIV:
@@ -126,6 +163,7 @@ class RKHSIV(_BaseRKHSIV):
         Returns:
             self: Fitted estimator.
         """
+        Y = _to_column_vector(Y)
         n = Y.shape[0]
         delta = self._get_delta(n)
         alpha = self._get_alpha(delta, self._get_alpha_scale())
@@ -133,7 +171,7 @@ class RKHSIV(_BaseRKHSIV):
         Kh = self._get_kernel(T)
         Kf = self._get_kernel(Z)
 
-        RootKf = scipy.linalg.sqrtm(Kf).astype(float)
+        RootKf = _sqrt_psd_matrix(Kf)
         M = RootKf @ np.linalg.inv(
             Kf / (2 * n * delta**2) + np.eye(n) / 2) @ RootKf
         self.T = T.copy()
@@ -165,14 +203,15 @@ class RKHSIV(_BaseRKHSIV):
         Returns:
             float: Score.
         """
+        Y = _to_column_vector(Y)
         n = Y.shape[0]
         delta = self._get_delta(n)
         Kf = self._get_kernel(Z)
-        RootKf = scipy.linalg.sqrtm(Kf).astype(float)
+        RootKf = _sqrt_psd_matrix(Kf)
         M = RootKf @ np.linalg.inv(
             Kf / (2 * n * delta**2) + np.eye(n) / 2) @ RootKf
         Y_pred = self.predict(T)
-        return ((Y - Y_pred).T @ M @ (Y - Y_pred))[0, 0] / n**2
+        return _to_scalar((Y - Y_pred).T @ M @ (Y - Y_pred)) / n**2
 
 
 class RKHSIVCV(RKHSIV):
@@ -219,12 +258,13 @@ class RKHSIVCV(RKHSIV):
         Returns:
             self: Fitted estimator.
         """
+        Y = _to_column_vector(Y)
         n = Y.shape[0]
 
         Kh = self._get_kernel(T)
         Kf = self._get_kernel(Z)
 
-        RootKf = scipy.linalg.sqrtm(Kf).astype(float)
+        RootKf = _sqrt_psd_matrix(Kf)
 
         alpha_scales = self._get_alpha_scales()
         n_train = n * (self.cv - 1) / self.cv
@@ -246,8 +286,7 @@ class RKHSIVCV(RKHSIV):
                 alpha = self._get_alpha(delta_train, alpha_scale)
                 a = np.linalg.pinv(KMK_train + alpha * Kh_train) @ B_train
                 res = Y[test] - Kh[np.ix_(test, train)] @ a
-                scores[it].append((res.T @ M_test @ res)[
-                                  0, 0] / (res.shape[0]**2))
+                scores[it].append(_to_scalar(res.T @ M_test @ res) / (res.shape[0]**2))
 
         self.alpha_scales = alpha_scales
         self.avg_scores = np.mean(np.array(scores), axis=0)
@@ -303,6 +342,7 @@ class RKHSIVL2(_BaseRKHSIV):
         Returns:
             self: Fitted estimator.
         """
+        Y = _to_column_vector(Y)
         n = Y.shape[0]
         delta = self._get_delta(n)
         alpha = delta**4
@@ -372,6 +412,7 @@ class RKHSIVL2CV(RKHSIVL2):
         Returns:
             self: Fitted estimator.
         """
+        Y = _to_column_vector(Y)
         n = Y.shape[0]
 
         Kh = self._get_kernel(T)
@@ -394,8 +435,7 @@ class RKHSIVL2CV(RKHSIVL2):
                 alpha = alpha_scale * delta_train**4
                 a = np.linalg.pinv(KMK_train + alpha * Kh_train @ Kh_train) @ B_train
                 res = Y[test] - Kh[np.ix_(test, train)] @ a
-                scores[it].append((res.T @ M_test @ res)[
-                                  0, 0] / (res.shape[0]**2))
+                scores[it].append(_to_scalar(res.T @ M_test @ res) / (res.shape[0]**2))
 
         self.alpha_scales = alpha_scales
         self.avg_scores = np.mean(np.array(scores), axis=0)
@@ -516,6 +556,7 @@ class ApproxRKHSIV(_BaseRKHSIV):
         Returns:
             self: Fitted estimator.
         """
+        Y = _to_column_vector(Y)
         n = Y.shape[0]
         delta = self._get_delta(n)
         alpha = self._get_alpha(delta, self._get_alpha_scale())
@@ -559,6 +600,7 @@ class ApproxRKHSIV(_BaseRKHSIV):
         Returns:
             float: Score.
         """
+        Y = _to_column_vector(Y)
         n = Y.shape[0]
         delta = self._get_delta(n)
         featZ = self._get_new_approx_instance(n_samples=n)
@@ -569,7 +611,7 @@ class ApproxRKHSIV(_BaseRKHSIV):
                            (2 * n * delta**2) + np.eye(n_feat_f) / 2)
         Y_pred = self.predict(T)
         res = RootKf.T @ (Y - Y_pred)
-        return (res.T @ Q @ res)[0, 0] / n**2
+        return _to_scalar(res.T @ Q @ res) / n**2
 
 
 class ApproxRKHSIVCV(ApproxRKHSIV):
@@ -623,6 +665,7 @@ class ApproxRKHSIVCV(ApproxRKHSIV):
         Returns:
             self: Fitted estimator.
         """
+        Y = _to_column_vector(Y)
         n = Y.shape[0]
 
         self.featZ = self._get_new_approx_instance(n_samples=n)
@@ -656,8 +699,7 @@ class ApproxRKHSIVCV(ApproxRKHSIV):
                 a = np.linalg.pinv(AQA_train + alpha *
                                    np.eye(n_feat_h_train)) @ B_train
                 res = RootKf_test.T @ (Y[test] - RootKh_test @ a)
-                scores[it].append((res.T @ Q_test @ res)[
-                                  0, 0] / (len(test)**2))
+                scores[it].append(_to_scalar(res.T @ Q_test @ res) / (len(test)**2))
 
         self.alpha_scales = alpha_scales
         self.avg_scores = np.mean(np.array(scores), axis=0)
@@ -674,5 +716,165 @@ class ApproxRKHSIVCV(ApproxRKHSIV):
         W = (A @ Q @ A.T + self.best_alpha * np.eye(n_feat_h))
         B = A @ Q @ RootKf.T @ Y
         self.a = np.linalg.pinv(W) @ B
+        self.fitted_delta = delta
+        return self
+
+
+class ApproxRKHSIVL2(ApproxRKHSIV):
+    """
+    Approximate RKHS IV estimator with L2 regularization.
+
+    This class mirrors ``RKHSIVL2`` using finite kernel feature approximations.
+    """
+
+    def fit(self, Z, T, Y):
+        """
+        Fit the approximate RKHS IV L2 estimator.
+
+        Parameters:
+            Z (array-like): Instrumental variables.
+            T (array-like): Treatments.
+            Y (array-like): Outcomes.
+
+        Returns:
+            self: Fitted estimator.
+        """
+        Y = _to_column_vector(Y)
+        n = Y.shape[0]
+        delta = self._get_delta(n)
+        alpha = delta**4
+
+        self.featZ = self._get_new_approx_instance(n_samples=n)
+        RootKf = self.featZ.fit_transform(Z)
+        self.featT = self._get_new_approx_instance(n_samples=n)
+        RootKh = self.featT.fit_transform(T)
+        self.RootKh_train_ = RootKh
+
+        Kf = RootKf @ RootKf.T
+        Kh = RootKh @ RootKh.T
+        M = np.linalg.pinv(Kf) @ Kf
+
+        self.a = np.linalg.pinv(Kh @ M @ Kh + alpha * Kh @ Kh) @ Kh @ M @ Y
+        self.fitted_delta = delta
+        return self
+
+    def predict(self, T):
+        """
+        Predict outcomes for new treatments.
+
+        Parameters:
+            T (array-like): New treatments.
+
+        Returns:
+            array-like: Predicted outcomes.
+        """
+        RootKh_test = self.featT.transform(T)
+        return RootKh_test @ self.RootKh_train_.T @ self.a
+
+    def score(self, Z, T, Y, delta='auto'):
+        """
+        Compute the L2 score of the fitted estimator.
+
+        Parameters:
+            Z (array-like): Instrumental variables.
+            T (array-like): Treatments.
+            Y (array-like): Outcomes.
+            delta (str or float): Kept for API compatibility.
+
+        Returns:
+            float: Score.
+        """
+        _ = delta
+        Y = _to_column_vector(Y)
+        n = Y.shape[0]
+        featZ = self._get_new_approx_instance(n_samples=n)
+        RootKf = featZ.fit_transform(Z)
+        Kf = RootKf @ RootKf.T
+        M = np.linalg.pinv(Kf) @ Kf
+        Y_pred = self.predict(T)
+        return _to_scalar((Y - Y_pred).T @ M @ (Y - Y_pred)) / n**2
+
+
+class ApproxRKHSIVL2CV(ApproxRKHSIVL2):
+    """
+    Approximate RKHS IV L2 estimator with cross-validation.
+    """
+
+    def __init__(self, kernel_approx='nystrom', n_components=10,
+                 kernel='rbf', gamma=2, degree=3, coef0=1, kernel_params=None,
+                 delta_scale='auto', delta_exp='auto', alpha_scales='auto', n_alphas=30, cv=6):
+        self.kernel_approx = kernel_approx
+        self.n_components = n_components
+        self.kernel = kernel
+        self.degree = degree
+        self.coef0 = coef0
+        self.gamma = gamma
+        self.kernel_params = kernel_params
+        self.delta_scale = delta_scale
+        self.delta_exp = delta_exp
+        self.alpha_scales = alpha_scales
+        self.n_alphas = n_alphas
+        self.cv = cv
+
+    def fit(self, Z, T, Y):
+        """
+        Fit the approximate RKHS IV L2 estimator with cross-validation.
+
+        Parameters:
+            Z (array-like): Instrumental variables.
+            T (array-like): Treatments.
+            Y (array-like): Outcomes.
+
+        Returns:
+            self: Fitted estimator.
+        """
+        Y = _to_column_vector(Y)
+        n = Y.shape[0]
+
+        self.featZ = self._get_new_approx_instance(n_samples=n)
+        RootKf = self.featZ.fit_transform(Z)
+        self.featT = self._get_new_approx_instance(n_samples=n)
+        RootKh = self.featT.fit_transform(T)
+
+        alpha_scales = self._get_alpha_scales()
+        n_train = n * (self.cv - 1) / self.cv
+        n_test = n / self.cv
+        delta_train = self._get_delta(n_train)
+        delta = self._get_delta(n)
+        scores = []
+
+        for it, (train, test) in enumerate(KFold(n_splits=self.cv).split(Z)):
+            RootKf_train, RootKf_test = RootKf[train], RootKf[test]
+            RootKh_train, RootKh_test = RootKh[train], RootKh[test]
+
+            Kf_train = RootKf_train @ RootKf_train.T
+            Kf_test = RootKf_test @ RootKf_test.T
+            Kh_train = RootKh_train @ RootKh_train.T
+            Kh_test_train = RootKh_test @ RootKh_train.T
+
+            M_train = np.linalg.pinv(Kf_train) @ Kf_train
+            M_test = np.linalg.pinv(Kf_test) @ Kf_test
+            KMK_train = Kh_train @ M_train @ Kh_train
+            B_train = Kh_train @ M_train @ Y[train]
+
+            scores.append([])
+            for alpha_scale in alpha_scales:
+                alpha = float(alpha_scale) * (delta_train**4)
+                a = np.linalg.pinv(KMK_train + alpha * Kh_train @ Kh_train) @ B_train
+                res = Y[test] - Kh_test_train @ a
+                scores[it].append(_to_scalar(res.T @ M_test @ res) / (res.shape[0]**2))
+
+        self.alpha_scales = alpha_scales
+        self.avg_scores = np.mean(np.array(scores), axis=0)
+        self.best_alpha_scale = alpha_scales[np.argmin(self.avg_scores)]
+        self.best_alpha = self.best_alpha_scale * (delta**4)
+
+        Kf = RootKf @ RootKf.T
+        Kh = RootKh @ RootKh.T
+        M = np.linalg.pinv(Kf) @ Kf
+        self.a = np.linalg.pinv(
+            Kh @ M @ Kh + self.best_alpha * Kh @ Kh
+        ) @ Kh @ M @ Y
+        self.RootKh_train_ = RootKh
         self.fitted_delta = delta
         return self
