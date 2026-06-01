@@ -3,6 +3,26 @@ Universal Diagnostics API
 
 .. currentmodule:: nnpiv.diagnostics
 
+Assumptions
+-----------
+
+- Arrays for :math:`A, C, C'` are row-aligned and represent the same sample.
+- Diagnostics are finite-dimensional proxies over selected feature maps/sieves.
+- Stability conclusions should be interpreted across :math:`(J, \\eta)` paths,
+  not from a single point estimate.
+
+Notation
+--------
+
+- :math:`\\Sigma_S, \\Sigma_T`: empirical Gram operators induced by
+  conditional means of featureized :math:`A`.
+- :math:`\\eta`: stabilization magnitude used in generalized-eigenvalue
+  computations.
+- :math:`\\kappa`: restricted relative condition number for pre-estimation
+  conditioning.
+- :math:`\\kappa_{\\mathrm{eff}}`: post-estimation condition number on the
+  realized first-stage error direction.
+
 Diagnostic A: Relative Well-posedness
 -------------------------------------
 

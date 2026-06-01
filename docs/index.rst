@@ -15,7 +15,7 @@ Contents
 
 .. note::
 
-   This project is under active development.
+   This project is under active development; see [MezaSingh2025]_ for theory background.
 
 References
 ----------

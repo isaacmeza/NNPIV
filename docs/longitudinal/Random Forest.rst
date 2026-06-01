@@ -277,9 +277,10 @@ For the joint estimator:
     \max_{f' \in \mathcal{F}} \mathbb{E}_n \left[ 2 \left\{ g(A) - Y \right\} f'(C') - f'(C')^2 \right] \\
     + \max_{f \in \mathcal{F}} \mathbb{E}_n \left[ 2 \left\{ h(B) - g(A) \right\} f(C) - f(C)^2 \right]
 
+.. _lemma-ensemble-3-norm:
+
 .. admonition:: Ensemble solution
     :class: lemma
-    :name: lemma-ensemble-3-norm
 
     Consider the algorithm where for :math:`t=1, \ldots, T`:
 
@@ -304,7 +305,7 @@ For the joint estimator:
 
 **Proof**
 
-The proof is analogous to Lemma :ref:`lemma-ensemble-3`, except that the learner best-responds to the current test function:
+The proof is analogous to :ref:`Ensemble solution<lemma-ensemble-3-norm>`, except that the learner best-responds to the current test function:
 
 .. math::
 
@@ -370,5 +371,3 @@ We simply modify the updates for :math:`(w_t', w_t)` as:
     w_i'^t &= \left| f'_t(c'_i) 1\left( i \in [p] \right) - f_t(c_i) 1\left( i \in [q] \right) \right|, \\
     w_i^t &= \left| f_t(c_i) 1\left( i \in [q] \right) \right|
     \end{aligned}
-
-

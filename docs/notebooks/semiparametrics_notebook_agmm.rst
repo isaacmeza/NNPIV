@@ -1,9 +1,9 @@
 .. _semiparametrics_notebook_agmm:
 
-Semiparametrics : DML (mediated) with Neural Nets — AGMM (sequential) & AGMM2L2 (simultaneous)
-=============================
+Semiparametrics: DML (Mediated) with Neural Nets - AGMM (Sequential) and AGMM2L2 (Simultaneous)
+====================================================================================================
 
-.. code:: ipython3
+.. code-block:: python
 
   # ---- Limit BLAS/OpenMP threads BEFORE importing heavy libs ----
   import os as os
@@ -130,7 +130,7 @@ Semiparametrics : DML (mediated) with Neural Nets — AGMM (sequential) & AGMM2L
       print("")
 
 
-.. code:: ipython3
+.. code-block:: python
 
   # -----------------------
   # Print resources 
@@ -157,7 +157,7 @@ Semiparametrics : DML (mediated) with Neural Nets — AGMM (sequential) & AGMM2L
   =========================    
 
 
-.. code:: ipython3
+.. code-block:: python
 
   # =========================================================
   # Data generation
@@ -247,7 +247,7 @@ Semiparametrics : DML (mediated) with Neural Nets — AGMM (sequential) & AGMM2L
   === Ground truth (for log reference) ===
   True parameter for E[Y(1,M(0))] ≈ 4.05
 
-.. code:: ipython3
+.. code-block:: python
 
   # =========================================================
   # 1) Sequential estimator (MR) with AGMM

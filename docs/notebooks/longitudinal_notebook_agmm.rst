@@ -1,9 +1,9 @@
 .. _longitudinal_notebook_agmm:
 
-Longitudinal Nested NPIV : sequential (AGMM) vs simultaneous (AGMM2L2)
-==========================
+Longitudinal Nested NPIV: Sequential (AGMM) vs Simultaneous (AGMM2L2)
+==========================================================================
 
-.. code:: ipython3
+.. code-block:: python
 
     import os
     import sys
@@ -53,7 +53,7 @@ Longitudinal Nested NPIV : sequential (AGMM) vs simultaneous (AGMM2L2)
     except Exception:
         pass
         
-.. code:: ipython3
+.. code-block:: python
 
     # =========================================================
     # Helper builders
@@ -169,7 +169,7 @@ Longitudinal Nested NPIV : sequential (AGMM) vs simultaneous (AGMM2L2)
         return h_hat_Btest.ravel(), g_hat_Atest.ravel()
 
 
-.. code:: ipython3
+.. code-block:: python
 
     # =========================================================
     # Build models and run
@@ -196,7 +196,7 @@ Longitudinal Nested NPIV : sequential (AGMM) vs simultaneous (AGMM2L2)
     )
     
 
-.. code:: ipython3
+.. code-block:: python
 
     # =========================================================
     # Plots
@@ -226,10 +226,6 @@ Longitudinal Nested NPIV : sequential (AGMM) vs simultaneous (AGMM2L2)
     plt.show()
 
 
-.. parsed-literal::
-
 .. image:: longitudinal_agmm_second_stage.png
-
-.. parsed-literal::
 
 .. image:: longitudinal_agmm_first_stage.png

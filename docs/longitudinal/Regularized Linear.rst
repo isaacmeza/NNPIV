@@ -105,7 +105,7 @@ Estimator 2
 
 
 Estimator 3 - (Ridge)
--------------------
+----------------------
 
 .. admonition:: FTRL Iterates for Estimator 3 (Ridge)
     :class: lemma

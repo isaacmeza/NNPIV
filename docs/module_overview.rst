@@ -1,34 +1,32 @@
+Semiparametric API Overview
+===========================
 
-Nonparametric Instrumental Variables
-====================================
+This page lists the public semiparametric estimators used for debiased machine
+learning inference built on nested NPIV nuisance estimation.
 
-.. automodule:: dml_npiv
-   :members:
-   :undoc-members:
-   :show-inheritance:
-   :private-members:
+NPIV Functional Inference
+-------------------------
+
+.. autosummary::
+   :toctree: semiparametrics/_autosummary
+   :template: class.rst
+
+   nnpiv.semiparametrics.DML_npiv
 
 Mediation Analysis
-==================
+------------------
 
-Joint/Sequential mediation
---------------------
-.. automodule:: dml_mediated
-   :members:
-   :undoc-members:
-   :show-inheritance:
-   :private-members:
+.. autosummary::
+   :toctree: semiparametrics/_autosummary
+   :template: class.rst
 
-Longterm Analysis
-=================
+   nnpiv.semiparametrics.DML_mediated
 
-Joint/Sequential longterm
---------------------
-.. automodule:: dml_longterm
-   :members:
-   :undoc-members:
-   :show-inheritance:
-   :private-members:
+Long-Term Effect Estimation
+---------------------------
 
+.. autosummary::
+   :toctree: semiparametrics/_autosummary
+   :template: class.rst
 
-
+   nnpiv.semiparametrics.DML_longterm

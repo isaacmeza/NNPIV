@@ -30,6 +30,7 @@ extensions = [
     "sphinx_rtd_theme",
     "sphinx_rtd_dark_mode",
     "nbsphinx",
+    "sphinx_copybutton",
     "sphinx.ext.duration",
     "sphinx.ext.mathjax",
     "sphinx.ext.doctest",
@@ -37,15 +38,7 @@ extensions = [
     "sphinx.ext.napoleon",
     "sphinx.ext.viewcode",
     "sphinx.ext.autosummary",
-    "sphinx.ext.intersphinx",
 ]
-
-intersphinx_mapping = {
-    "rtd": ("https://docs.readthedocs.io/en/stable/", None),
-    "python": ("https://docs.python.org/3/", None),
-    "sphinx": ("https://www.sphinx-doc.org/en/master/", None),
-}
-intersphinx_disabled_domains = ["std"]
 
 templates_path = ["_templates"]
 
@@ -74,5 +67,47 @@ html_theme_options = {
 html_static_path = ["_static"]
 
 
-autodoc_mock_imports = ["numpy", "scipy", "sklearn", "statsmodels", "tqdm", "copy", 
-                        "torch", "mliv", "mliv.linear", "joblib"]
+autodoc_mock_imports = ["scipy", "sklearn", "statsmodels", "tqdm", "copy",
+                        "torch", "mliv", "mliv.linear", "joblib", "matplotlib"]
+
+# Pseudo-type strings used in NumPy-style docstrings that are not Python objects.
+nitpick_ignore = [
+    ("py:class", "'auto'"),
+    ("py:class", "'identity'}"),
+    ("py:class", "'polynomial'}"),
+    ("py:class", "1"),
+    ("py:class", "2D array-like"),
+    ("py:class", "DataFrame"),
+    ("py:class", "Same as"),
+    ("py:class", "array-like"),
+    ("py:class", "bool /"),
+    ("py:class", "boolean"),
+    ("py:class", "callable"),
+    ("py:class", "d_a"),
+    ("py:class", "d_c"),
+    ("py:class", "d_cp"),
+    ("py:class", "default 'rff'"),
+    ("py:class", "default=False"),
+    ("py:class", "default='auto'"),
+    ("py:class", "default='rff'"),
+    ("py:class", "default='sigma_i'"),
+    ("py:class", "default=1.0"),
+    ("py:class", "default=1e-10"),
+    ("py:class", "default=1e-6"),
+    ("py:class", "default=1e-8"),
+    ("py:class", "default=123"),
+    ("py:class", "default=3"),
+    ("py:class", "default=300"),
+    ("py:class", "default=5.0"),
+    ("py:class", "default=True"),
+    ("py:class", "estimator"),
+    ("py:class", "estimator /"),
+    ("py:class", "iterable"),
+    ("py:class", "mapping"),
+    ("py:class", "n"),
+    ("py:class", "optional"),
+    ("py:class", "p"),
+    ("py:class", "shape"),
+    ("py:class", "{'rff'"),
+    ("py:class", "{'sigma_i'"),
+]

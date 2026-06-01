@@ -43,6 +43,7 @@ sphinx==5.0.2
     #   sphinx-rtd-theme
 sphinx-rtd-theme==1.0.0
     # via -r docs/requirements.in
+sphinx-copybutton
 sphinx_rtd_dark_mode
 sphinxcontrib-applehelp==1.0.2
     # via sphinx
