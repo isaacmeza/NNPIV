@@ -139,3 +139,7 @@ dmypy.json
 # Tempfile folders
 tmp*/
 temp/
+
+# logs from cluster runs
+*.err
+*.out
