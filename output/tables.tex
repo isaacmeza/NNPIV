@@ -1,0 +1,65 @@
+% Entries are mean (SE)
+% Table 1: Nonparametrics
+\begin{tabular}{ccccccccc}
+    & \multicolumn{3}{c}{Benchmarks}  & \multicolumn{5}{c}{Proposals}  \tabularnewline
+    \cmidrule(lr){2-4}\cmidrule(lr){5-9}
+     & 2SLS & series & reg. & ApproxRKHS2IV & ApproxRKHS2IVL2 & RKHS2IV & RKHS2IVL2 & neural \tabularnewline
+    \hline
+    linear & 4.906$\times 10^{-3}$ (1.063$\times 10^{-4}$) & 9.882$\times 10^{3}$ (890.5) & 0.5229 (0.01221) & 6.314$\times 10^{-3}$ (1.215$\times 10^{-4}$) & 0.01239 (7.62$\times 10^{-5}$) & 6.309$\times 10^{-3}$ (1.216$\times 10^{-4}$) & 0.01395 (5.071$\times 10^{-5}$) & 6.491$\times 10^{-3}$ (6.913$\times 10^{-5}$) \tabularnewline
+    pwlinear & 8.595$\times 10^{-3}$ (2.941$\times 10^{-5}$) & 1.111$\times 10^{4}$ (1.007$\times 10^{3}$) & 0.2039 (5.031$\times 10^{-3}$) & 9.39$\times 10^{-3}$ (3.9$\times 10^{-5}$) & 0.01162 (5.119$\times 10^{-5}$) & 9.379$\times 10^{-3}$ (3.889$\times 10^{-5}$) & 0.01029 (2.846$\times 10^{-5}$) & 0.01226 (7.932$\times 10^{-5}$) \tabularnewline
+    sigmoid & 5.752$\times 10^{-3}$ (4.07$\times 10^{-5}$) & 1.707$\times 10^{4}$ (1.499$\times 10^{3}$) & 0.07611 (9.868$\times 10^{-4}$) & 7.888$\times 10^{-3}$ (7.645$\times 10^{-5}$) & 0.01208 (7.488$\times 10^{-5}$) & 7.827$\times 10^{-3}$ (7.545$\times 10^{-5}$) & 0.01425 (5.28$\times 10^{-5}$) & 0.0102 (1.019$\times 10^{-4}$) \tabularnewline
+    exponential & 0.06297 (6.057$\times 10^{-4}$) & 2.57$\times 10^{3}$ (256.6) & 37.34 (1.598) & 0.05977 (4.354$\times 10^{-4}$) & 0.02057 (1.024$\times 10^{-4}$) & 0.05975 (4.365$\times 10^{-4}$) & 0.02304 (8.421$\times 10^{-5}$) & 0.01969 (1.212$\times 10^{-4}$) \tabularnewline
+    \hline
+\end{tabular}
+
+% (a) Linear DGP
+\begin{tabular}{ccccccccc}
+    & \multicolumn{3}{c}{Benchmarks}  & \multicolumn{5}{c}{Proposals}  \tabularnewline
+    \cmidrule(lr){2-4}\cmidrule(lr){5-9}
+     & 2SLS & series & reg. & ApproxRKHS2IV & ApproxRKHS2IVL2 & RKHS2IV & RKHS2IVL2 & neural \tabularnewline
+    \hline
+    bias & -6.806$\times 10^{-4}$ (1.634$\times 10^{-3}$) & -4.361$\times 10^{5}$ (4.343$\times 10^{5}$) & -0.4611 (0.1629) & 4.13$\times 10^{-4}$ (1.837$\times 10^{-3}$) & 0.07449 (1.459$\times 10^{-3}$) & 1.267$\times 10^{-3}$ (1.843$\times 10^{-3}$) & 0.07778 (1.478$\times 10^{-3}$) & -4.437$\times 10^{-4}$ (1.721$\times 10^{-3}$) \tabularnewline
+    variance & 27.39 (0.03659) & 4.518$\times 10^{10}$ (6.693$\times 10^{9}$) & 281.6 (5.935) & 34.6 (0.1032) & 20.57 (0.01822) & 34.64 (0.1064) & 20.82 (0.0189) & 30.03 (0.04302) \tabularnewline
+    coverage & 0.9468 (3.174$\times 10^{-3}$) & 0.9394 (3.374$\times 10^{-3}$) & 0.9334 (3.526$\times 10^{-3}$) & 0.9458 (3.202$\times 10^{-3}$) & 0.8736 (4.699$\times 10^{-3}$) & 0.946 (3.196$\times 10^{-3}$) & 0.8672 (4.799$\times 10^{-3}$) & 0.9428 (3.284$\times 10^{-3}$) \tabularnewline
+    length & 0.459 (3.208$\times 10^{-4}$) & 1.843$\times 10^{7}$ (1.689$\times 10^{7}$) & 3.516 (0.6188) & 0.5164 (8.896$\times 10^{-4}$) & 0.3977 (1.837$\times 10^{-4}$) & 0.5168 (9.128$\times 10^{-4}$) & 0.4002 (1.913$\times 10^{-4}$) & 0.4806 (3.59$\times 10^{-4}$) \tabularnewline
+    \hline
+\end{tabular}
+
+% (b) Piecewise linear DGP
+\begin{tabular}{ccccccccc}
+    & \multicolumn{3}{c}{Benchmarks}  & \multicolumn{5}{c}{Proposals}  \tabularnewline
+    \cmidrule(lr){2-4}\cmidrule(lr){5-9}
+     & 2SLS & series & reg. & ApproxRKHS2IV & ApproxRKHS2IVL2 & RKHS2IV & RKHS2IVL2 & neural \tabularnewline
+    \hline
+    bias & -0.02801 (1.771$\times 10^{-3}$) & -6.082$\times 10^{4}$ (2.86$\times 10^{4}$) & -3.25$\times 10^{-3}$ (1.713$\times 10^{-3}$) & -0.02785 (2.299$\times 10^{-3}$) & 0.07237 (1.485$\times 10^{-3}$) & -0.02608 (2.299$\times 10^{-3}$) & 0.06825 (1.516$\times 10^{-3}$) & -0.02258 (1.772$\times 10^{-3}$) \tabularnewline
+    variance & 32.63 (0.06096) & 4.488$\times 10^{11}$ (7.881$\times 10^{10}$) & 27.6 (0.04424) & 53.16 (0.3189) & 21.53 (0.02) & 53.18 (0.3224) & 22.15 (0.02105) & 31.27 (0.04062) \tabularnewline
+    coverage & 0.9466 (3.18$\times 10^{-3}$) & 0.9186 (3.867$\times 10^{-3}$) & 0.9388 (3.39$\times 10^{-3}$) & 0.9386 (3.395$\times 10^{-3}$) & 0.8818 (4.566$\times 10^{-3}$) & 0.9414 (3.322$\times 10^{-3}$) & 0.8876 (4.467$\times 10^{-3}$) & 0.9366 (3.446$\times 10^{-3}$) \tabularnewline
+    length & 0.501 (4.925$\times 10^{-4}$) & 3.953$\times 10^{5}$ (1.421$\times 10^{5}$) & 0.4609 (3.943$\times 10^{-4}$) & 0.6348 (1.977$\times 10^{-3}$) & 0.4069 (1.958$\times 10^{-4}$) & 0.6352 (2.015$\times 10^{-3}$) & 0.4128 (2.033$\times 10^{-4}$) & 0.4903 (3.288$\times 10^{-4}$) \tabularnewline
+    \hline
+\end{tabular}
+
+% (c) Sigmoid DGP
+\begin{tabular}{ccccccccc}
+    & \multicolumn{3}{c}{Benchmarks}  & \multicolumn{5}{c}{Proposals}  \tabularnewline
+    \cmidrule(lr){2-4}\cmidrule(lr){5-9}
+     & 2SLS & series & reg. & ApproxRKHS2IV & ApproxRKHS2IVL2 & RKHS2IV & RKHS2IVL2 & neural \tabularnewline
+    \hline
+    bias & -0.02283 (1.75$\times 10^{-3}$) & -5.664$\times 10^{4}$ (4.489$\times 10^{4}$) & -6.259$\times 10^{-3}$ (1.861$\times 10^{-3}$) & -0.02383 (1.762$\times 10^{-3}$) & 0.07158 (1.48$\times 10^{-3}$) & -0.0236 (1.763$\times 10^{-3}$) & 0.05779 (1.52$\times 10^{-3}$) & -0.03411 (1.744$\times 10^{-3}$) \tabularnewline
+    variance & 31.79 (0.05686) & 7.37$\times 10^{10}$ (1.232$\times 10^{10}$) & 34.96 (0.0934) & 31.75 (0.05798) & 21.19 (0.0195) & 31.74 (0.05771) & 21.89 (0.02062) & 26.91 (0.02985) \tabularnewline
+    coverage & 0.9488 (3.117$\times 10^{-3}$) & 0.9224 (3.784$\times 10^{-3}$) & 0.9428 (3.284$\times 10^{-3}$) & 0.945 (3.224$\times 10^{-3}$) & 0.8808 (4.582$\times 10^{-3}$) & 0.9454 (3.213$\times 10^{-3}$) & 0.8984 (4.273$\times 10^{-3}$) & 0.9194 (3.85$\times 10^{-3}$) \tabularnewline
+    length & 0.4945 (4.649$\times 10^{-4}$) & 2.047$\times 10^{5}$ (1.298$\times 10^{5}$) & 0.5183 (7.302$\times 10^{-4}$) & 0.4942 (4.841$\times 10^{-4}$) & 0.4037 (1.927$\times 10^{-4}$) & 0.4942 (4.939$\times 10^{-4}$) & 0.4103 (2$\times 10^{-4}$) & 0.4549 (2.61$\times 10^{-4}$) \tabularnewline
+    \hline
+\end{tabular}
+
+% (d) Exponential DGP
+\begin{tabular}{ccccccccc}
+    & \multicolumn{3}{c}{Benchmarks}  & \multicolumn{5}{c}{Proposals}  \tabularnewline
+    \cmidrule(lr){2-4}\cmidrule(lr){5-9}
+     & 2SLS & series & reg. & ApproxRKHS2IV & ApproxRKHS2IVL2 & RKHS2IV & RKHS2IVL2 & neural \tabularnewline
+    \hline
+    bias & -0.202 (0.1565) & -2.152$\times 10^{8}$ (2.092$\times 10^{8}$) & -1.373$\times 10^{12}$ (9.196$\times 10^{11}$) & -86.77 (76.63) & -21.19 (11.78) & -433.1 (262) & -6.499$\times 10^{4}$ (6.327$\times 10^{4}$) & 0.0239 (5.543$\times 10^{-3}$) \tabularnewline
+    variance & 3.086$\times 10^{3}$ (396.7) & 4.675$\times 10^{15}$ (6.959$\times 10^{14}$) & 1.963$\times 10^{27}$ (2.5$\times 10^{26}$) & 3.45$\times 10^{5}$ (4.717$\times 10^{4}$) & 6.732$\times 10^{5}$ (9.687$\times 10^{4}$) & 1.654$\times 10^{8}$ (2.362$\times 10^{7}$) & 8.165$\times 10^{10}$ (1.384$\times 10^{10}$) & 77.42 (0.8931) \tabularnewline
+    coverage & 0.958 (2.837$\times 10^{-3}$) & 0.9822 (1.87$\times 10^{-3}$) & 0.8808 (4.582$\times 10^{-3}$) & 0.9644 (2.62$\times 10^{-3}$) & 0.956 (2.9$\times 10^{-3}$) & 0.979 (2.028$\times 10^{-3}$) & 0.9762 (2.156$\times 10^{-3}$) & 0.9494 (3.1$\times 10^{-3}$) \tabularnewline
+    length & 11.13 (3.491) & 9.322$\times 10^{8}$ (8.155$\times 10^{8}$) & 1.48$\times 10^{13}$ (6.279$\times 10^{12}$) & 373.7 (299.6) & 189.3 (64.37) & 2.566$\times 10^{3}$ (1.071$\times 10^{3}$) & 2.7$\times 10^{5}$ (2.443$\times 10^{5}$) & 0.7957 (0.01873) \tabularnewline
+    \hline
+\end{tabular}
