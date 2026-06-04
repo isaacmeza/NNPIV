@@ -2,7 +2,6 @@ import ivfunctions_nested
 import ivfunctions_nested_nn
 from simulations.dgps_nested import fn_dict_paper 
 from simulations.printplots import raw_metric, plot_ind
-import printtable
 
 
 CONFIG = {
@@ -35,8 +34,6 @@ CONFIG = {
     },
     "plots": {
         'est': plot_ind,
-        'print_metrics': lambda x, y, z: printtable.print_table(x, y, z,
-                                                                 filename='nonparametric_fit/table1_benchmark_series_reg.csv')
     },
     "subplots": {
         'fn_plot': [8,15,2,16]

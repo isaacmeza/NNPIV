@@ -73,13 +73,6 @@ def _percentile_slice(values, lower_q=None, upper_q=None):
     return filtered if filtered.size > 0 else arr
 
 
-def _safe_mean_std_median(values):
-    arr = _finite_1d(values)
-    if arr.size == 0:
-        return np.nan, np.nan, np.nan
-    return float(np.mean(arr)), float(np.std(arr)), float(np.median(arr))
-
-
 def _warn_if_nonfinite_method_outputs(results, fn_number, model_name):
     """Emit a warning when a method run produced only non-finite estimates."""
     if not results:
@@ -125,21 +118,6 @@ def _valid_interval(interval):
     if not (np.isfinite(lo) and np.isfinite(hi)):
         return None
     return lo, hi
-
-
-def _summarize_interval_metrics(intervals, true_param):
-    valid = []
-    for interval in intervals:
-        parsed = _valid_interval(interval)
-        if parsed is not None:
-            valid.append(parsed)
-    if len(valid) == 0:
-        return np.nan, np.nan, np.nan
-    lb = np.array([v[0] for v in valid], dtype=float)
-    ub = np.array([v[1] for v in valid], dtype=float)
-    lengths = ub - lb
-    coverage = float(np.mean((ub >= true_param) * (lb <= true_param)))
-    return coverage, float(np.mean(lengths)), float(np.std(lengths))
 
 
 def _is_failed_sim_run(run):
@@ -420,8 +398,11 @@ class SemiParametricsMonteCarlo:
 
         pre_diagnostics_rows = []
 
-        result_distributions = np.empty((6, len(self.config['dgp_opts']['fn']), 
-            len(self.config['methods']), self.config['mc_opts']['n_experiments']), dtype=object)
+        make_plots = not _get(self.config['mc_opts'], 'skip_plots', False)
+        result_distributions = None
+        if make_plots:
+            result_distributions = np.empty((6, len(self.config['dgp_opts']['fn']),
+                len(self.config['methods']), self.config['mc_opts']['n_experiments']), dtype=object)
             
         ii = 0
         for fn_number in self.config['dgp_opts']['fn']:
@@ -471,215 +452,38 @@ class SemiParametricsMonteCarlo:
 
                 _warn_if_nonfinite_method_outputs(results, fn_number, model_name)
 
-                k = 0
-                for sim_run in results:    
-                    # [m][ii][j][k] : parameter | fn number | method | run 
-                    for m in range(6) :  
-                        result_distributions[m][ii][j][k] = sim_run[m]
-                    k += 1
+                if make_plots:
+                    k = 0
+                    for sim_run in results:
+                        # [m][ii][j][k] : parameter | fn number | method | run
+                        for m in range(6):
+                            result_distributions[m][ii][j][k] = sim_run[m]
+                        k += 1
                 j += 1
             ii += 1
-
-        #---------------------------------------------------------------------------------------
-
-        # Initialize arrays to store the calculated values
-        true_param = float(_get(self.config['dgp_opts'], 'true_param', 4.05))
-        n_samples = int(_get(self.config['dgp_opts'], 'n_samples', 2000))
-        num_i = len(self.config['dgp_opts']['fn'])
-        num_j = len(self.config['methods'])
-
-        mean_estimate = np.zeros((num_i, num_j))
-        sd_mean_estimate = np.zeros((num_i, num_j))
-        median_estimate = np.zeros((num_i, num_j))
-
-        mean_variance = np.zeros((num_i, num_j))
-        sd_mean_variance = np.zeros((num_i, num_j))
-        median_variance = np.zeros((num_i, num_j))
-
-        bias = np.zeros((num_i, num_j))
-        sd_bias = np.zeros((num_i, num_j))
-        median_bias = np.zeros((num_i, num_j))
-
-        mse = np.zeros((num_i, num_j))
-        sd_mse = np.zeros((num_i, num_j))
-
-        studentized = {}
-
-        empirical_sd = np.zeros((num_i, num_j))
-        mean_reported_se = np.zeros((num_i, num_j))
-        se_ratio = np.zeros((num_i, num_j))
-
-        coverage_normal = np.zeros((num_i, num_j))
-        interval_lengths_normal = np.zeros((num_i, num_j))
-        sd_interval_lengths_normal = np.zeros((num_i, num_j))
-
-        coverage_bootstrap_percentile = np.zeros((num_i, num_j))
-        interval_lengths_bootstrap_percentile = np.zeros((num_i, num_j))
-        sd_interval_lengths_bootstrap_percentile = np.zeros((num_i, num_j))
-
-        coverage_bootstrap_studentized = np.zeros((num_i, num_j))
-        interval_lengths_bootstrap_studentized = np.zeros((num_i, num_j))
-        sd_interval_lengths_bootstrap_studentized = np.zeros((num_i, num_j))
-
-        average_time = np.zeros((num_i, num_j))
-        sd_average_time = np.zeros((num_i, num_j))
-
-        for i in range(num_i):
-            studentized[i] = {}
-            for j in range(num_j):
-
-                # Mean variance: winsorize upper tail and guard against non-finite entries.
-                variance_vals = _percentile_slice(result_distributions[1][i][j], upper_q=99)
-                mean_variance[i][j], sd_mean_variance[i][j], median_variance[i][j] = _safe_mean_std_median(variance_vals)
-
-                # Mean estimate and empirical SD from finite values.
-                estimate_vals = _finite_1d(result_distributions[0][i][j])
-                mean_estimate[i][j], sd_mean_estimate[i][j], median_estimate[i][j] = _safe_mean_std_median(estimate_vals)
-                empirical_sd[i][j] = float(np.std(estimate_vals, ddof=1)) if estimate_vals.size > 1 else np.nan
-
-                # Bias / MSE
-                bias_vals = estimate_vals - true_param
-                if bias_vals.size == 0:
-                    bias[i][j] = np.nan
-                    sd_bias[i][j] = np.nan
-                    median_bias[i][j] = np.nan
-                    mse[i][j] = np.nan
-                    sd_mse[i][j] = np.nan
-                else:
-                    bias[i][j] = float(np.mean(bias_vals))
-                    sd_bias[i][j] = float(np.std(bias_vals))
-                    median_bias[i][j] = float(np.median(bias_vals))
-                    mse[i][j] = float(np.mean(bias_vals**2))
-                    sd_mse[i][j] = float(np.std(bias_vals**2))
-
-                # Studentized values: avoid divide-by-zero / invalid values.
-                raw_estimates = _finite_1d(result_distributions[0][i][j])
-                if raw_estimates.size > 0 and np.isfinite(sd_bias[i][j]) and sd_bias[i][j] > 0:
-                    studentized_vals = (raw_estimates - true_param) / sd_bias[i][j]
-                    studentized[i][j] = _finite_1d(studentized_vals)
-                else:
-                    studentized[i][j] = np.array([], dtype=float)
-
-                # Mean reported SE and SD/SE ratio.
-                var_vals = _finite_1d(result_distributions[1][i][j])
-                se_vals = np.sqrt(np.maximum(var_vals, 0.0) / max(1, n_samples))
-                mean_reported_se[i][j] = float(np.mean(se_vals)) if se_vals.size > 0 else np.nan
-                if np.isfinite(empirical_sd[i][j]) and np.isfinite(mean_reported_se[i][j]) and mean_reported_se[i][j] > 0:
-                    se_ratio[i][j] = float(empirical_sd[i][j] / mean_reported_se[i][j])
-                else:
-                    se_ratio[i][j] = np.nan
-
-                # Coverage and CI length summaries for normal and bootstrap CIs.
-                cov, mean_len, sd_len = _summarize_interval_metrics(result_distributions[2][i][j], true_param)
-                coverage_normal[i][j] = cov
-                interval_lengths_normal[i][j] = mean_len
-                sd_interval_lengths_normal[i][j] = sd_len
-
-                cov, mean_len, sd_len = _summarize_interval_metrics(result_distributions[4][i][j], true_param)
-                coverage_bootstrap_percentile[i][j] = cov
-                interval_lengths_bootstrap_percentile[i][j] = mean_len
-                sd_interval_lengths_bootstrap_percentile[i][j] = sd_len
-
-                cov, mean_len, sd_len = _summarize_interval_metrics(result_distributions[5][i][j], true_param)
-                coverage_bootstrap_studentized[i][j] = cov
-                interval_lengths_bootstrap_studentized[i][j] = mean_len
-                sd_interval_lengths_bootstrap_studentized[i][j] = sd_len
-
-                #Average time
-                time_vals = _finite_1d(result_distributions[3][i][j])
-                if time_vals.size > 0:
-                    average_time[i][j] = float(np.mean(time_vals))
-                    sd_average_time[i][j] = float(np.std(time_vals))
-                else:
-                    average_time[i][j] = np.nan
-                    sd_average_time[i][j] = np.nan
-                
-        #---------------------------------------------------------------------------------------
-
-        results_dict = {
-            "DGP function": [],
-            "Method": [],
-            "Mean Estimate": [],
-            "SD Estimate": [],
-            "Median Estimate": [],
-            "Empirical SD": [],
-            "Mean Variance": [],
-            "SD Variance": [],
-            "Median Variance": [],
-            "Mean Reported SE": [],
-            "SE Ratio": [],
-            "Bias": [],
-            "SD Bias": [],
-            "Median Bias": [],
-            "MSE": [],
-            "SD MSE": [],
-            "Normal Coverage": [],
-            "Normal CI Length": [],
-            "SD Normal CI Length": [],
-            "Percentile Bootstrap Coverage": [],
-            "Percentile Bootstrap CI Length": [],
-            "SD Percentile Bootstrap CI Length": [],
-            "Studentized Bootstrap Coverage": [],
-            "Studentized Bootstrap CI Length": [],
-            "SD Studentized Bootstrap CI Length": [],
-            "Average Time": [],
-            "SD Average Time": []
-        }
-
-        i = 0
-        for fn_number in self.config['dgp_opts']['fn']:
-            j = 0
-            for model_name, model_instance in self.config['methods'].items():
-                results_dict["DGP function"].append(fn_number)
-                results_dict["Method"].append(model_name)
-                results_dict["Mean Estimate"].append(mean_estimate[i][j])
-                results_dict["SD Estimate"].append(sd_mean_estimate[i][j])
-                results_dict["Median Estimate"].append(median_estimate[i][j])
-                results_dict["Empirical SD"].append(empirical_sd[i][j])
-                results_dict["Mean Variance"].append(mean_variance[i][j])
-                results_dict["SD Variance"].append(sd_mean_variance[i][j])
-                results_dict["Median Variance"].append(median_variance[i][j])
-                results_dict["Mean Reported SE"].append(mean_reported_se[i][j])
-                results_dict["SE Ratio"].append(se_ratio[i][j])
-                results_dict["Bias"].append(bias[i][j])
-                results_dict["SD Bias"].append(sd_bias[i][j])
-                results_dict["Median Bias"].append(median_bias[i][j])
-                results_dict["MSE"].append(mse[i][j])
-                results_dict["SD MSE"].append(sd_mse[i][j])
-                results_dict["Normal Coverage"].append(coverage_normal[i][j])
-                results_dict["Normal CI Length"].append(interval_lengths_normal[i][j])
-                results_dict["SD Normal CI Length"].append(sd_interval_lengths_normal[i][j])
-                results_dict["Percentile Bootstrap Coverage"].append(coverage_bootstrap_percentile[i][j])
-                results_dict["Percentile Bootstrap CI Length"].append(interval_lengths_bootstrap_percentile[i][j])
-                results_dict["SD Percentile Bootstrap CI Length"].append(sd_interval_lengths_bootstrap_percentile[i][j])
-                results_dict["Studentized Bootstrap Coverage"].append(coverage_bootstrap_studentized[i][j])
-                results_dict["Studentized Bootstrap CI Length"].append(interval_lengths_bootstrap_studentized[i][j])
-                results_dict["SD Studentized Bootstrap CI Length"].append(sd_interval_lengths_bootstrap_studentized[i][j])
-                results_dict["Average Time"].append(average_time[i][j])
-                results_dict["SD Average Time"].append(sd_average_time[i][j])
-
-                j += 1
-            i += 1
-
-        # Convert the dictionary to a pandas DataFrame
-        results_df = pd.DataFrame(results_dict)
-
-        # Save the DataFrame to a CSV file
-        self.config['param_str'] = '_'.join(
-            ['{}_{}'.format(filesafe(k), v) for k, v in self.config['mc_opts'].items()])
-        self.config['param_str'] += '_' + '_'.join(
-                    ['{}_{}'.format(filesafe(k), v) for k, v in self.config['dgp_opts'].items()])
-        self.config['param_str'] += '_' + '_'.join([str(k) for k, _ in self.config['methods'].items()])
-        results_csv_filename = os.path.join(self.config['target_dir'], 'results_{}.csv'.format(self.config['param_str']))
-        results_df.to_csv(results_csv_filename, index=False)
-        print("Results saved to", results_csv_filename)
 
         if self._diagnostics_enabled():
             self._save_pre_diagnostics(pre_diagnostics_rows)
 
         #---------------------------------------------------------------------------------------
 
-        if not _get(self.config['mc_opts'], 'skip_plots', False):
+        if make_plots:
+            true_param = float(_get(self.config['dgp_opts'], 'true_param', 4.05))
+            num_i = len(self.config['dgp_opts']['fn'])
+            num_j = len(self.config['methods'])
+            studentized = {}
+            for i in range(num_i):
+                studentized[i] = {}
+                for j in range(num_j):
+                    raw_estimates = _finite_1d(result_distributions[0][i][j])
+                    bias_vals = raw_estimates - true_param
+                    sd_bias = float(np.std(bias_vals)) if bias_vals.size > 0 else np.nan
+                    if raw_estimates.size > 0 and np.isfinite(sd_bias) and sd_bias > 0:
+                        studentized_vals = (raw_estimates - true_param) / sd_bias
+                        studentized[i][j] = _finite_1d(studentized_vals)
+                    else:
+                        studentized[i][j] = np.array([], dtype=float)
+
             df = self.config['mc_opts']['n_experiments'] - 1
             x = np.linspace(t.ppf(0.01, df), t.ppf(0.99, df), 100)
 
