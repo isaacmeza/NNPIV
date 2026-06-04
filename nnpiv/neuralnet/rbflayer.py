@@ -36,6 +36,14 @@ class RBF(nn.Module):
 
         basis_func: the radial basis function used to transform the scaled
             distances.
+
+    Parameters:
+        in_features (int): Number of input features.
+        out_features (int): Number of output features.
+        basis_func (callable): Radial basis function.
+        centres (array-like or None): Initial basis centers.
+        sigmas (array-like or None): Initial basis widths.
+        trainable (bool): Whether basis parameters are trainable.
     """
 
     def __init__(self, in_features, out_features, basis_func, centres=None, sigmas=None,
@@ -67,6 +75,12 @@ class RBF(nn.Module):
             nn.init.constant_(self.sigmas, 1)
 
     def forward(self, input):
+        """
+        Forward.
+
+        Parameters:
+            input (object): Input tensor or layer.
+        """
         distances = torch.cdist(input, self.centres) * torch.abs(self.sigmas)
         return self.basis_func(distances)
 
@@ -74,59 +88,125 @@ class RBF(nn.Module):
 # RBFs
 
 def gaussian(alpha):
+    """
+    Gaussian.
+
+    Parameters:
+        alpha (float): Significance or regularization level, depending on context.
+    """
     phi = torch.exp(-1 * alpha.pow(2))
     return phi
 
 
 def linear(alpha):
+    """
+    Linear.
+
+    Parameters:
+        alpha (float): Significance or regularization level, depending on context.
+    """
     phi = alpha
     return phi
 
 
 def quadratic(alpha):
+    """
+    Quadratic.
+
+    Parameters:
+        alpha (float): Significance or regularization level, depending on context.
+    """
     phi = alpha.pow(2)
     return phi
 
 
 def inverse_quadratic(alpha):
+    """
+    Inverse quadratic.
+
+    Parameters:
+        alpha (float): Significance or regularization level, depending on context.
+    """
     phi = torch.ones_like(alpha) / (torch.ones_like(alpha) + alpha.pow(2))
     return phi
 
 
 def multiquadric(alpha):
+    """
+    Multiquadric.
+
+    Parameters:
+        alpha (float): Significance or regularization level, depending on context.
+    """
     phi = (torch.ones_like(alpha) + alpha.pow(2)).pow(0.5)
     return phi
 
 
 def inverse_multiquadric(alpha):
+    """
+    Inverse multiquadric.
+
+    Parameters:
+        alpha (float): Significance or regularization level, depending on context.
+    """
     phi = torch.ones_like(
         alpha) / (torch.ones_like(alpha) + alpha.pow(2)).pow(0.5)
     return phi
 
 
 def spline(alpha):
+    """
+    Spline.
+
+    Parameters:
+        alpha (float): Significance or regularization level, depending on context.
+    """
     phi = (alpha.pow(2) * torch.log(alpha + torch.ones_like(alpha)))
     return phi
 
 
 def poisson_one(alpha):
+    """
+    Poisson one.
+
+    Parameters:
+        alpha (float): Significance or regularization level, depending on context.
+    """
     phi = (alpha - torch.ones_like(alpha)) * torch.exp(-alpha)
     return phi
 
 
 def poisson_two(alpha):
+    """
+    Poisson two.
+
+    Parameters:
+        alpha (float): Significance or regularization level, depending on context.
+    """
     phi = ((alpha - 2 * torch.ones_like(alpha)) / 2 * torch.ones_like(alpha)) \
         * alpha * torch.exp(-alpha)
     return phi
 
 
 def matern32(alpha):
+    """
+    Matern32.
+
+    Parameters:
+        alpha (float): Significance or regularization level, depending on context.
+    """
     phi = (torch.ones_like(alpha) + 3**0.5 * alpha) * \
         torch.exp(-3**0.5 * alpha)
     return phi
 
 
 def matern52(alpha):
+    """
+    Matern52.
+
+    Parameters:
+        alpha (float): Significance or regularization level, depending on context.
+    """
     phi = (torch.ones_like(alpha) + 5**0.5 * alpha + (5 / 3)
            * alpha.pow(2)) * torch.exp(-5**0.5 * alpha)
     return phi

@@ -25,6 +25,14 @@ EPSILON = 1e-2
 
 
 def add_weight_decay(net, l2_value, skip_list=()):
+    """
+    Add weight decay.
+
+    Parameters:
+        net (torch.nn.Module): Network whose parameters are grouped.
+        l2_value (object): Value for `l2_value`.
+        skip_list (object): Value for `skip_list`.
+    """
     decay, no_decay = [], []
     for name, param in net.named_parameters():
         if not param.requires_grad:
@@ -89,7 +97,7 @@ class _BaseAGMM2:
         else:
             self.train_ds = TensorDataset(A, B, C, D, Y, W) if not subsetted else \
                 TensorDataset(A, B, C, D, Y, W, subset_ind1, subset_ind2)
-        
+
         # Pin memory only when training on CUDA
         pin = isinstance(device, torch.device) and device.type == "cuda"
         self.train_dl = DataLoader(self.train_ds, batch_size=bs, shuffle=True, pin_memory=pin)
@@ -124,8 +132,7 @@ class _BaseAGMM2:
 
     def predict(self, B, A, model='avg', burn_in=0, alpha=None):
         """
-        Parameters
-        ----------
+        Parameters:
         B, A : endogenous vars for second and first stage
         model : one of ('avg', 'final') or an integer epoch index
         burn_in : discard the first burn_in epochs when averaging
@@ -204,12 +211,29 @@ class _BaseSupLossAGMM2(_BaseAGMM2):
         """
         Fit AGMM model with supervised loss.
 
-        Parameters
-        ----------
-        learner_l2 : L2 on parameters of learners
-        adversary_l2 : L2 on parameters of adversaries
-        learner_norm_reg : ridge penalty on learner outputs
-        (others as in base)
+        Parameters:
+            A (array-like): First nested-stage treatment or endogenous block.
+            B (array-like): Second nested-stage treatment or endogenous block.
+            C (array-like): Second nested-stage instrument block.
+            D (array-like): First nested-stage instrument block.
+            Y (array-like): Outcome values.
+            W (array-like or None): Optional observation weights.
+            learner_l2 (float): L2 regularization strength for learner parameters.
+            adversary_l2 (float): L2 regularization strength for adversary parameters.
+            learner_norm_reg (float): Ridge penalty on learner outputs.
+            learner_lr (float): Learner learning rate.
+            adversary_lr (float): Adversary learning rate.
+            n_epochs (int): Number of training epochs.
+            bs (int): Batch size.
+            train_learner_every (int): Frequency for learner updates.
+            train_adversary_every (int): Frequency for adversary updates.
+            warm_start (bool): Whether to keep current network weights before training.
+            model_dir (str): Directory for saved model checkpoints.
+            device (torch.device or str or None): Device used for tensor computation.
+            verbose (int): Verbosity level.
+            subsetted (bool): Whether to apply stage-specific subset restrictions.
+            subset_ind1 (array-like or None): Indicator or mask selecting the first-stage subset.
+            subset_ind2 (array-like or None): Optional indicator or mask selecting the second-stage subset.
         """
         W = torch.ones(Y.shape[0]) if W is None else W
         if subsetted:
@@ -269,7 +293,7 @@ class _BaseSupLossAGMM2(_BaseAGMM2):
                     H_loss = (torch.mean(2*(hat_h-hat_g*Wb)*hat_f) +
                               learner_norm_reg * torch.mean(hat_h**2))
 
-                    # Backpropagate and update for learnerg         
+                    # Backpropagate and update for learnerg
                     self.optimizerg.zero_grad(); G_loss.backward(retain_graph=True); # Retain graph for subsequent use in H_loss
                     self.optimizerg.step(); self.learnerg.eval()
                     # Backpropagate and update for learnerh
@@ -280,7 +304,7 @@ class _BaseSupLossAGMM2(_BaseAGMM2):
                 if it % train_adversary_every == 0:
                     # Set models to training mode
                     self.adversary1.train(); self.adversary2.train()
-                    
+
                     # Since models are being reused, ensure data is consistent or re-compute if necessary
                     hat_g = self.learnerg(Ab); hat_h = self.learnerh(Bb)
                     hat_f_ = self.adversary1(Db) * (subset_ind1 if subsetted else 1)

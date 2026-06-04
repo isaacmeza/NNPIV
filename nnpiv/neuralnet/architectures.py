@@ -17,6 +17,12 @@ class CNN_Z_agmm(nn.Module):
         self.fc2 = nn.Linear(128, 10)
 
     def forward(self, x):
+        """
+        Forward.
+
+        Parameters:
+            x (array-like): Input values.
+        """
         x = self.conv1(x)
         x = F.relu(x)
         x = self.conv2(x)
@@ -33,6 +39,12 @@ class CNN_Z_agmm(nn.Module):
 
 
 class CNN_Z_kernel(nn.Module):
+    """
+    CNN_Z_kernel.
+
+    Parameters:
+        g_features (int): Number of adversary feature outputs.
+    """
     def __init__(self, g_features=100):
         super(CNN_Z_kernel, self).__init__()
         self.conv1 = nn.Conv2d(1, 32, 3, 1)
@@ -43,6 +55,12 @@ class CNN_Z_kernel(nn.Module):
         self.fc2 = nn.Linear(128, g_features)
 
     def forward(self, x):
+        """
+        Forward.
+
+        Parameters:
+            x (array-like): Input values.
+        """
         x = self.conv1(x)
         x = F.relu(x)
         x = self.conv2(x)
@@ -69,6 +87,12 @@ class CNN_X(nn.Module):
         self.fc2 = nn.Linear(512, 1)
 
     def forward(self, x):
+        """
+        Forward.
+
+        Parameters:
+            x (array-like): Input values.
+        """
         x = self.conv1(x)
         x = F.relu(x)
         x = self.conv2(x)
@@ -97,6 +121,12 @@ class CNN_X_bn(nn.Module):
         self.fc3 = nn.Linear(10, 1)
 
     def forward(self, x):
+        """
+        Forward.
+
+        Parameters:
+            x (array-like): Input values.
+        """
         x = self.conv1(x)
         x = F.relu(x)
         x = self.conv2(x)
@@ -115,6 +145,15 @@ class CNN_X_bn(nn.Module):
 
 
 def fc_z_kernel(n_z, n_hidden, g_features, dropout_p):
+    """
+    Fc z kernel.
+
+    Parameters:
+        n_z (int): Instrument dimension.
+        n_hidden (int): Number of hidden units.
+        g_features (int): Number of adversary feature outputs.
+        dropout_p (float): Dropout probability.
+    """
     FC_Z_kernel = nn.Sequential(
         nn.Dropout(p=dropout_p),
         nn.Linear(n_z, n_hidden),
@@ -127,6 +166,14 @@ def fc_z_kernel(n_z, n_hidden, g_features, dropout_p):
 
 
 def fc_z_agmm(n_z, n_hidden, dropout_p):
+    """
+    Fc z agmm.
+
+    Parameters:
+        n_z (int): Instrument dimension.
+        n_hidden (int): Number of hidden units.
+        dropout_p (float): Dropout probability.
+    """
     FC_Z_agmm = nn.Sequential(
         nn.Dropout(p=dropout_p),
         nn.Linear(n_z, n_hidden),
@@ -139,6 +186,14 @@ def fc_z_agmm(n_z, n_hidden, dropout_p):
 
 
 def fc_x(n_t, n_hidden, dropout_p):
+    """
+    Fc x.
+
+    Parameters:
+        n_t (int): Treatment dimension.
+        n_hidden (int): Number of hidden units.
+        dropout_p (float): Dropout probability.
+    """
     FC_X = nn.Sequential(
         nn.Dropout(p=dropout_p),
         nn.Linear(n_t, n_hidden),

@@ -43,6 +43,42 @@ def train_agmm(
     device=None,
     DEBUG=False,
 ):
+    """
+    Train agmm.
+
+    Parameters:
+        Z_train (array-like): Training instruments.
+        T_train (array-like): Training treatments.
+        Y_train (array-like): Training outcomes.
+        G_train (array-like): Training structural-function values or targets.
+        Z_dev (array-like): Development instruments.
+        T_dev (array-like): Development treatments.
+        Y_dev (array-like): Development outcomes.
+        G_dev (array-like): Development structural-function values or targets.
+        Z_val (array-like): Validation instruments.
+        T_val (array-like): Validation treatments.
+        Y_val (array-like): Validation outcomes.
+        G_val (array-like): Validation structural-function values or targets.
+        T_test (array-like): Test treatment values.
+        G_test (array-like): Data array for the indicated split.
+        X_IMAGE (bool): Whether X is represented as images.
+        Z_IMAGE (bool): Whether Z is represented as images.
+        n_t (int): Treatment dimension.
+        n_instruments (int): Number of instruments.
+        n_hidden (int): Number of hidden units.
+        dropout_p (float): Dropout probability.
+        learner_lr (float): Learner learning rate.
+        adversary_lr (float): Adversary learning rate.
+        learner_l2 (float): Learner L2 regularization strength.
+        adversary_l2 (float): Adversary L2 regularization strength.
+        adversary_norm_reg (float): Adversary norm regularization strength.
+        n_epochs (int): Number of training epochs.
+        batch_size (int): Batch size.
+        train_learner_every (int): Frequency for learner updates.
+        train_adversary_every (int): Frequency for adversary updates.
+        device (object): Device used for tensor computation.
+        DEBUG (bool): Whether to enable debug output.
+    """
     if X_IMAGE:
         learner = CNN_X()
     else:
@@ -142,6 +178,47 @@ def train_kernellayergmm(
     device=None,
     DEBUG=False,
 ):
+    """
+    Train kernellayergmm.
+
+    Parameters:
+        Z_train (array-like): Training instruments.
+        T_train (array-like): Training treatments.
+        Y_train (array-like): Training outcomes.
+        G_train (array-like): Training structural-function values or targets.
+        Z_dev (array-like): Development instruments.
+        T_dev (array-like): Development treatments.
+        Y_dev (array-like): Development outcomes.
+        G_dev (array-like): Development structural-function values or targets.
+        Z_val (array-like): Validation instruments.
+        T_val (array-like): Validation treatments.
+        Y_val (array-like): Validation outcomes.
+        G_val (array-like): Validation structural-function values or targets.
+        T_test (array-like): Test treatment values.
+        G_test (array-like): Data array for the indicated split.
+        g_features (int): Number of adversary feature outputs.
+        n_centers (int): Number of basis centers.
+        kernel_fn (callable): Kernel function.
+        centers (array-like or None): Initial basis centers.
+        sigmas (array-like or None): Initial basis widths.
+        X_IMAGE (bool): Whether X is represented as images.
+        Z_IMAGE (bool): Whether Z is represented as images.
+        n_t (int): Treatment dimension.
+        n_instruments (int): Number of instruments.
+        n_hidden (int): Number of hidden units.
+        dropout_p (float): Dropout probability.
+        learner_lr (float): Learner learning rate.
+        adversary_lr (float): Adversary learning rate.
+        learner_l2 (float): Learner L2 regularization strength.
+        adversary_l2 (float): Adversary L2 regularization strength.
+        adversary_norm_reg (float): Adversary norm regularization strength.
+        n_epochs (int): Number of training epochs.
+        batch_size (int): Batch size.
+        train_learner_every (int): Frequency for learner updates.
+        train_adversary_every (int): Frequency for adversary updates.
+        device (object): Device used for tensor computation.
+        DEBUG (bool): Whether to enable debug output.
+    """
     if X_IMAGE:
         learner = CNN_X()
     else:
@@ -254,6 +331,45 @@ def train_centroidmmdgmm(
     device=None,
     DEBUG=False,
 ):
+    """
+    Train centroidmmdgmm.
+
+    Parameters:
+        Z_train (array-like): Training instruments.
+        T_train (array-like): Training treatments.
+        Y_train (array-like): Training outcomes.
+        G_train (array-like): Training structural-function values or targets.
+        Z_dev (array-like): Development instruments.
+        T_dev (array-like): Development treatments.
+        Y_dev (array-like): Development outcomes.
+        G_dev (array-like): Development structural-function values or targets.
+        Z_val (array-like): Validation instruments.
+        T_val (array-like): Validation treatments.
+        Y_val (array-like): Validation outcomes.
+        G_val (array-like): Validation structural-function values or targets.
+        T_test (array-like): Test treatment values.
+        G_test (array-like): Data array for the indicated split.
+        n_centers (int): Number of basis centers.
+        kernel_fn (callable): Kernel function.
+        sigma (float or array-like): Basis width parameter.
+        X_IMAGE (bool): Whether X is represented as images.
+        Z_IMAGE (bool): Whether Z is represented as images.
+        n_t (int): Treatment dimension.
+        n_instruments (int): Number of instruments.
+        n_hidden (int): Number of hidden units.
+        dropout_p (float): Dropout probability.
+        learner_lr (float): Learner learning rate.
+        adversary_lr (float): Adversary learning rate.
+        learner_l2 (float): Learner L2 regularization strength.
+        adversary_l2 (float): Adversary L2 regularization strength.
+        adversary_norm_reg (float): Adversary norm regularization strength.
+        n_epochs (int): Number of training epochs.
+        batch_size (int): Batch size.
+        train_learner_every (int): Frequency for learner updates.
+        train_adversary_every (int): Frequency for adversary updates.
+        device (object): Device used for tensor computation.
+        DEBUG (bool): Whether to enable debug output.
+    """
     if X_IMAGE:
         learner = CNN_X()
     else:
@@ -364,6 +480,43 @@ def train_kernellossagmm(
     device=None,
     DEBUG=False,
 ):
+    """
+    Train kernellossagmm.
+
+    Parameters:
+        Z_train (array-like): Training instruments.
+        T_train (array-like): Training treatments.
+        Y_train (array-like): Training outcomes.
+        G_train (array-like): Training structural-function values or targets.
+        Z_dev (array-like): Development instruments.
+        T_dev (array-like): Development treatments.
+        Y_dev (array-like): Development outcomes.
+        G_dev (array-like): Development structural-function values or targets.
+        Z_val (array-like): Validation instruments.
+        T_val (array-like): Validation treatments.
+        Y_val (array-like): Validation outcomes.
+        G_val (array-like): Validation structural-function values or targets.
+        T_test (array-like): Test treatment values.
+        G_test (array-like): Data array for the indicated split.
+        kernel_fn (callable): Kernel function.
+        sigma (float or array-like): Basis width parameter.
+        X_IMAGE (bool): Whether X is represented as images.
+        Z_IMAGE (bool): Whether Z is represented as images.
+        n_t (int): Treatment dimension.
+        n_instruments (int): Number of instruments.
+        n_hidden (int): Number of hidden units.
+        dropout_p (float): Dropout probability.
+        learner_lr (float): Learner learning rate.
+        adversary_lr (float): Adversary learning rate.
+        learner_l2 (float): Learner L2 regularization strength.
+        adversary_l2 (float): Adversary L2 regularization strength.
+        n_epochs (int): Number of training epochs.
+        batch_size (int): Batch size.
+        train_learner_every (int): Frequency for learner updates.
+        train_adversary_every (int): Frequency for adversary updates.
+        device (object): Device used for tensor computation.
+        DEBUG (bool): Whether to enable debug output.
+    """
     if X_IMAGE:
         learner = CNN_X()
     else:

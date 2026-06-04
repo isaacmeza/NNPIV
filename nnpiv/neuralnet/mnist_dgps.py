@@ -13,6 +13,14 @@ from ..dgps import get_tau_fn, fn_dict
 
 
 class AbstractMNISTxz(object):
+    """
+    AbstractMNISTxz.
+
+    Parameters:
+        use_x_images (bool): Whether to use image-valued X inputs.
+        use_z_images (bool): Whether to use image-valued Z inputs.
+        tau_fn (callable): Structural function used by the DGP.
+    """
     def __init__(self, use_x_images, use_z_images, tau_fn):
         self.splits = {"test": None, "train": None, "dev": None}
         self.setup_args = None
@@ -70,6 +78,16 @@ class AbstractMNISTxz(object):
         return get_tau_fn(fn_dict[func])(x)
 
     def generate_data(self, num_data, tau_fn='linear', two_gps=False, n_instruments=1, iv_strength=0.5, **kwargs):
+        """
+        Generate data.
+
+        Parameters:
+            num_data (int): Number of observations to generate.
+            tau_fn (callable): Structural function used by the DGP.
+            two_gps (bool): Whether to generate two structural functions.
+            n_instruments (int): Number of instruments.
+            iv_strength (float): Instrument-strength parameter.
+        """
         idx = list(range(self.data_i, self.data_i + num_data))
         images = self.images[idx]
         labels = self.labels[idx]

@@ -9,6 +9,12 @@ from .curve_fit import project_convex_lip
 class _BaseShapeIV:
 
     def predict(self, X):
+        """
+        Predict.
+
+        Parameters:
+            X (array-like): Feature or treatment matrix.
+        """
         inds = np.searchsorted(self.x_, X[:, 0])
         lb_x = self.x_[np.clip(inds - 1, 0, len(self.coef_) - 1)]
         lb_y = self.coef_[np.clip(inds - 1, 0, len(self.coef_) - 1)]
@@ -24,6 +30,19 @@ class _BaseShapeIV:
 
 class ShapeIV(_BaseShapeIV):
 
+    """
+    ShapeIV.
+
+    Parameters:
+        lambda_w (float): Adversary regularization parameter.
+        y_min (float): Lower bound for predicted outcomes.
+        y_max (float): Upper bound for predicted outcomes.
+        eta_theta (str or float): Learner step size.
+        eta_w (str or float): Adversary step size.
+        n_iter (int): Maximum number of iterations.
+        tol (float): Convergence tolerance.
+        monotonic (str or None): Optional monotonicity constraint.
+    """
     def __init__(self, lambda_w=1, y_min=0, y_max=1, eta_theta='auto', eta_w='auto',
                  n_iter=2000, tol=1e-2, monotonic=None):
         self.lambda_w = lambda_w
@@ -36,6 +55,14 @@ class ShapeIV(_BaseShapeIV):
         self.y_max = y_max
 
     def fit(self, Z, X, Y):
+        """
+        Fit.
+
+        Parameters:
+            Z (array-like): Instrumental variables.
+            X (array-like): Feature or treatment matrix.
+            Y (array-like): Outcome values.
+        """
         T = self.n_iter
         assert X.shape[1] == 1
         assert Z.shape[1] == 1
@@ -92,6 +119,23 @@ class ShapeIV(_BaseShapeIV):
 
 class LipschitzShapeIV(_BaseShapeIV):
 
+    """
+    LipschitzShapeIV.
+
+    Parameters:
+        L (float): Lipschitz constant.
+        convexity (str or None): Convexity constraint to enforce.
+        lambda_w (float): Adversary regularization parameter.
+        y_min (float): Lower bound for predicted outcomes.
+        y_max (float): Upper bound for predicted outcomes.
+        eta_theta (str or float): Learner step size.
+        eta_w (str or float): Adversary step size.
+        n_iter (int): Maximum number of iterations.
+        tol (float): Convergence tolerance.
+        monotonic (str or None): Optional monotonicity constraint.
+        n_projection_subsamples (int or None): Optional number of subsamples for projection constraints.
+        max_projection_iters (int): Maximum number of projection iterations.
+    """
     def __init__(self, L=1, convexity=None, lambda_w=1, y_min=0, y_max=1, eta_theta='auto', eta_w='auto',
                  n_iter=2000, tol=1e-2, monotonic=None, n_projection_subsamples=None,
                  max_projection_iters=100):
@@ -109,6 +153,14 @@ class LipschitzShapeIV(_BaseShapeIV):
         self.max_projection_iters = max_projection_iters
 
     def fit(self, Z, X, Y):
+        """
+        Fit.
+
+        Parameters:
+            Z (array-like): Instrumental variables.
+            X (array-like): Feature or treatment matrix.
+            Y (array-like): Outcome values.
+        """
         T = self.n_iter
         assert X.shape[1] == 1
         assert Z.shape[1] == 1

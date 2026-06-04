@@ -7,11 +7,36 @@ import matplotlib.pyplot as plt
 
 
 def dprint(flag, *args, **kwargs):
+    """
+    Dprint.
+
+    Parameters:
+        flag (bool): Whether printing is enabled.
+    """
     if flag:
         print(*args, **kwargs)
 
 
 def log_metrics(Z, T, Y, Z_val, T_val, Y_val, T_test, learner, adversary, epoch, writer, true_of_T=None, true_of_T_test=None, loss='moment'):
+    """
+    Log metrics.
+
+    Parameters:
+        Z (array-like): Instrumental variables.
+        T (array-like): Treatment or endogenous variables.
+        Y (array-like): Outcome values.
+        Z_val (array-like): Validation instruments.
+        T_val (array-like): Validation treatments.
+        Y_val (array-like): Validation outcomes.
+        T_test (array-like): Test treatment values.
+        learner (torch.nn.Module): Learner network.
+        adversary (torch.nn.Module): Adversary network.
+        epoch (int): Training epoch.
+        writer (object): Summary writer.
+        true_of_T (array-like or callable): True structural values on the treatment sample.
+        true_of_T_test (array-like or callable): True structural values on the test treatment sample.
+        loss (object): Loss function or loss identifier.
+    """
     y_pred = learner(T)
     y_pred_val = learner(T_val)
     if loss == 'moment':
@@ -56,6 +81,16 @@ def log_metrics(Z, T, Y, Z_val, T_val, Y_val, T_test, learner, adversary, epoch,
 
 
 def plot_results(est, T_test, true_of_T_test, fname=None, ind=0):
+    """
+    Plot results.
+
+    Parameters:
+        est (str or estimator): Estimator identifier or fitted estimator.
+        T_test (array-like): Test treatment values.
+        true_of_T_test (array-like or callable): True structural values on the test treatment sample.
+        fname (str): Output filename.
+        ind (int or None): Optional index used for plotting.
+    """
     point, lb, ub = est.predict(T_test, burn_in=0, alpha=0.2)
     point_final = est.predict(T_test, model='final')
     point_earlystop = est.predict(T_test, model='earlystop')
@@ -101,6 +136,14 @@ def plot_results(est, T_test, true_of_T_test, fname=None, ind=0):
 
 
 def eval_performance(est, T_test, true_of_T_test):
+    """
+    Eval performance.
+
+    Parameters:
+        est (str or estimator): Estimator identifier or fitted estimator.
+        T_test (array-like): Test treatment values.
+        true_of_T_test (array-like or callable): True structural values on the test treatment sample.
+    """
     point, lb, ub = est.predict(T_test, burn_in=0, alpha=0.2)
     point_final = est.predict(T_test, model='final')
     point_earlystop = est.predict(T_test, model='earlystop')
@@ -127,6 +170,13 @@ def eval_performance(est, T_test, true_of_T_test):
 
 
 def hyperparam_grid(*param_info, random=False):
+    """
+    Hyperparam grid.
+
+    Parameters:
+        random (bool): Whether to sample random grid points.
+        param_info (tuple): Parameter-grid specification.
+    """
     param_grid = []
     for (param_range, n) in param_info:
         if random:
@@ -157,6 +207,16 @@ def hyperparam_mult_grid(*param_info):
 
 
 def standardize(x, y, z, g, w):
+    """
+    Standardize.
+
+    Parameters:
+        x (array-like): Input values.
+        y (array-like): Outcome values.
+        z (array-like): Instrument values.
+        g (object): Adversary feature network or structural target values.
+        w (array-like): Weights or auxiliary values.
+    """
     mean = y.mean()
     std = y.std()
     y = (y - mean) / std

@@ -54,6 +54,12 @@ class _SparseLinearAdversarialGMM:
         return Z, X, Y.flatten()
 
     def predict(self, X):
+        """
+        Predict.
+
+        Parameters:
+            X (array-like): Feature or treatment matrix.
+        """
         if self.fit_intercept:
             X = np.hstack([np.ones((X.shape[0], 1)), X])
         return np.dot(X, self.coef_)
@@ -242,12 +248,12 @@ class sparse_ridge_l1vsl1(_SparseLinearAdversarialGMM):
         self.max_response_loss_ = np.linalg.norm(
             np.mean(Z * (Y - np.dot(X, self.coef_)).reshape(-1, 1), axis=0), ord=np.inf)\
             + self.lambda_theta * self.coef_.T @ self.xx @ self.coef_
-        
+
         self.min_response_loss_ = 2 * np.mean(Y * np.dot(Z, self.w_))\
             - (self.msvp / self.lambda_theta) * np.linalg.norm(np.mean(X * np.dot(Z, self.w_).reshape(-1, 1),
                                                                             axis=0),
                                                             ord=2)
-                                                   
+
         self.duality_gap_ = self.max_response_loss_ - self.min_response_loss_
         return self.duality_gap_ < self.tol
 
@@ -289,7 +295,7 @@ class sparse_ridge_l1vsl1(_SparseLinearAdversarialGMM):
         # Perform SVD on E_n[xx^T]
         Sigma = np.linalg.svd(xx, compute_uv=False)
         # Find the minimum non-zero singular value
-        sigma_min = np.min(Sigma[Sigma > 1e-10])  
+        sigma_min = np.min(Sigma[Sigma > 1e-10])
         # Compute the maximum singular value of the pseudoinverse
         self.msvp = 1 / sigma_min
 

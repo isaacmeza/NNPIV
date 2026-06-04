@@ -16,6 +16,19 @@ def generate_data(
     iv_strength=0.5,
     device=None,
 ):
+    """
+    Generate data.
+
+    Parameters:
+        X_IMAGE (bool): Whether X is represented as images.
+        Z_IMAGE (bool): Whether Z is represented as images.
+        tau_fn (callable): Structural function used by the DGP.
+        n_samples (int): Number of Monte Carlo samples.
+        n_dev_samples (int): Number of development samples.
+        n_instruments (int): Number of instruments.
+        iv_strength (float): Instrument-strength parameter.
+        device (object): Device used for tensor computation.
+    """
     mnist_dgp = AbstractMNISTxz(X_IMAGE, Z_IMAGE, tau_fn)
     n_test = n_samples // 10
     n_t = 1

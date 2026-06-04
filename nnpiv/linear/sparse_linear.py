@@ -9,11 +9,25 @@ from .utilities import cross_product
 
 class TSLasso:
 
+    """
+    TSLasso.
+
+    Parameters:
+        first_stage (estimator): First-stage estimator.
+    """
     def __init__(self, first_stage=ElasticNet(alpha=0.01)):
         self.first_stage = first_stage
         return
 
     def fit(self, Z, X, Y):
+        """
+        Fit.
+
+        Parameters:
+            Z (array-like): Instrumental variables.
+            X (array-like): Feature or treatment matrix.
+            Y (array-like): Outcome values.
+        """
         x_pred = np.zeros(X.shape)
         for i in range(X.shape[1]):
             x_pred[:, i] = clone(self.first_stage).fit(
@@ -24,11 +38,30 @@ class TSLasso:
         return self
 
     def predict(self, X):
+        """
+        Predict.
+
+        Parameters:
+            X (array-like): Feature or treatment matrix.
+        """
         return self.est.predict(X)
 
 
 class _SparseLinearAdversarialGMM:
 
+    """
+    _SparseLinearAdversarialGMM.
+
+    Parameters:
+        lambda_theta (float): Learner regularization parameter.
+        B (float or array-like): Bound or second nested-stage treatment block, depending on context.
+        eta_theta (str or float): Learner step size.
+        eta_w (str or float): Adversary step size.
+        n_iter (int): Maximum number of iterations.
+        tol (float): Convergence tolerance.
+        sparsity (int or None): Optional sparsity level.
+        fit_intercept (bool): Whether to fit an intercept.
+    """
     def __init__(self, lambda_theta=0.01, B=100, eta_theta='auto', eta_w='auto',
                  n_iter=2000, tol=1e-2, sparsity=None, fit_intercept=True):
         self.B = B
@@ -47,6 +80,12 @@ class _SparseLinearAdversarialGMM:
         return Z, X, Y.flatten()
 
     def predict(self, X):
+        """
+        Predict.
+
+        Parameters:
+            X (array-like): Feature or treatment matrix.
+        """
         if self.fit_intercept:
             X = np.hstack([np.ones((X.shape[0], 1)), X])
         return np.dot(X, self.coef_)
@@ -88,6 +127,14 @@ class _L1Adversary(_SparseLinearAdversarialGMM):
 class SubGradientVsHedge(_L1Adversary):
 
     def fit(self, Z, X, Y):
+        """
+        Fit.
+
+        Parameters:
+            Z (array-like): Instrumental variables.
+            X (array-like): Feature or treatment matrix.
+            Y (array-like): Outcome values.
+        """
         Z, X, Y = self._check_input(Z, X, Y)
         T = self.n_iter
         d_x = X.shape[1]
@@ -154,6 +201,14 @@ class SubGradientVsHedge(_L1Adversary):
 class OptimisticHedgeVsOptimisticHedge(_L1Adversary):
 
     def fit(self, Z, X, Y):
+        """
+        Fit.
+
+        Parameters:
+            Z (array-like): Instrumental variables.
+            X (array-like): Feature or treatment matrix.
+            Y (array-like): Outcome values.
+        """
         Z, X, Y = self._check_input(Z, X, Y)
         T = self.n_iter
         d_x = X.shape[1]
@@ -250,6 +305,12 @@ class StochasticOptimisticHedgeVsOptimisticHedge(_L1Adversary):
     def fit(self, Z, X, Y, L=10):
         """
         L : mini-bathc size
+
+        Parameters:
+            Z (array-like): Instrumental variables.
+            X (array-like): Feature or treatment matrix.
+            Y (array-like): Outcome values.
+            L (float): Lipschitz constant.
         """
         Z, X, Y = self._check_input(Z, X, Y)
         T = self.n_iter
@@ -340,6 +401,13 @@ class StochasticOptimisticHedgeVsOptimisticHedge(_L1Adversary):
 
 
 def prox(x, thres):
+    """
+    Prox.
+
+    Parameters:
+        x (array-like): Input values.
+        thres (object): Value for `thres`.
+    """
     y = x.copy()
     y[x > thres] -= thres
     y[x < - thres] += thres
@@ -350,6 +418,14 @@ def prox(x, thres):
 class ProxGradientVsHedge(_L1Adversary):
 
     def fit(self, Z, X, Y):
+        """
+        Fit.
+
+        Parameters:
+            Z (array-like): Instrumental variables.
+            X (array-like): Feature or treatment matrix.
+            Y (array-like): Outcome values.
+        """
         Z, X, Y = self._check_input(Z, X, Y)
         T = self.n_iter
         d_x = X.shape[1]
@@ -446,6 +522,14 @@ class _L2Adversary(_SparseLinearAdversarialGMM):
 class L2SubGradient(_L2Adversary):
 
     def fit(self, Z, X, Y):
+        """
+        Fit.
+
+        Parameters:
+            Z (array-like): Instrumental variables.
+            X (array-like): Feature or treatment matrix.
+            Y (array-like): Outcome values.
+        """
         Z, X, Y = self._check_input(Z, X, Y)
         T = self.n_iter
         d_x = X.shape[1]
@@ -505,6 +589,14 @@ class L2SubGradient(_L2Adversary):
 class L2ProxGradient(_L2Adversary):
 
     def fit(self, Z, X, Y):
+        """
+        Fit.
+
+        Parameters:
+            Z (array-like): Instrumental variables.
+            X (array-like): Feature or treatment matrix.
+            Y (array-like): Outcome values.
+        """
         Z, X, Y = self._check_input(Z, X, Y)
         T = self.n_iter
         d_x = X.shape[1]
@@ -566,6 +658,14 @@ class L2ProxGradient(_L2Adversary):
 class L2OptimisticHedgeVsOGD(_L2Adversary):
 
     def fit(self, Z, X, Y):
+        """
+        Fit.
+
+        Parameters:
+            Z (array-like): Instrumental variables.
+            X (array-like): Feature or treatment matrix.
+            Y (array-like): Outcome values.
+        """
         Z, X, Y = self._check_input(Z, X, Y)
         T = self.n_iter
         d_x = X.shape[1]

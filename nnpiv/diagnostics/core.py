@@ -434,8 +434,7 @@ def relative_wellposedness_diagnostic(
     r"""
     Compute the finite-dimensional relative well-posedness diagnostic ``kappa``.
 
-    Parameters
-    ----------
+    Parameters:
     A : array-like of shape (n,) or (n, d_a)
         First-stage endogenous block used to build featureized functions
         :math:`b(A)`.
@@ -702,8 +701,7 @@ def relative_wellposedness_sieve_diagnostic(
     r"""
     Run the pre-estimation diagnostic over a sieve and eta path.
 
-    Parameters
-    ----------
+    Parameters:
     A, C, C_prime : array-like
         Inputs passed to :func:`relative_wellposedness_diagnostic`. Arrays must
         be row-aligned with common sample size ``n``.
@@ -865,8 +863,7 @@ def relative_wellposedness_effective_diagnostic(
     r"""
     Compute the post-estimation effective-direction diagnostic ``kappa_eff``.
 
-    Parameters
-    ----------
+    Parameters:
     A : array-like of shape (n,) or (n, d_a)
         First-stage endogenous block used to construct feature functions.
     C : array-like of shape (n,) or (n, d_c)
@@ -996,8 +993,7 @@ def relative_wellposedness_effective_sieve_diagnostic(
     """
     Run ``kappa_eff`` over a sieve and eta path.
 
-    Parameters
-    ----------
+    Parameters:
     A, C, C_prime : array-like
         Inputs passed to :func:`relative_wellposedness_effective_diagnostic`.
         Arrays must share the same number of rows.
@@ -1133,8 +1129,7 @@ def relative_wellposedness_from_data(
     """
     Run the pre-estimation diagnostic from dataset-level selectors.
 
-    Parameters
-    ----------
+    Parameters:
     data : DataFrame, mapping, or 2D array-like
         Source container holding all blocks.
     A, C, C_prime
@@ -1199,8 +1194,7 @@ def relative_wellposedness_effective_from_data(
     """
     Run the post-estimation ``kappa_eff`` diagnostic from dataset selectors.
 
-    Parameters
-    ----------
+    Parameters:
     data : DataFrame, mapping, or 2D array-like
         Source container holding all blocks.
     e_g
@@ -1258,8 +1252,7 @@ def relative_wellposedness_sieve_from_data(
     """
     Run the sieve-path pre-estimation diagnostic from dataset selectors.
 
-    Parameters
-    ----------
+    Parameters:
     data : DataFrame, mapping, or 2D array-like
         Source container holding all blocks.
     A, C, C_prime
@@ -1316,8 +1309,7 @@ def relative_wellposedness_effective_sieve_from_data(
     """
     Run the sieve-path post-estimation ``kappa_eff`` diagnostic from selectors.
 
-    Parameters
-    ----------
+    Parameters:
     data : DataFrame, mapping, or 2D array-like
         Source container holding all blocks.
     e_g
@@ -1374,8 +1366,7 @@ def relative_wellposedness_from_nested_npiv(
     """
     Run the pre-estimation diagnostic for canonical nested NPIV blocks.
 
-    Parameters
-    ----------
+    Parameters:
     A, D, B, C
         Blocks from nested NPIV data generation where ``A`` is first-stage
         endogenous treatment, ``D`` first-stage instrument, ``B`` second-stage
@@ -1422,8 +1413,7 @@ def relative_wellposedness_effective_from_nested_npiv(
     """
     Run post-estimation ``kappa_eff`` for canonical nested NPIV blocks.
 
-    Parameters
-    ----------
+    Parameters:
     A, D, B, C
         Canonical nested NPIV blocks. ``D`` is mapped to ``C_prime``.
     e_g : array-like of shape (n,) or (n, 1)
@@ -1469,8 +1459,7 @@ def relative_wellposedness_sieve_from_nested_npiv(
     """
     Run the pre-estimation sieve-path diagnostic for canonical nested NPIV.
 
-    Parameters
-    ----------
+    Parameters:
     A, D, B, C
         Canonical nested NPIV blocks. ``D`` is mapped to ``C_prime``.
     mask_s, mask_t : array-like, optional
@@ -1513,8 +1502,7 @@ def relative_wellposedness_effective_sieve_from_nested_npiv(
     """
     Run the post-estimation sieve-path ``kappa_eff`` diagnostic for nested NPIV.
 
-    Parameters
-    ----------
+    Parameters:
     A, D, B, C
         Canonical nested NPIV blocks. ``D`` is mapped to ``C_prime``.
     e_g : array-like of shape (n,) or (n, 1)

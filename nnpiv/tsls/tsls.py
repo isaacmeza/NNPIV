@@ -8,7 +8,7 @@ Classes:
 from sklearn.linear_model import Lasso, LassoCV, LogisticRegression, LogisticRegressionCV, LinearRegression, \
     ElasticNet, ElasticNetCV, MultiTaskElasticNet, MultiTaskElasticNetCV
 import numpy as np
-        
+
 class tsls:
     """
     Two-stage least squares estimator.
@@ -19,7 +19,7 @@ class tsls:
     def __init__(self):
         self.coef_ = None
         self.intercept_ = None
-        
+
     def fit(self, Z, T, Y):
         """
         Fit the TSLS estimator.
@@ -40,7 +40,7 @@ class tsls:
         self.coef_ = second.coef_
         self.intercept_ = second.intercept_
         return self
-    
+
     def predict(self, T):
         """
         Predict outcomes based on the fitted model.
@@ -58,6 +58,10 @@ class regtsls:
     Regularized two-stage least squares estimator using Elastic Net.
 
     This class implements the regularized TSLS estimator using Elastic Net regression.
+
+    Parameters:
+        cv (int): Number of folds for cross-validation.
+        n_alphas (int): Number of alpha-scale candidates when alpha_scales='auto'.
     """
 
     def __init__(self, cv=2, n_alphas=50):
@@ -65,7 +69,7 @@ class regtsls:
         self.intercept_ = None
         self.cv = max(2, int(cv))
         self.n_alphas = max(5, int(n_alphas))
-        
+
     def fit(self, Z, T, Y):
         """
         Fit the regularized TSLS estimator.
@@ -86,7 +90,7 @@ class regtsls:
         self.coef_ = second.coef_
         self.intercept_ = second.intercept_
         return self
-    
+
     def predict(self, T):
         """
         Predict outcomes based on the fitted model.

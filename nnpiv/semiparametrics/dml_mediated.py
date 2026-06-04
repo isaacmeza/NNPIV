@@ -1,7 +1,7 @@
 """
 This module performs Debiased Machine Learning for mediation analysis, using joint or sequential estimation for longitudinal
-nonparametric parameters (in the Nested NPIV framework). It provides tools for estimating causal effects with 
-mediation using a combination of machine learning models and instrumental variables techniques. The module supports different types of mediated estimands, cross-validation, kernel density estimation 
+nonparametric parameters (in the Nested NPIV framework). It provides tools for estimating causal effects with
+mediation using a combination of machine learning models and instrumental variables techniques. The module supports different types of mediated estimands, cross-validation, kernel density estimation
 for localization, and confidence interval computation with pointwise or uniform guarantees.
 
 Classes:
@@ -9,34 +9,34 @@ Classes:
 
 DML_mediated Methods:
     __init__: Initialize the DML_mediated instance with data and model configurations.
-    
+
     _calculate_confidence_interval: Calculate confidence intervals for the estimates.
-    
+
     _localization: Perform localization using kernel density estimation.
-    
+
     _npivfit_outcome: Fit the outcome model using nonparametric instrumental variables.
 
     _nnpivfit_outcome_m: Fit the mediated outcome model sequentially using nonparametric instrumental variables.
 
     _propensity_score: Estimate the propensity score.
-    
+
     _npivfit_action: Fit the action model using nonparametric instrumental variables.
 
     _nnpivfit_action_m: Fit the mediated action model sequentially using nonparametric instrumental variables.
 
     _scores_mediated: Calculate the scores for the mediated effects.
-    
+
     _scores_Y1: Calculate the scores for the Y1 estimand.
-    
+
     _process_fold: Process a single fold for cross-validation.
-    
+
     _split_and_estimate: Split the data and estimate the model for each fold.
-    
+
     dml: Perform Debiased Machine Learning for Nonparametric Instrumental Variables.
 """
 
 import numpy as np
-from scipy.stats import norm 
+from scipy.stats import norm
 from sklearn.model_selection import KFold
 from sklearn.linear_model import LogisticRegression
 from sklearn.cluster import KMeans
@@ -63,8 +63,7 @@ def _get(opts, key, default):
     """
     Retrieve the value associated with 'key' in 'opts', or return 'default' if not present.
 
-    Parameters
-    ----------
+    Parameters:
     opts : dict
         Dictionary of options.
     key : str
@@ -83,8 +82,7 @@ def _transform_poly(X, opts):
     """
     Transform the input data X using polynomial features.
 
-    Parameters
-    ----------
+    Parameters:
     X : array-like
         Input data.
     opts : dict
@@ -104,11 +102,10 @@ def _transform_poly(X, opts):
 
 def _fun_threshold_alpha(alpha, g):
     """
-    Auxiliary function for computation of optimal alpha for improvement in overlap: CHIM 
+    Auxiliary function for computation of optimal alpha for improvement in overlap: CHIM
     (Dealing with limited overlap in estimation of average treatment effects, Crump et al., Biometrika, 2009).
 
-    Parameters
-    ----------
+    Parameters:
     alpha : float
         Alpha value.
     g : array-like
@@ -131,8 +128,7 @@ class DML_mediated:
     """
     Debiased Machine Learning for mediation analysis (DML-mediation) class with joint/sequential model fitting.
 
-    Parameters
-    ----------
+    Parameters:
     Y : array-like
         Outcome variable.
     D : array-like
@@ -150,7 +146,7 @@ class DML_mediated:
     v_values : array-like, optional
         Values for localization.
     include_V : bool, optional
-        Include localization covariates in the model.        
+        Include localization covariates in the model.
     ci_type : str, optional
         Type of confidence interval ('pointwise', 'uniform').
     loc_kernel : str, optional
@@ -176,7 +172,7 @@ class DML_mediated:
     model_a : estimator, optional
         Model for the action - for use with 'E[Y1]', 'E[Y0]', 'Direct', 'Indirect', and 'ATE' estimands.
     nn_a : bool, optional
-        Use neural network for the action model.          
+        Use neural network for the action model.
     alpha : float, optional
         Significance level for confidence intervals.
     n_folds : int, optional
@@ -202,12 +198,12 @@ class DML_mediated:
     fitargsy : dict, optional
         Arguments for fitting the one stage outcome model.
     fitargsa : dict, optional
-        Arguments for fitting the one stage action model.        
+        Arguments for fitting the one stage action model.
     opts : dict, optional
         Additional options.
     """
     def __init__(self, Y, D, M, W, Z, X1=None,
-                 V=None, 
+                 V=None,
                  v_values=None,
                  include_V=True,
                  ci_type='pointwise',
@@ -286,7 +282,7 @@ class DML_mediated:
                 warnings.warn("Sequential outcome model fitting requires fitargs1 to be a list. Assuming [fitargs1, fitargs1]", UserWarning)
                 self.fitargs1 = fitargs1
                 self.fitargs2 = fitargs1
-            else:   
+            else:
                 self.fitargs1 = fitargs1[0]
                 self.fitargs2 = fitargs1[1]
         else:
@@ -310,15 +306,15 @@ class DML_mediated:
                 warnings.warn("Sequential outcome model fitting requires fitargsq1 to be a list. Assuming [fitargsq1, fitargsq1]", UserWarning)
                 self.fitargsq1 = fitargsq1
                 self.fitargsq2 = fitargsq1
-            else:   
+            else:
                 self.fitargsq1 = fitargsq1[0]
-                self.fitargsq2 = fitargsq1[1]                
+                self.fitargsq2 = fitargsq1[1]
         else:
-            self.modelq1 = copy.deepcopy(modelq1) 
+            self.modelq1 = copy.deepcopy(modelq1)
             self.nn_q1 = nn_q1
-            self.fitargsq1 = fitargsq1 
-            self.sequential_a = False          
-        
+            self.fitargsq1 = fitargsq1
+            self.sequential_a = False
+
         if self.X1 is None:
             if self.V is not None and self.include_V == True:
                 self.X = self.V
@@ -344,7 +340,7 @@ class DML_mediated:
 
         if self.estimand in ['ATE', 'E[Y1]', 'E[Y0]'] and self.estimator=='hybrid':
             warnings.warn(f"Invalid estimator: {estimator}. Estimator must be one of ['MR', 'OR', 'IPW'] when estimand is {estimand}. Using MR instead.", UserWarning)
-            self.estimator = 'MR'                
+            self.estimator = 'MR'
 
         if self.ci_type not in ['pointwise', 'uniform']:
             warnings.warn(f"Invalid confidence interval type: {ci_type}. Confidence interval type must be one of ['pointwise', 'uniform']. Using pointwise instead.", UserWarning)
@@ -355,17 +351,17 @@ class DML_mediated:
 
         if self.loc_kernel not in list(kernel_switch.keys()):
             warnings.warn(f"Invalid kernel: {loc_kernel}. Kernel must be one of {list(kernel_switch.keys())}. Using gau instead.", UserWarning)
-            self.loc_kernel = 'gau' 
+            self.loc_kernel = 'gau'
 
         if isinstance(self.bw_loc, str):
             if self.bw_loc not in ['silverman', 'scott']:
                 warnings.warn(f"Invalid bw rule: {bw_loc}. Bandwidth rule must be one of ['silverman', 'scott'] or provided by the user. Using silverman instead.", UserWarning)
-                self.bw_loc = 'silverman'   
+                self.bw_loc = 'silverman'
 
         if self.V is not None:
             if self.v_values is None:
                 warnings.warn(f"v_values is None. Computing localization around mean(V).", UserWarning)
-                self.v_values = np.mean(self.V, axis=0)    
+                self.v_values = np.mean(self.V, axis=0)
 
     def _resolve_inner_n_jobs(self, inner_n_jobs):
         if inner_n_jobs is None:
@@ -383,13 +379,12 @@ class DML_mediated:
             raise ValueError(f"inner_n_jobs must be an integer >= 1, got {inner_n_jobs!r}.")
 
         return min(value, int(self.n_folds))
-            
+
     def _calculate_confidence_interval(self, theta, theta_var, theta_cov):
         """
         Calculate the confidence interval for the given estimates.
 
-        Parameters
-        ----------
+        Parameters:
         theta : array-like
             Estimated values.
         theta_var : array-like
@@ -406,16 +401,16 @@ class DML_mediated:
 
         if self.ci_type == 'pointwise':
             z_alpha_half = norm.ppf(1 - self.alpha / 2)
-            margin_of_error = z_alpha_half * np.sqrt(theta_var / n) 
+            margin_of_error = z_alpha_half * np.sqrt(theta_var / n)
         else:
             S = np.diag(np.diag(theta_cov))
             S_inv_sqrt = np.diag(1.0 / np.sqrt(np.diag(S)))
-            
+
             Sigma_hat = S_inv_sqrt @ theta_cov @ S_inv_sqrt
-            
+
             # Sample Q from N(0, Sigma_hat)
             Q_samples = np.random.multivariate_normal(np.zeros(theta.shape[0]), Sigma_hat, 5000)
-            
+
             # Compute the (1 - alpha) quantile of the sampled |Q|_infty
             Q_infinity_norms = np.max(np.abs(Q_samples), axis=1)
             c_alpha = np.quantile(Q_infinity_norms, 1 - self.alpha)
@@ -429,8 +424,7 @@ class DML_mediated:
         """
         Perform localization using kernel density estimation.
 
-        Parameters
-        ----------
+        Parameters:
         V : array-like
             Localization covariates.
         v_val : array-like
@@ -446,14 +440,14 @@ class DML_mediated:
         if kernel_switch[self.loc_kernel]().domain is None:
             def K(x):
                 return kernel_switch[self.loc_kernel]()(x)
-        else:    
-            def K(x): 
+        else:
+            def K(x):
                 y = kernel_switch[self.loc_kernel]()(x)*((kernel_switch[self.loc_kernel]().domain[0]<=x) & (x<=kernel_switch[self.loc_kernel]().domain[1]))
                 return y
 
-        v = (V-v_val)/bw    
-        KK = np.prod(list(map(K, v)),axis=1) 
-        omega = np.mean(KK,axis=0)   
+        v = (V-v_val)/bw
+        KK = np.prod(list(map(K, v)),axis=1)
+        omega = np.mean(KK,axis=0)
         ell = KK/omega
         return ell.reshape(-1,1)
 
@@ -462,8 +456,7 @@ class DML_mediated:
         """
         Fit the mediated outcome model using nonparametric instrumental variables.
 
-        Parameters
-        ----------
+        Parameters:
         Y : array-like
             Outcome variable.
         D : array-like
@@ -488,7 +481,7 @@ class DML_mediated:
 
             #First stage
             if self.nn_1==True:
-                Y, D, M, W, X, Z = map(toT, [Y, D, M, W, X, Z]) 
+                Y, D, M, W, X, Z = map(toT, [Y, D, M, W, X, Z])
 
             ind = (torch.nonzero(D.reshape(-1) == 1).squeeze(1) if self.nn_1 else np.where(D==1)[0])
             M1 = M[ind]
@@ -522,7 +515,7 @@ class DML_mediated:
             bridge_1 = None
 
         if self.estimator == 'MR' or self.estimator == 'OR':
-            #Second stage 
+            #Second stage
             if self.nn_1!=self.nn_2:
                 if self.nn_2==False:
                     D, W, X, Z, bridge_1_hat = map(_to_np, [D, W, X, Z, bridge_1_hat])
@@ -538,7 +531,7 @@ class DML_mediated:
             if self.nn_2==True:
                 B2 = torch.cat((X0,Z0),1)
                 B1 = torch.cat((X0,W0),1)
-            else:            
+            else:
                 B2 = _transform_poly(np.column_stack((X0,Z0)),self.opts)
                 B1 = _transform_poly(np.column_stack((X0,W0)),self.opts)
 
@@ -548,17 +541,16 @@ class DML_mediated:
                 bridge_2 = model_2.fit(B2, B1, bridge_1_hat)
         else:
             bridge_2 = None
-        
+
         Y, D, M, W, X, Z = map(_to_np, [Y, D, M, W, X, Z])
         return bridge_1, bridge_2
-    
+
 
     def _npivfit_outcome(self, Y, D, X, Z):
         """
         Fit the outcome model using nonparametric instrumental variables.
 
-        Parameters
-        ----------
+        Parameters:
         Y : array-like
             Outcome variable.
         D : array-like
@@ -592,7 +584,7 @@ class DML_mediated:
             bridge_1 = model_y1.fit(Z1, X1, Y1, **self.fitargsy)
         else:
             bridge_1 = model_y1.fit(Z1, X1, Y1)
-        
+
         Y, D, X, Z = map(_to_np, [Y, D, X, Z])
         return bridge_1
 
@@ -600,8 +592,7 @@ class DML_mediated:
         """
         Estimate the propensity score.
 
-        Parameters
-        ----------
+        Parameters:
         M : array-like
             Mediator variable.
         X : array-like
@@ -622,7 +613,7 @@ class DML_mediated:
         model_ps = copy.deepcopy(self.prop_score)
         X1 = np.column_stack((X,W))
         X0 = np.column_stack((M,X,W))
-            
+
         #First stage
         model_ps.fit(X1, D.flatten())
         ps_hat_0 = model_ps.predict_proba(X1)[:,0]
@@ -630,7 +621,7 @@ class DML_mediated:
         if self.estimand in ['Indirect', 'Direct', 'E[Y(1,M(0))]']:
             #Second stage
             model_ps.fit(X0, D.flatten())
-            ps_hat_00 = model_ps.predict_proba(X0)[:,0] 
+            ps_hat_00 = model_ps.predict_proba(X0)[:,0]
         else:
             ps_hat_00 = ps_hat_0
 
@@ -645,11 +636,11 @@ class DML_mediated:
             # One finds the smallest value of \alpha\in [0,0.5] s.t.
             # $\lambda:=\frac{1}{\alpha(1-\alpha)}$
             # $2\frac{\sum 1(g(X)\leq\lambda)*g(X)}{\sum 1(g(X)\leq\lambda)}-\lambda\geq 0$
-            # 
+            #
             # Equivalently the first value of alpha (in increasing order) such that the constraint is achieved by equality
             # (as the constraint is a monotone increasing function in alpha)
 
-            g_values = [1/(ps_hat_0*(1-ps_hat_0)), 1/(ps_hat_00*(1-ps_hat_00))]  
+            g_values = [1/(ps_hat_0*(1-ps_hat_0)), 1/(ps_hat_00*(1-ps_hat_00))]
             optimized_alphas = []
 
             for g in g_values:
@@ -669,8 +660,7 @@ class DML_mediated:
         """
         Fit the mediated action model using nonparametric instrumental variables.
 
-        Parameters
-        ----------
+        Parameters:
         ps_hat_0 : array-like
             Estimated propensity scores for control group.
         ps_hat_00 : array-like
@@ -737,13 +727,13 @@ class DML_mediated:
                 A1 = torch.cat((X,Z),1)
                 _pred = bridge_1.predict(A1.to(DEVICE), model='avg', burn_in=_get(self.opts, 'burnin', 0))
                 bridge_1_hat = _pred if isinstance(_pred, torch.Tensor) else toT(_pred)
-            else:    
-                A1 = _transform_poly(np.column_stack((X,Z)),self.opts)    
+            else:
+                A1 = _transform_poly(np.column_stack((X,Z)),self.opts)
                 bridge_1_hat = bridge_1.predict(A1)
                 bridge_1_hat = bridge_1_hat.reshape(A1.shape[:1] + ps_hat_0.shape[1:])
         else:
             bridge_1 = None
-           
+
 
         if self.estimator == 'MR' or self.estimator == 'IPW':
             #Second stage
@@ -764,7 +754,7 @@ class DML_mediated:
             if self.nn_q2==True:
                 B2 = torch.cat((M0,X0,W0),1)
                 B1 = torch.cat((M0,X0,Z0),1)
-            else:     
+            else:
                 B2 = _transform_poly(np.column_stack((M0,X0,W0)),self.opts)
                 B1 = _transform_poly(np.column_stack((M0,X0,Z0)),self.opts)
 
@@ -777,14 +767,13 @@ class DML_mediated:
 
         ps_hat_0, ps_hat_00, D, M, W, X, Z = map(_to_np, [ps_hat_0, ps_hat_00, D, M, W, X, Z])
         return bridge_1, bridge_2
-    
+
 
     def _npivfit_action(self, ps_hat_1, W, X, Z, alfa=0.0):
         """
         Fit the action model using nonparametric instrumental variables.
 
-        Parameters
-        ----------
+        Parameters:
         ps_hat_1 : array-like
             Estimated propensity scores.
         W : array-like
@@ -827,13 +816,12 @@ class DML_mediated:
         ps_hat_1, W, X, Z = map(_to_np, [ps_hat_1, W, X, Z])
         return bridge_1
 
-    def _scores_mediated(self, train_Y, train_D, train_M, train_W, train_X, train_Z, 
+    def _scores_mediated(self, train_Y, train_D, train_M, train_W, train_X, train_Z,
                          test_Y, test_D, test_M, test_W, test_X, test_Z):
         """
         Calculate the scores for the mediated effects.
 
-        Parameters
-        ----------
+        Parameters:
         train_Y : array-like
             Training outcome variable.
         train_D : array-like
@@ -900,7 +888,7 @@ class DML_mediated:
                 A_test = np.column_stack((test_M, test_X, test_W))
 
                 if self.nn_1 == True:
-                    A_train, E_train, B_train, C_train, B_test, A_test, train_Y, train_D = map(toT, 
+                    A_train, E_train, B_train, C_train, B_test, A_test, train_Y, train_D = map(toT,
                                                             [A_train, E_train, B_train, C_train, B_test, A_test, train_Y, train_D])
 
                 else:
@@ -965,14 +953,14 @@ class DML_mediated:
                 ps_hat_00 = ps_hat_00[mask]
                 ps_hat_01 = 1 - ps_hat_00
 
-                A_train, E_train, B_train, C_train, train_D = map(lambda x: x[mask], 
+                A_train, E_train, B_train, C_train, train_D = map(lambda x: x[mask],
                                                     [A_train, E_train, B_train, C_train, train_D])
-                
+
                 if self.nn_q1 == True:
                     A_train, E_train, B_train, C_train, train_D, ps_hat_0, ps_hat_00, ps_hat_01, B_test, A_test = map(
                         toT, [A_train, E_train, B_train, C_train, train_D, ps_hat_0, ps_hat_00, ps_hat_01, B_test, A_test]
                     )
-                    
+
                 else:
                     A_train = _transform_poly(A_train, self.opts)
                     E_train = _transform_poly(E_train, self.opts)
@@ -1006,20 +994,19 @@ class DML_mediated:
                     test_D * q_1_hat * (test_Y - gamma_1_hat) +
                     (1 - test_D) * q_0_hat * (gamma_1_hat - gamma_0_hat))
         if self.estimator == 'OR':
-            psi_hat = gamma_0_hat 
+            psi_hat = gamma_0_hat
         if self.estimator == 'hybrid':
             psi_hat = (1 - test_D) * q_0_hat * gamma_1_hat
         if self.estimator == 'IPW':
             psi_hat = test_D * q_1_hat * test_Y
         return psi_hat
 
-    def _scores_Y1(self, train_Y, train_D, train_M, train_W, train_X, train_Z, 
+    def _scores_Y1(self, train_Y, train_D, train_M, train_W, train_X, train_Z,
                          test_Y, test_D, test_X, test_Z):
         """
         Calculate the scores for the Y1 estimand.
 
-        Parameters
-        ----------
+        Parameters:
         train_Y : array-like
             Training outcome variable.
         train_D : array-like
@@ -1074,19 +1061,18 @@ class DML_mediated:
 
         # Calculate the score function depending on the estimator
         if self.estimator == 'MR':
-            psi_hat = gamma_1_hat + test_D * q_1_hat * (test_Y - gamma_1_hat) 
+            psi_hat = gamma_1_hat + test_D * q_1_hat * (test_Y - gamma_1_hat)
         if self.estimator == 'OR':
             psi_hat = gamma_1_hat
         if self.estimator == 'IPW' or self.estimator == 'hybrid':
-            psi_hat = test_D * q_1_hat * test_Y 
+            psi_hat = test_D * q_1_hat * test_Y
         return psi_hat
-    
+
     def _process_fold(self, fold_idx, train_data, test_data):
         """
         Process a single fold for cross-validation.
 
-        Parameters
-        ----------
+        Parameters:
         fold_idx : int
             Fold index.
         train_data : tuple
@@ -1115,13 +1101,13 @@ class DML_mediated:
                                         test_Y, 1-test_D, test_X, test_Z)
             psi_hat = psi_hat_1 - psi_hat_0
         if self.estimand == 'Indirect':
-            psi_hat_mediated = self._scores_mediated(train_Y, train_D, train_M, train_W, train_X, train_Z, 
+            psi_hat_mediated = self._scores_mediated(train_Y, train_D, train_M, train_W, train_X, train_Z,
                                             test_Y, test_D, test_M, test_W, test_X, test_Z)
             psi_hat_1 = self._scores_Y1(train_Y, train_D, train_M, train_W, train_X, train_Z,
                                         test_Y, test_D, test_X, test_Z)
-            psi_hat = psi_hat_1 - psi_hat_mediated 
+            psi_hat = psi_hat_1 - psi_hat_mediated
         if self.estimand == 'Direct':
-            psi_hat_mediated = self._scores_mediated(train_Y, train_D, train_M, train_W, train_X, train_Z, 
+            psi_hat_mediated = self._scores_mediated(train_Y, train_D, train_M, train_W, train_X, train_Z,
                                             test_Y, test_D, test_M, test_W, test_X, test_Z)
             psi_hat_0 = self._scores_Y1(train_Y, 1-train_D, train_M, train_W, train_X, train_Z,
                                         test_Y, 1-test_D, test_X, test_Z)
@@ -1133,11 +1119,11 @@ class DML_mediated:
             psi_hat = self._scores_Y1(train_Y, 1-train_D, train_M, train_W, train_X, train_Z,
                                         test_Y, 1-test_D, test_X, test_Z)
         if self.estimand == 'E[Y(1,M(0))]':
-            psi_hat = self._scores_mediated(train_Y, train_D, train_M, train_W, train_X, train_Z, 
-                                            test_Y, test_D, test_M, test_W, test_X, test_Z)            
-        
+            psi_hat = self._scores_mediated(train_Y, train_D, train_M, train_W, train_X, train_Z,
+                                            test_Y, test_D, test_M, test_W, test_X, test_Z)
 
-        # Localization 
+
+        # Localization
         if self.V is not None:
             if isinstance(self.bw_loc, str):
                 if self.bw_loc == 'silverman':
@@ -1158,7 +1144,7 @@ class DML_mediated:
                     else:
                         warnings.warn(f"bw_loc has incorrect length. Using first element instead.", UserWarning)
                         bw = np.ones((train_V.shape[1]))*self.bw_loc[0]
-            
+
             ell = [self._localization(test_V, v, bw) for v in self.v_values]
             ell = np.column_stack(ell)
             psi_hat = ell * psi_hat
@@ -1166,7 +1152,7 @@ class DML_mediated:
         # Print progress bar using tqdm
         if self.verbose==True:
             self.progress_bar.update(1)
-   
+
         return psi_hat
 
 
@@ -1184,33 +1170,33 @@ class DML_mediated:
         theta_cov = []
 
         for rep in range(self.n_rep):
-            
+
             if self.verbose==True:
                 print(f"Rep: {rep+1}")
                 self.progress_bar = tqdm(total=self.n_folds, position=0)
-            
+
             kf = KFold(n_splits=self.n_folds, shuffle=True, random_state=self.random_seed+rep)
             if self.V is None:
                 fold_results = Parallel(n_jobs=self.inner_n_jobs, backend='threading')(
                     delayed(self._process_fold)(
-                        fold_idx, 
+                        fold_idx,
                         (self.Y[train_index], self.D[train_index], self.M[train_index], self.W[train_index],
                         self.X[train_index], self.Z[train_index]),
                         (self.Y[test_index], self.D[test_index], self.M[test_index], self.W[test_index],
-                        self.X[test_index], self.Z[test_index])) 
+                        self.X[test_index], self.Z[test_index]))
                         for fold_idx, (train_index, test_index) in enumerate(kf.split(self.Y))
                 )
-            else:   
+            else:
                 fold_results = Parallel(n_jobs=self.inner_n_jobs, backend='threading')(
                     delayed(self._process_fold)(
-                        fold_idx, 
+                        fold_idx,
                         (self.Y[train_index], self.D[train_index], self.M[train_index], self.W[train_index],
                         self.X[train_index], self.Z[train_index], self.V[train_index]),
                         (self.Y[test_index], self.D[test_index], self.M[test_index], self.W[test_index],
-                        self.X[test_index], self.Z[test_index], self.V[test_index])) 
+                        self.X[test_index], self.Z[test_index], self.V[test_index]))
                         for fold_idx, (train_index, test_index) in enumerate(kf.split(self.Y))
-                )                
-            if self.verbose==True:       
+                )
+            if self.verbose==True:
                 self.progress_bar.close()
 
             # Calculate the average of psi_hat_array for each rep
@@ -1230,10 +1216,10 @@ class DML_mediated:
         theta_cov_hat = np.mean(np.stack(theta_cov, axis=0), axis=0)
 
         # Calculate the confidence interval
-        confidence_interval = self._calculate_confidence_interval(theta_hat, theta_var_hat, theta_cov_hat) 
+        confidence_interval = self._calculate_confidence_interval(theta_hat, theta_var_hat, theta_cov_hat)
 
         return theta_hat, theta_var_hat, confidence_interval, theta_cov_hat
-    
+
 
     def dml(self):
         """

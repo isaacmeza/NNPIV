@@ -98,13 +98,20 @@ class Treatment(Model):
 
     def compile(self, optimizer, loss, metrics=None, loss_weights=None,
                 sample_weight_mode=None, n_components=None, **kwargs):
-        '''
+        """
         Overrides the existing keras compile function to add a sampler building
         step to the model compilation phase. Once compiled, one can draw samples
         from the network using the sample() function and adds support for mixture
         of gaussian loss.
 
-        '''
+        Parameters:
+            optimizer (object): Optimizer used to compile the model.
+            loss (object): Loss function or loss identifier.
+            metrics (list or None): Metrics passed to model compilation.
+            loss_weights (array-like or None): Optional loss weights.
+            sample_weight_mode (object or None): Optional sample-weight mode.
+            n_components (int): Number of mixture or approximation components.
+        """
         if loss == "mixture_of_gaussians":
             if n_components is None:
                 raise Exception("When using mixture of gaussian loss you must\
@@ -133,9 +140,14 @@ class Treatment(Model):
                                        sample_weight_mode=sample_weight_mode, **kwargs)
 
     def sample(self, inputs, n_samples=1, use_dropout=False):
-        '''
+        """
         Draw samples from the keras model.
-        '''
+
+        Parameters:
+            inputs (object): Value for `inputs`.
+            n_samples (int): Number of Monte Carlo samples.
+            use_dropout (bool): Boolean option.
+        """
         if hasattr(self, "_sampler"):
             if not isinstance(inputs, list):
                 inputs = [inputs]
@@ -146,7 +158,7 @@ class Treatment(Model):
 
 
 class Response(Model):
-    '''
+    """
     Extends the Keras Model class to support sampling from the Treatment
     model during training.
 
@@ -156,7 +168,10 @@ class Response(Model):
     In addition to the standard model arguments, a Response object takes
     a Treatment object as input so that it can sample from the fitted treatment
     distriubtion during training.
-    '''
+
+    Parameters:
+        treatment (object): Treatment model used by the response model.
+    """
 
     def __init__(self, treatment, **kwargs):
         Model.__init__(self, kwargs['inputs'], kwargs['outputs'])
@@ -170,6 +185,19 @@ class Response(Model):
 
     def compile(self, optimizer, loss, metrics=None, loss_weights=None, sample_weight_mode=None,
                 unbiased_gradient=False, n_samples=1, batch_size=None):
+        """
+        Compile.
+
+        Parameters:
+            optimizer (object): Optimizer used to compile the model.
+            loss (object): Loss function or loss identifier.
+            metrics (list or None): Metrics passed to model compilation.
+            loss_weights (array-like or None): Optional loss weights.
+            sample_weight_mode (object or None): Optional sample-weight mode.
+            unbiased_gradient (object): Value for `unbiased_gradient`.
+            n_samples (int): Number of Monte Carlo samples.
+            batch_size (int): Batch size.
+        """
         super(Response, self).compile(optimizer=optimizer, loss=loss, loss_weights=loss_weights,
                                       sample_weight_mode=sample_weight_mode)
         self.unbiased_gradient = unbiased_gradient
@@ -187,14 +215,28 @@ class Response(Model):
     def fit(self, x=None, y=None, batch_size=512, epochs=1, verbose=1, callbacks=None,
             validation_data=None, class_weight=None, initial_epoch=0, samples_per_batch=None,
             seed=None, observed_treatments=None):
-        '''
+        """
         Trains the model by sampling from the fitted treament distribution.
 
         # Arguments
             x: list of numpy arrays. The first element should *always* be the instrument variables.
             y: (numpy array). Target response variables.
             The remainder of the arguments correspond to the Keras definitions.
-        '''
+
+        Parameters:
+            x (array-like): Input values.
+            y (array-like): Outcome values.
+            batch_size (int): Batch size.
+            epochs (int): Number of epochs.
+            verbose (object): Value for `verbose`.
+            callbacks (object): Value for `callbacks`.
+            validation_data (tuple or None): Optional validation data.
+            class_weight (dict or None): Optional class weights.
+            initial_epoch (int): Epoch at which training starts.
+            samples_per_batch (int): Number of sampled treatments per batch.
+            seed (int or None): Random seed.
+            observed_treatments (array-like or None): Observed treatments used by the response model.
+        """
         batch_size = numpy.minimum(y.shape[0], batch_size)
         if seed is None:
             seed = numpy.random.randint(0, 1e6)
@@ -230,6 +272,16 @@ class Response(Model):
                                    treatment model during training.")
 
     def expected_representation(self, x, z, n_samples=100, batch_size=None, seed=None):
+        """
+        Expected representation.
+
+        Parameters:
+            x (array-like): Input values.
+            z (array-like): Instrument values.
+            n_samples (int): Number of Monte Carlo samples.
+            batch_size (int): Batch size.
+            seed (int or None): Random seed.
+        """
         inputs = [z, x]
         if not hasattr(self, "_E_representation"):
             if batch_size is None:
@@ -256,6 +308,13 @@ class Response(Model):
             return self._E_representation(inputs, n_samples, seed)
 
     def conditional_representation(self, x, p):
+        """
+        Conditional representation.
+
+        Parameters:
+            x (array-like): Input values.
+            p (float): Probability level.
+        """
         inputs = [x, p]
         if not hasattr(self, "_c_representation"):
             intermediate_layer_model = Model(inputs=self.inputs,
@@ -267,6 +326,14 @@ class Response(Model):
             return self._c_representation(inputs)
 
     def dropout_predict(self, x, z, n_samples=100):
+        """
+        Dropout predict.
+
+        Parameters:
+            x (array-like): Input values.
+            z (array-like): Instrument values.
+            n_samples (int): Number of Monte Carlo samples.
+        """
         if isinstance(x, list):
             inputs = [z] + x
         else:
@@ -291,9 +358,15 @@ class Response(Model):
             return self._dropout_predict(inputs, n_samples)
 
     def credible_interval(self, x, z, n_samples=100, p=0.95):
-        '''
+        """
         Return a credible interval of size p using dropout variational inference.
-        '''
+
+        Parameters:
+            x (array-like): Input values.
+            z (array-like): Instrument values.
+            n_samples (int): Number of Monte Carlo samples.
+            p (float): Probability level.
+        """
         if isinstance(x, list):
             n = x[0].shape[0]
         else:
@@ -309,6 +382,13 @@ class Response(Model):
         return numpy.concatenate((numpy.ones((X.shape[0], 1)), X), axis=1)
 
     def predict_confidence(self, x, p):
+        """
+        Predict confidence.
+
+        Parameters:
+            x (array-like): Input values.
+            p (float): Probability level.
+        """
         if hasattr(self, "_predict_confidence"):
             return self._predict_confidence(x, p)
         else:
@@ -316,6 +396,17 @@ class Response(Model):
                 "Call fit_confidence_interval before running predict_confidence")
 
     def fit_confidence_interval(self, x_lo, z_lo, p_lo, y_lo, n_samples=100, alpha=0.):
+        """
+        Fit confidence interval.
+
+        Parameters:
+            x_lo (array-like): Inputs for lower confidence targets.
+            z_lo (array-like): Instruments for lower confidence targets.
+            p_lo (array-like): Lower-tail probabilities.
+            y_lo (array-like): Lower-tail outcomes.
+            n_samples (int): Number of Monte Carlo samples.
+            alpha (float): Significance or regularization level, depending on context.
+        """
         eta_bar = self.expected_representation(
             x=x_lo, z=z_lo, n_samples=n_samples)
         pca = PCA(1 - 1e-16, svd_solver="full", whiten=True)
@@ -349,6 +440,18 @@ class Response(Model):
 
 
 class SampledSequence(keras.utils.Sequence):
+    """
+    SampledSequence.
+
+    Parameters:
+        features (array-like): Feature inputs.
+        instruments (array-like): Instrument inputs.
+        outputs (array-like): Outcome outputs.
+        batch_size (int): Batch size.
+        sampler (object): Value for `sampler`.
+        n_samples (int): Number of Monte Carlo samples.
+        seed (int or None): Random seed.
+    """
     def __init__(self, features, instruments, outputs, batch_size, sampler, n_samples=1, seed=None):
         self.rng = numpy.random.RandomState(seed)
         if not isinstance(features, list):
@@ -396,6 +499,19 @@ class SampledSequence(keras.utils.Sequence):
 
 
 class OnesidedUnbaised(SampledSequence):
+    """
+    OnesidedUnbaised.
+
+    Parameters:
+        features (array-like): Feature inputs.
+        instruments (array-like): Instrument inputs.
+        outputs (array-like): Outcome outputs.
+        treatments (array-like): Treatment inputs.
+        batch_size (int): Batch size.
+        sampler (object): Value for `sampler`.
+        n_samples (int): Number of Monte Carlo samples.
+        seed (int or None): Random seed.
+    """
     def __init__(self, features, instruments, outputs, treatments, batch_size, sampler, n_samples=1, seed=None):
         self.rng = numpy.random.RandomState(seed)
         if not isinstance(features, list):
@@ -439,6 +555,13 @@ class OnesidedUnbaised(SampledSequence):
 
 
 def load_weights(filepath, model):
+    """
+    Load weights.
+
+    Parameters:
+        filepath (object): Value for `filepath`.
+        model (object): Value for `model`.
+    """
     if h5py is None:
         raise ImportError('`load_weights` requires h5py.')
 

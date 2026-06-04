@@ -49,6 +49,20 @@ class _BaseRKHS2IV:
     Base class for nested RKHS IV methods.
 
     This class provides common functionality for nested RKHS IV estimators.
+
+    Parameters:
+        kernel (str or callable): Kernel function or string identifier.
+        gamma (str or float): Length scale for the kernel.
+        degree (int): Degree for polynomial kernels.
+        coef0 (float): Zero coefficient for polynomial kernels.
+        delta_scale (str or float): Scale of the critical radius.
+        delta_exp (str or float): Exponent of the critical radius.
+        alpha_scale (str or float): Scale of the regularization parameter.
+        alpha_scales (str or array-like): Scale of the regularization parameter.
+        kernel_params (dict): Additional parameters for the kernel.
+        kernel_approx (str): Kernel approximation method ('nystrom' or 'rbfsampler').
+        n_components (int or float): Number of approximation components.
+            Integer-like values >= 1 are fixed counts; floats in (0, 1] are sample fractions with a floor of 10.
     """
 
     def __init__(self, *args, **kwargs):
@@ -411,6 +425,15 @@ class RKHS2IV(_BaseRKHS2IV):
     Note:
         This class is an alternate simultaneous variant.
         The Appendix J / Algorithm 2 closed-form implementation target is ``RKHS2IVL2``.
+
+    Parameters:
+        kernel (str or callable): Kernel function or string identifier.
+        gamma (str or float): Length scale for the kernel.
+        degree (int): Degree for polynomial kernels.
+        coef0 (float): Zero coefficient for polynomial kernels.
+        delta_scale (str or float): Scale of the critical radius.
+        delta_exp (str or float): Exponent of the critical radius.
+        kernel_params (dict): Additional parameters for the kernel.
     """
 
     def __init__(self, kernel='rbf', gamma=2, degree=3, coef0=1,
@@ -424,6 +447,20 @@ class RKHS2IV(_BaseRKHS2IV):
         self.delta_exp = delta_exp
 
     def fit(self, A, B, C, D, Y, W=None, subsetted=False, subset_ind1=None, subset_ind2=None):
+        """
+        Fit the nested RKHS IV estimator.
+
+        Parameters:
+            A (array-like): First nested-stage treatment or endogenous block.
+            B (array-like): Second nested-stage treatment or endogenous block.
+            C (array-like): Second nested-stage instrument block.
+            D (array-like): First nested-stage instrument block.
+            Y (array-like): Outcome values.
+            W (array-like or None): Optional observation weights.
+            subsetted (bool): Whether to apply stage-specific subset restrictions.
+            subset_ind1 (array-like or None): Indicator or mask selecting the first-stage subset.
+            subset_ind2 (array-like or None): Optional indicator or mask selecting the second-stage subset.
+        """
         Y = _to_column_vector(Y)
         n = Y.shape[0]
         ind1, ind2 = self._validate_subset_inputs(
@@ -453,6 +490,12 @@ class RKHS2IV(_BaseRKHS2IV):
         return self
 
     def predict(self, B_test, *args):
+        """
+        Predict fitted bridge values for test data.
+
+        Parameters:
+            B_test (array-like): Test data for the second nested-stage block.
+        """
         if len(args) == 0:
             return self._get_kernel(B_test, Y=self.B) @ self.b
         if len(args) == 1:
@@ -469,6 +512,19 @@ class RKHS2IVCV(RKHS2IV):
     Note:
         This class cross-validates the alternate simultaneous variant.
         The Appendix J / Algorithm 2 closed-form implementation target is ``RKHS2IVL2CV``.
+
+    Parameters:
+        kernel (str or callable): Kernel function or string identifier.
+        gamma (str or float): Length scale for the kernel.
+        degree (int): Degree for polynomial kernels.
+        coef0 (float): Zero coefficient for polynomial kernels.
+        kernel_params (dict): Additional parameters for the kernel.
+        delta_scale (str or float): Scale of the critical radius.
+        delta_exp (str or float): Exponent of the critical radius.
+        alpha_scales (str or array-like): Scale of the regularization parameter.
+        n_alphas (int): Number of alpha scales to try.
+        cv (int): Number of folds for cross-validation.
+        expand_alpha_grid (bool): Whether to expand the alpha grid when the CV optimum lies on a boundary.
     """
 
     def __init__(self, kernel='rbf', gamma=2, degree=3, coef0=1, kernel_params=None,
@@ -487,6 +543,20 @@ class RKHS2IVCV(RKHS2IV):
         self.expand_alpha_grid = expand_alpha_grid
 
     def fit(self, A, B, C, D, Y, W=None, subsetted=False, subset_ind1=None, subset_ind2=None):
+        """
+        Fit the nested RKHS IV estimator.
+
+        Parameters:
+            A (array-like): First nested-stage treatment or endogenous block.
+            B (array-like): Second nested-stage treatment or endogenous block.
+            C (array-like): Second nested-stage instrument block.
+            D (array-like): First nested-stage instrument block.
+            Y (array-like): Outcome values.
+            W (array-like or None): Optional observation weights.
+            subsetted (bool): Whether to apply stage-specific subset restrictions.
+            subset_ind1 (array-like or None): Indicator or mask selecting the first-stage subset.
+            subset_ind2 (array-like or None): Optional indicator or mask selecting the second-stage subset.
+        """
         Y = _to_column_vector(Y)
         n = Y.shape[0]
         ind1, ind2 = self._validate_subset_inputs(
@@ -564,6 +634,15 @@ class RKHS2IVL2(_BaseRKHS2IV):
 
     Note:
         This class implements the Appendix J / Algorithm 2 RKHS closed form.
+
+    Parameters:
+        kernel (str or callable): Kernel function or string identifier.
+        gamma (str or float): Length scale for the kernel.
+        degree (int): Degree for polynomial kernels.
+        coef0 (float): Zero coefficient for polynomial kernels.
+        delta_scale (str or float): Scale of the critical radius.
+        delta_exp (str or float): Exponent of the critical radius.
+        kernel_params (dict): Additional parameters for the kernel.
     """
 
     def __init__(self, kernel='rbf', gamma=2, degree=3, coef0=1,
@@ -577,6 +656,20 @@ class RKHS2IVL2(_BaseRKHS2IV):
         self.delta_exp = delta_exp
 
     def fit(self, A, B, C, D, Y, W=None, subsetted=False, subset_ind1=None, subset_ind2=None):
+        """
+        Fit the nested RKHS IV estimator.
+
+        Parameters:
+            A (array-like): First nested-stage treatment or endogenous block.
+            B (array-like): Second nested-stage treatment or endogenous block.
+            C (array-like): Second nested-stage instrument block.
+            D (array-like): First nested-stage instrument block.
+            Y (array-like): Outcome values.
+            W (array-like or None): Optional observation weights.
+            subsetted (bool): Whether to apply stage-specific subset restrictions.
+            subset_ind1 (array-like or None): Indicator or mask selecting the first-stage subset.
+            subset_ind2 (array-like or None): Optional indicator or mask selecting the second-stage subset.
+        """
         Y = _to_column_vector(Y)
         n = Y.shape[0]
         ind1, ind2 = self._validate_subset_inputs(
@@ -606,6 +699,12 @@ class RKHS2IVL2(_BaseRKHS2IV):
         return self
 
     def predict(self, B_test, *args):
+        """
+        Predict fitted bridge values for test data.
+
+        Parameters:
+            B_test (array-like): Test data for the second nested-stage block.
+        """
         if len(args) == 0:
             return self._get_kernel(B_test, Y=self.B) @ self.b
         if len(args) == 1:
@@ -621,6 +720,19 @@ class RKHS2IVL2CV(RKHS2IVL2):
 
     Note:
         This class cross-validates the Appendix J / Algorithm 2 RKHS closed form.
+
+    Parameters:
+        kernel (str or callable): Kernel function or string identifier.
+        gamma (str or float): Length scale for the kernel.
+        degree (int): Degree for polynomial kernels.
+        coef0 (float): Zero coefficient for polynomial kernels.
+        kernel_params (dict): Additional parameters for the kernel.
+        delta_scale (str or float): Scale of the critical radius.
+        delta_exp (str or float): Exponent of the critical radius.
+        alpha_scales (str or array-like): Scale of the regularization parameter.
+        n_alphas (int): Number of alpha scales to try.
+        cv (int): Number of folds for cross-validation.
+        expand_alpha_grid (bool): Whether to expand the alpha grid when the CV optimum lies on a boundary.
     """
 
     def __init__(self, kernel='rbf', gamma=2, degree=3, coef0=1, kernel_params=None,
@@ -639,6 +751,20 @@ class RKHS2IVL2CV(RKHS2IVL2):
         self.expand_alpha_grid = expand_alpha_grid
 
     def fit(self, A, B, C, D, Y, W=None, subsetted=False, subset_ind1=None, subset_ind2=None):
+        """
+        Fit the nested RKHS IV estimator.
+
+        Parameters:
+            A (array-like): First nested-stage treatment or endogenous block.
+            B (array-like): Second nested-stage treatment or endogenous block.
+            C (array-like): Second nested-stage instrument block.
+            D (array-like): First nested-stage instrument block.
+            Y (array-like): Outcome values.
+            W (array-like or None): Optional observation weights.
+            subsetted (bool): Whether to apply stage-specific subset restrictions.
+            subset_ind1 (array-like or None): Indicator or mask selecting the first-stage subset.
+            subset_ind2 (array-like or None): Optional indicator or mask selecting the second-stage subset.
+        """
         Y = _to_column_vector(Y)
         n = Y.shape[0]
         ind1, ind2 = self._validate_subset_inputs(
@@ -715,6 +841,20 @@ class ApproxRKHS2IVL2(_BaseRKHS2IV):
     Approximate Appendix J / Algorithm 2 RKHS estimator using finite kernel features.
 
     This class mirrors ``RKHS2IVL2`` with Nystrom/RFF feature approximations.
+
+    Parameters:
+        kernel_approx (str): Kernel approximation method ('nystrom' or 'rbfsampler').
+        n_components (int or float): Number of approximation components.
+            If integer-like and >= 1, treated as a fixed component count.
+            If float in (0, 1], treated as the sample fraction with a floor of 10.
+        kernel (str or callable): Kernel function or string identifier.
+        gamma (str or float): Length scale for the kernel.
+        degree (int): Degree for polynomial kernels.
+        coef0 (float): Zero coefficient for polynomial kernels.
+        kernel_params (dict): Additional parameters for the kernel.
+        delta_scale (str or float): Scale of the critical radius.
+        delta_exp (str or float): Exponent of the critical radius.
+        alpha_scale (str or float): Scale of the regularization parameter.
     """
 
     def __init__(self, kernel_approx='nystrom', n_components=10,
@@ -760,6 +900,20 @@ class ApproxRKHS2IVL2(_BaseRKHS2IV):
         return (scale_n / subset_indices.size) * I_subset.T @ P_subset @ I_subset
 
     def fit(self, A, B, C, D, Y, W=None, subsetted=False, subset_ind1=None, subset_ind2=None):
+        """
+        Fit the nested RKHS IV estimator.
+
+        Parameters:
+            A (array-like): First nested-stage treatment or endogenous block.
+            B (array-like): Second nested-stage treatment or endogenous block.
+            C (array-like): Second nested-stage instrument block.
+            D (array-like): First nested-stage instrument block.
+            Y (array-like): Outcome values.
+            W (array-like or None): Optional observation weights.
+            subsetted (bool): Whether to apply stage-specific subset restrictions.
+            subset_ind1 (array-like or None): Indicator or mask selecting the first-stage subset.
+            subset_ind2 (array-like or None): Optional indicator or mask selecting the second-stage subset.
+        """
         Y = _to_column_vector(Y)
         n = Y.shape[0]
         ind1, ind2 = self._validate_subset_inputs(
@@ -800,6 +954,13 @@ class ApproxRKHS2IVL2(_BaseRKHS2IV):
         return self
 
     def predict(self, B_test, A_test=None):
+        """
+        Predict fitted bridge values for test data.
+
+        Parameters:
+            B_test (array-like): Test data for the second nested-stage block.
+            A_test (array-like or None): Optional test data for the first nested-stage block.
+        """
         pred_b = self.featB.transform(B_test) @ self.theta_b
         if A_test is None:
             return pred_b
@@ -810,6 +971,23 @@ class ApproxRKHS2IVL2(_BaseRKHS2IV):
 class ApproxRKHS2IVL2CV(ApproxRKHS2IVL2):
     """
     Cross-validated approximate Appendix J / Algorithm 2 RKHS estimator.
+
+    Parameters:
+        kernel_approx (str): Kernel approximation method ('nystrom' or 'rbfsampler').
+        n_components (int or float): Number of approximation components.
+            If integer-like and >= 1, treated as a fixed component count.
+            If float in (0, 1], treated as the sample fraction with a floor of 10.
+        kernel (str or callable): Kernel function or string identifier.
+        gamma (str or float): Length scale for the kernel.
+        degree (int): Degree for polynomial kernels.
+        coef0 (float): Zero coefficient for polynomial kernels.
+        kernel_params (dict): Additional parameters for the kernel.
+        delta_scale (str or float): Scale of the critical radius.
+        delta_exp (str or float): Exponent of the critical radius.
+        alpha_scales (str or array-like): Scale of the regularization parameter.
+        n_alphas (int): Number of alpha scales to try.
+        cv (int): Number of folds for cross-validation.
+        expand_alpha_grid (bool): Whether to expand the alpha grid when the CV optimum lies on a boundary.
     """
 
     def __init__(self, kernel_approx='nystrom', n_components=10,
@@ -906,6 +1084,20 @@ class ApproxRKHS2IVL2CV(ApproxRKHS2IVL2):
         }
 
     def fit(self, A, B, C, D, Y, W=None, subsetted=False, subset_ind1=None, subset_ind2=None):
+        """
+        Fit the nested RKHS IV estimator.
+
+        Parameters:
+            A (array-like): First nested-stage treatment or endogenous block.
+            B (array-like): Second nested-stage treatment or endogenous block.
+            C (array-like): Second nested-stage instrument block.
+            D (array-like): First nested-stage instrument block.
+            Y (array-like): Outcome values.
+            W (array-like or None): Optional observation weights.
+            subsetted (bool): Whether to apply stage-specific subset restrictions.
+            subset_ind1 (array-like or None): Indicator or mask selecting the first-stage subset.
+            subset_ind2 (array-like or None): Optional indicator or mask selecting the second-stage subset.
+        """
         Y = _to_column_vector(Y)
         n = Y.shape[0]
         ind1, ind2 = self._validate_subset_inputs(
@@ -996,6 +1188,20 @@ class ApproxRKHS2IV(ApproxRKHS2IVL2):
     """
 
     def fit(self, A, B, C, D, Y, W=None, subsetted=False, subset_ind1=None, subset_ind2=None):
+        """
+        Fit the nested RKHS IV estimator.
+
+        Parameters:
+            A (array-like): First nested-stage treatment or endogenous block.
+            B (array-like): Second nested-stage treatment or endogenous block.
+            C (array-like): Second nested-stage instrument block.
+            D (array-like): First nested-stage instrument block.
+            Y (array-like): Outcome values.
+            W (array-like or None): Optional observation weights.
+            subsetted (bool): Whether to apply stage-specific subset restrictions.
+            subset_ind1 (array-like or None): Indicator or mask selecting the first-stage subset.
+            subset_ind2 (array-like or None): Optional indicator or mask selecting the second-stage subset.
+        """
         Y = _to_column_vector(Y)
         n = Y.shape[0]
         ind1, ind2 = self._validate_subset_inputs(
@@ -1036,6 +1242,23 @@ class ApproxRKHS2IV(ApproxRKHS2IVL2):
 class ApproxRKHS2IVCV(ApproxRKHS2IV):
     """
     Cross-validated approximate alternate simultaneous RKHS estimator.
+
+    Parameters:
+        kernel_approx (str): Kernel approximation method ('nystrom' or 'rbfsampler').
+        n_components (int or float): Number of approximation components.
+            If integer-like and >= 1, treated as a fixed component count.
+            If float in (0, 1], treated as the sample fraction with a floor of 10.
+        kernel (str or callable): Kernel function or string identifier.
+        gamma (str or float): Length scale for the kernel.
+        degree (int): Degree for polynomial kernels.
+        coef0 (float): Zero coefficient for polynomial kernels.
+        kernel_params (dict): Additional parameters for the kernel.
+        delta_scale (str or float): Scale of the critical radius.
+        delta_exp (str or float): Exponent of the critical radius.
+        alpha_scales (str or array-like): Scale of the regularization parameter.
+        n_alphas (int): Number of alpha scales to try.
+        cv (int): Number of folds for cross-validation.
+        expand_alpha_grid (bool): Whether to expand the alpha grid when the CV optimum lies on a boundary.
     """
 
     def __init__(self, kernel_approx='nystrom', n_components=10,
@@ -1134,6 +1357,20 @@ class ApproxRKHS2IVCV(ApproxRKHS2IV):
         }
 
     def fit(self, A, B, C, D, Y, W=None, subsetted=False, subset_ind1=None, subset_ind2=None):
+        """
+        Fit the nested RKHS IV estimator.
+
+        Parameters:
+            A (array-like): First nested-stage treatment or endogenous block.
+            B (array-like): Second nested-stage treatment or endogenous block.
+            C (array-like): Second nested-stage instrument block.
+            D (array-like): First nested-stage instrument block.
+            Y (array-like): Outcome values.
+            W (array-like or None): Optional observation weights.
+            subsetted (bool): Whether to apply stage-specific subset restrictions.
+            subset_ind1 (array-like or None): Indicator or mask selecting the first-stage subset.
+            subset_ind2 (array-like or None): Optional indicator or mask selecting the second-stage subset.
+        """
         Y = _to_column_vector(Y)
         n = Y.shape[0]
         ind1, ind2 = self._validate_subset_inputs(

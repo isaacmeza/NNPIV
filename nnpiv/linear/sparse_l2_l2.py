@@ -42,19 +42,6 @@ class _SparseLinearAdversarialGMM:
 
     def __init__(self, lambda_theta=0.01, B=100, eta_theta='auto', eta_w='auto',
                  n_iter=2000, tol=1e-2, sparsity=None, fit_intercept=True):
-        """
-        Initialize the sparse linear adversarial GMM model.
-
-        Parameters:
-            lambda_theta (float, optional): Regularization parameter. Defaults to 0.01.
-            B (int, optional): Budget parameter. Defaults to 100.
-            eta_theta (str or float, optional): Learning rate for theta. Defaults to 'auto'.
-            eta_w (str or float, optional): Learning rate for w. Defaults to 'auto'.
-            n_iter (int, optional): Number of iterations. Defaults to 2000.
-            tol (float, optional): Tolerance for duality gap. Defaults to 1e-2.
-            sparsity (int or None, optional): Sparsity level for the model. Defaults to None.
-            fit_intercept (bool, optional): Whether to fit an intercept. Defaults to True.
-        """
         self.B = B
         self.lambda_theta = lambda_theta
         self.eta_theta = eta_theta

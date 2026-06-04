@@ -16,12 +16,16 @@ import types
 # for custom gradient computation.
 
 def get_gradients(self, loss, params):
-    '''
+    """
     Replacement for the default keras get_gradients() function.
-    Modification: checks if the object has the attribute grads and 
+    Modification: checks if the object has the attribute grads and
     returns that rather than calculating the gradients using automatic
-    differentiation. 
-    '''
+    differentiation.
+
+    Parameters:
+        loss (object): Loss function or loss identifier.
+        params (iterable): Parameters optimized by the optimizer.
+    """
     if hasattr(self, 'grads'):
         grads = self.grads
     else:
@@ -34,9 +38,15 @@ def get_gradients(self, loss, params):
     return grads
 
 def replace_gradients_mse(model, opt, batch_size, n_samples = 1):
-    '''
+    """
     Replace the gradients of a Keras model with mean square error loss.
-    '''
+
+    Parameters:
+        model (object): Value for `model`.
+        opt (object): Value for `opt`.
+        batch_size (int): Batch size.
+        n_samples (int): Number of Monte Carlo samples.
+    """
     # targets has been repeated twice so the below creates two identical columns
     # of the target values - we'll only use the first column.
     targets = K.reshape(model.targets[0], (batch_size, n_samples * 2))
@@ -45,7 +55,7 @@ def replace_gradients_mse(model, opt, batch_size, n_samples = 1):
     dL_dOutput = (output[:,0] - targets[:,0]) * (2.) / batch_size
     # compute (d Loss / d output) (d output / d theta) for each theta
     trainable_weights = model.trainable_weights
-    grads = Lop(output[:,1], wrt=trainable_weights, eval_points=dL_dOutput) 
+    grads = Lop(output[:,1], wrt=trainable_weights, eval_points=dL_dOutput)
     # compute regularizer gradients
 
     # add loss with respect to regularizers
@@ -54,7 +64,7 @@ def replace_gradients_mse(model, opt, batch_size, n_samples = 1):
          reg_loss += r
     reg_grads = K.gradients(reg_loss, trainable_weights)
     grads = [g+r for g,r in zip(grads, reg_grads)]
-    
+
     opt = keras.optimizers.get(opt)
     # Patch keras gradient calculation to allow for user defined gradients
     opt.get_gradients = types.MethodType( get_gradients, opt )
@@ -63,6 +73,12 @@ def replace_gradients_mse(model, opt, batch_size, n_samples = 1):
     return model
 
 def build_mc_mse_loss(n_samples):
+    """
+    Build mc mse loss.
+
+    Parameters:
+        n_samples (int): Number of Monte Carlo samples.
+    """
     def mc_mse(y_true, y_predicted):
         n_examples = y_true.shape[0] /  n_samples / 2
         targets = y_true.reshape((n_examples , n_samples * 2))

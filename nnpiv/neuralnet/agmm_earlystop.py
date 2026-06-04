@@ -22,6 +22,17 @@ DEBUG = True
 
 
 def approx_sup_kernel_moment_eval(y, g_of_x, f_of_z_collection, basis_func, sigma, batch_size=100):
+    """
+    Approx sup kernel moment eval.
+
+    Parameters:
+        y (array-like): Outcome values.
+        g_of_x (object): Value for `g_of_x`.
+        f_of_z_collection (object): Value for `f_of_z_collection`.
+        basis_func (callable): Radial basis function.
+        sigma (float or array-like): Basis width parameter.
+        batch_size (int): Batch size.
+    """
     eval_list = []
     n = y.shape[0]
     for f_of_z in f_of_z_collection:
@@ -39,6 +50,14 @@ def approx_sup_kernel_moment_eval(y, g_of_x, f_of_z_collection, basis_func, sigm
 
 
 def approx_sup_moment_eval(y, g_of_x, f_of_z_collection):
+    """
+    Approx sup moment eval.
+
+    Parameters:
+        y (array-like): Outcome values.
+        g_of_x (object): Value for `g_of_x`.
+        f_of_z_collection (object): Value for `f_of_z_collection`.
+    """
     eval_list = []
     for f_of_z in f_of_z_collection:
         mean_moment = f_of_z.cpu().mul(y.cpu()-g_of_x.cpu()).mean()
@@ -47,6 +66,14 @@ def approx_sup_moment_eval(y, g_of_x, f_of_z_collection):
 
 
 def add_weight_decay(net, l2_value, skip_list=()):
+    """
+    Add weight decay.
+
+    Parameters:
+        net (torch.nn.Module): Network whose parameters are grouped.
+        l2_value (object): Value for `l2_value`.
+        skip_list (object): Value for `skip_list`.
+    """
     decay, no_decay = [], []
     for name, param in net.named_parameters():
         if not param.requires_grad:
@@ -59,6 +86,12 @@ def add_weight_decay(net, l2_value, skip_list=()):
 
 
 def reinit_weights(layer):
+    """
+    Reinit weights.
+
+    Parameters:
+        layer (torch.nn.Module): Layer to reinitialize when supported.
+    """
     if type(layer) == nn.Linear or type(layer) == nn.Conv2d:
         torch.nn.init.xavier_uniform(layer.weight.data)
 
@@ -110,8 +143,7 @@ class _BaseAGMM:
 
     def predict(self, T, model='avg', burn_in=0, alpha=None):
         """
-        Parameters
-        ----------
+        Parameters:
         T : treatments
         model : one of ('avg', 'final', 'earlystop' or an int)
         burn_in : discard the first "burn_in" epochs when averaging
@@ -169,24 +201,30 @@ class _BaseSupLossAGMM(_BaseAGMM):
             learner_lr=0.001, adversary_lr=0.001, n_epochs=100, bs=100, train_learner_every=1, train_adversary_every=1,
             ols_weight=0., warm_start=False, logger=None, model_dir='model', device=None):
         """
-        Parameters
-        ----------
-        Z : instruments
-        T : treatments
-        Y : outcome
-        learner_l2, adversary_l2 : l2_regularization of parameters of learner and adversary
-        adversary_norm_reg : adversary norm regularization weight
-        learner_lr : learning rate of the Adam optimizer for learner
-        adversary_lr : learning rate of the Adam optimizer for adversary
-        n_epochs : how many passes over the data
-        bs : batch size
-        train_learner_every : after how many training iterations of the adversary should we train the learner
-        ols_weight : weight on OLS (square loss) objective
-        warm_start : if False then network parameters are initialized at the beginning, otherwise we start
-            from their current weights
-        logger : a function that takes as input (learner, adversary, epoch, writer) and is called after every epoch
-            Supposed to be used to log the state of the learning.
-        model_dir : folder where to store the learned models after every epoch
+        Fit the early-stop AGMM model with supervised loss.
+
+        Parameters:
+            Z (array-like): Training instruments.
+            T (array-like): Training treatments.
+            Y (array-like): Training outcomes.
+            Z_dev (array-like): Development instruments.
+            T_dev (array-like): Development treatments.
+            Y_dev (array-like): Development outcomes.
+            eval_freq (int): Frequency for evaluating the early-stop criterion.
+            learner_l2 (float): L2 regularization strength for learner parameters.
+            adversary_l2 (float): L2 regularization strength for adversary parameters.
+            adversary_norm_reg (float): Adversary norm regularization strength.
+            learner_lr (float): Learner optimizer learning rate.
+            adversary_lr (float): Adversary optimizer learning rate.
+            n_epochs (int): Number of training epochs.
+            bs (int): Batch size.
+            train_learner_every (int): Frequency for learner updates.
+            train_adversary_every (int): Frequency for adversary updates.
+            ols_weight (float): Weight on the OLS square-loss objective.
+            warm_start (bool): Whether to keep current network weights before training.
+            logger (callable or None): Optional epoch logger.
+            model_dir (str): Directory for saved model checkpoints.
+            device (torch.device or str or None): Device used for tensor computation.
         """
 
         Z, T, Y = self._pretrain(Z, T, Y,
@@ -328,13 +366,14 @@ class _BaseSupLossAGMM(_BaseAGMM):
 
 class AGMMEarlyStop(_BaseSupLossAGMM):
 
+    """
+    AGMMEarlyStop.
+
+    Parameters:
+        learner (torch.nn.Module): Learner network.
+        adversary (torch.nn.Module): Adversary network.
+    """
     def __init__(self, learner, adversary):
-        """
-        Parameters
-        ----------
-        learner : a pytorch neural net module
-        adversary : a pytorch neural net module
-        """
         self.learner = learner
         self.adversary = adversary
         # whether we have a norm penalty for the adversary
@@ -345,23 +384,35 @@ class AGMMEarlyStop(_BaseSupLossAGMM):
 
 class KernelLayerMMDGMMEarlyStop(_BaseSupLossAGMM):
 
+    """
+    KernelLayerMMDGMMEarlyStop.
+
+    Parameters:
+        learner (torch.nn.Module): Learner network.
+        adversary_g (torch.nn.Module): Network used to construct adversary features.
+        g_features (int): Number of adversary feature outputs.
+        n_centers (int): Number of basis centers.
+        kernel (str or callable): Kernel function or string identifier.
+        centers (array-like or None): Initial basis centers in the adversary feature space.
+        sigmas (array-like or None): Initial basis widths for each center.
+        trainable (bool): Whether centers and sigmas are trainable.
+    """
     def __init__(self, learner, adversary_g, g_features,
                  n_centers, kernel, centers=None, sigmas=None, trainable=True):
-        """
-        Parameters
-        ----------
-        learner : a pytorch neural net module for the learner
-        adversary_g : a pytorch neural net module for the g function of the adversary
-        g_features : what is the output number of features of g
-        n_centers : how many centers to use in the kernel layer
-        kernel : the kernel function
-        centers : numpy array that contains the inital value of the centers in the g(Z) space
-        sigmas : numpy arra that contains the initial value of the sigma for each center
-            (e.g. the precition of the kernel)
-        trainable : whether to train the centers and the sigmas
-        """
         class Adversary(torch.nn.Module):
 
+            """
+            Adversary.
+
+            Parameters:
+                g (object): Adversary feature network or structural target values.
+                g_features (int): Number of adversary feature outputs.
+                n_centers (int): Number of basis centers.
+                basis_func (callable): Radial basis function.
+                centers (array-like or None): Initial basis centers.
+                sigmas (array-like or None): Initial basis widths.
+                trainable (bool): Whether basis parameters are trainable.
+            """
             def __init__(self, g, g_features, n_centers, basis_func,
                          centers=None, sigmas=None, trainable=True):
                 super(Adversary, self).__init__()
@@ -371,6 +422,13 @@ class KernelLayerMMDGMMEarlyStop(_BaseSupLossAGMM):
                 self.beta = nn.Linear(n_centers, 1)
 
             def forward(self, x, reg=False):
+                """
+                Forward.
+
+                Parameters:
+                    x (array-like): Input values.
+                    reg (bool): Whether to include regularization output.
+                """
                 test = self.beta(self.rbf(self.g(x)))
                 if not reg:
                     return test
@@ -392,19 +450,29 @@ class KernelLayerMMDGMMEarlyStop(_BaseSupLossAGMM):
 
 class CentroidMMDGMMEarlyStop(_BaseSupLossAGMM):
 
+    """
+    CentroidMMDGMMEarlyStop.
+
+    Parameters:
+        learner (torch.nn.Module): Learner network.
+        adversary_g (torch.nn.Module): Network used to construct adversary features.
+        kernel (str or callable): Kernel function or string identifier.
+        centers (array-like or None): Initial basis centers in the instrument space.
+        sigma (float or array-like): Kernel width parameter.
+    """
     def __init__(self, learner, adversary_g,
                  kernel, centers, sigma):
-        """
-        Parameters
-        ----------
-        learner : a pytorch neural net module for the learner
-        adversary_g : a pytorch neural net module for the g function of the adversary
-        kernel : the kernel function
-        centers : numpy array that contains the inital value of the centers in the Z space
-        sigma : float that corresponds to the precition of the kernel
-        """
         class Adversary(torch.nn.Module):
 
+            """
+            Adversary.
+
+            Parameters:
+                g (object): Adversary feature network or structural target values.
+                basis_func (callable): Radial basis function.
+                centers (array-like or None): Initial basis centers.
+                sigma (float or array-like): Basis width parameter.
+            """
             def __init__(self, g, basis_func, centers, sigma):
                 super(Adversary, self).__init__()
                 self.g = g
@@ -429,6 +497,13 @@ class CentroidMMDGMMEarlyStop(_BaseSupLossAGMM):
                         self.init_sigma).to(self.sigma.device)
 
             def forward(self, x, reg=False):
+                """
+                Forward.
+
+                Parameters:
+                    x (array-like): Input values.
+                    reg (bool): Whether to include regularization output.
+                """
                 x1, x2 = self.g(x), self.g(self.centers)
                 K12 = _kernel(x1, x2, self.basis_func, self.sigma)
                 test = self.beta(K12)
@@ -450,17 +525,26 @@ class CentroidMMDGMMEarlyStop(_BaseSupLossAGMM):
 
 class KernelLossAGMMEarlyStop(_BaseAGMM):
 
+    """
+    KernelLossAGMMEarlyStop.
+
+    Parameters:
+        learner (torch.nn.Module): Learner network.
+        adversary_g (torch.nn.Module): Network used to construct adversary features.
+        kernel (str or callable): Kernel function or string identifier.
+        sigma (float or array-like): Kernel width parameter.
+    """
     def __init__(self, learner, adversary_g, kernel, sigma):
-        """
-        Parameters
-        ----------
-        learner : a pytorch neural net module for the learner
-        adversary_g : a pytorch neural net module for the g function of the adversary
-        kernel : the kernel function
-        sigma : float that corresponds to the precition of the kernel
-        """
         class Adversary(torch.nn.Module):
 
+            """
+            Adversary.
+
+            Parameters:
+                g (object): Adversary feature network or structural target values.
+                basis_func (callable): Radial basis function.
+                sigma (float or array-like): Basis width parameter.
+            """
             def __init__(self, g, basis_func, sigma):
                 super(Adversary, self).__init__()
                 self.g = g
@@ -482,6 +566,13 @@ class KernelLossAGMMEarlyStop(_BaseAGMM):
                         self.init_sigma).to(self.sigma.device)
 
             def forward(self, x1, x2):
+                """
+                Forward.
+
+                Parameters:
+                    x1 (array-like): First input tensor.
+                    x2 (array-like): Second input tensor.
+                """
                 return _kernel(self.g(x1), self.g(x2), self.basis_func, self.sigma)
 
         self.learner = learner
@@ -509,22 +600,29 @@ class KernelLossAGMMEarlyStop(_BaseAGMM):
             learner_lr=0.001, adversary_lr=0.001, n_epochs=100, bs=100, train_learner_every=1, train_adversary_every=1,
             ols_weight=0.0, warm_start=False, logger=None, model_dir='model', device=None):
         """
-        Parameters
-        ----------
-        Z : instruments
-        T : treatments
-        Y : outcome
-        learner_l2, adversary_l2 : l2_regularization of parameters of learner and adversary
-        learner_lr : learning rate of the Adam optimizer for learner
-        adversary_lr : learning rate of the Adam optimizer for adversary
-        n_epochs : how many passes over the data
-        bs : batch size
-        train_learner_every : after how many training iterations of the adversary should we train the learner
-        ols_weight : weight on OLS (square loss) objective
-        warm_start : whehter to reset weights or not
-        logger : a function that takes as input (learner, adversary, epoch, writer) and is called after every epoch
-            Supposed to be used to log the state of the learning.
-        model_dir : folder where to store the learned models after every epoch
+        Fit the early-stop kernel-loss AGMM model.
+
+        Parameters:
+            Z (array-like): Training instruments.
+            T (array-like): Training treatments.
+            Y (array-like): Training outcomes.
+            Z_dev (array-like): Development instruments.
+            T_dev (array-like): Development treatments.
+            Y_dev (array-like): Development outcomes.
+            eval_freq (int): Frequency for evaluating the early-stop criterion.
+            learner_l2 (float): L2 regularization strength for learner parameters.
+            adversary_l2 (float): L2 regularization strength for adversary parameters.
+            learner_lr (float): Learner optimizer learning rate.
+            adversary_lr (float): Adversary optimizer learning rate.
+            n_epochs (int): Number of training epochs.
+            bs (int): Batch size.
+            train_learner_every (int): Frequency for learner updates.
+            train_adversary_every (int): Frequency for adversary updates.
+            ols_weight (float): Weight on the OLS square-loss objective.
+            warm_start (bool): Whether to keep current network weights before training.
+            logger (callable or None): Optional epoch logger.
+            model_dir (str): Directory for saved model checkpoints.
+            device (torch.device or str or None): Device used for tensor computation.
         """
 
         Z, T, Y = self._pretrain(Z, T, Y,
@@ -662,17 +760,28 @@ class KernelLossAGMMEarlyStop(_BaseAGMM):
 
 class MMDGMM(_BaseAGMM):
 
+    """
+    MMDGMM.
+
+    Parameters:
+        learner (torch.nn.Module): Learner network.
+        adversary_g (torch.nn.Module): Network used to construct adversary features.
+        n_samples (int): Number of Monte Carlo samples.
+        kernel (str or callable): Kernel function or string identifier.
+        sigma (float or array-like): Kernel width parameter.
+    """
     def __init__(self, learner, adversary_g, n_samples, kernel, sigma):
-        """
-        Parameters
-        ----------
-        learner : a pytorch neural net module for the learner
-        adversary_g : a pytorch neural net module for the g function of the adversary
-        kernel : the kernel function
-        sigma : float that corresponds to the precition of the kernel
-        """
         class Adversary(torch.nn.Module):
 
+            """
+            Adversary.
+
+            Parameters:
+                g (object): Adversary feature network or structural target values.
+                n_samples (int): Number of Monte Carlo samples.
+                basis_func (callable): Radial basis function.
+                sigma (float or array-like): Basis width parameter.
+            """
             def __init__(self, g, n_samples, basis_func, sigma):
                 super(Adversary, self).__init__()
                 self.g = g
@@ -697,6 +806,18 @@ class MMDGMM(_BaseAGMM):
                 nn.init.uniform_(self.beta, -stdv, stdv)
 
             def forward(self, x1, x2, x3, id1, id2, id3, reg=False):
+                """
+                Forward.
+
+                Parameters:
+                    x1 (array-like): First input tensor.
+                    x2 (array-like): Second input tensor.
+                    x3 (array-like): Third input tensor.
+                    id1 (array-like): First sample index or indicator.
+                    id2 (array-like): Second sample index or indicator.
+                    id3 (array-like): Third sample index or indicator.
+                    reg (bool): Whether to include regularization output.
+                """
                 x1, x2 = self.g(x1), self.g(x2)
                 K12 = _kernel(x1, x2, self.basis_func, self.sigma[:, id2]) / 2
                 K12 += _kernel(x2, x1, self.basis_func,
@@ -730,22 +851,28 @@ class MMDGMM(_BaseAGMM):
             learner_lr=0.001, adversary_lr=0.001, n_epochs=100, bs1=100, bs2=100, bs3=100, train_learner_every=1, train_adversary_every=1,
             ols_weight=0.0, warm_start=False, logger=None, model_dir='model', device=None):
         """
-        Parameters
-        ----------
-        Z : instruments
-        T : treatments
-        Y : outcome
-        learner_l2, adversary_l2 : l2_regularization of parameters of learner and adversary
-        learner_lr : learning rate of the Adam optimizer for learner
-        adversary_lr : learning rate of the Adam optimizer for adversary
-        n_epochs : how many passes over the data
-        bs : batch size
-        train_learner_every : after how many training iterations of the adversary should we train the learner
-        ols_weight : weight on OLS (square loss) objective
-        warm_start : whehter to reset weights or not
-        logger : a function that takes as input (learner, adversary, epoch, writer) and is called after every epoch
-            Supposed to be used to log the state of the learning.
-        model_dir : folder where to store the learned models after every epoch
+        Fit the early-stop MMD-GMM model.
+
+        Parameters:
+            Z (array-like): Instruments.
+            T (array-like): Treatments.
+            Y (array-like): Outcomes.
+            learner_l2 (float): L2 regularization strength for learner parameters.
+            adversary_l2 (float): L2 regularization strength for adversary parameters.
+            adversary_norm_reg (float): Adversary norm regularization strength.
+            learner_lr (float): Learner optimizer learning rate.
+            adversary_lr (float): Adversary optimizer learning rate.
+            n_epochs (int): Number of training epochs.
+            bs1 (int): Primary training batch size.
+            bs2 (int): Secondary sample batch size.
+            bs3 (int): Tertiary sample batch size.
+            train_learner_every (int): Frequency for learner updates.
+            train_adversary_every (int): Frequency for adversary updates.
+            ols_weight (float): Weight on the OLS square-loss objective.
+            warm_start (bool): Whether to keep current network weights before training.
+            logger (callable or None): Optional epoch logger.
+            model_dir (str): Directory for saved model checkpoints.
+            device (torch.device or str or None): Device used for tensor computation.
         """
 
         Z, T, Y = self._pretrain(Z, T, Y,

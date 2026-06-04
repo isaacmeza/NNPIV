@@ -10,6 +10,12 @@ from .rbflayer import gaussian, inverse_multiquadric
 
 
 def dgp_to_bools(dgp_str):
+    """
+    Dgp to bools.
+
+    Parameters:
+        dgp_str (str): DGP identifier string.
+    """
     x = False
     z = False
     if dgp_str == 'x_image':
@@ -23,12 +29,26 @@ def dgp_to_bools(dgp_str):
 
 
 def arch_hyperparam_select(est, dgp):
+    """
+    Arch hyperparam select.
+
+    Parameters:
+        est (str or estimator): Estimator identifier or fitted estimator.
+        dgp (str): DGP identifier.
+    """
     dropout_p = 0.1
     n_hidden = 200
     return (dropout_p, n_hidden)
 
 
 def kernel_hyperparam_select(est, dgp):
+    """
+    Kernel hyperparam select.
+
+    Parameters:
+        est (str or estimator): Estimator identifier or fitted estimator.
+        dgp (str): DGP identifier.
+    """
     g_features = 10
     n_centers = 10
     kernel_fn = gaussian
@@ -55,6 +75,13 @@ def kernel_hyperparam_select(est, dgp):
 
 
 def train_hyperparam_select(est, dgp):
+    """
+    Train hyperparam select.
+
+    Parameters:
+        est (str or estimator): Estimator identifier or fitted estimator.
+        dgp (str): DGP identifier.
+    """
     learner_lr = 1e-4
     adversary_lr = 1e-4
     learner_l2 = 1e-4
@@ -91,6 +118,18 @@ def train_hyperparam_select(est, dgp):
 
 
 def experiment(dgp, iv_strength, tau_fn, num_data, est, device=None, DEBUG=False):
+    """
+    Experiment.
+
+    Parameters:
+        dgp (str): DGP identifier.
+        iv_strength (float): Instrument-strength parameter.
+        tau_fn (callable): Structural function used by the DGP.
+        num_data (int): Number of observations to generate.
+        est (str or estimator): Estimator identifier or fitted estimator.
+        device (object): Device used for tensor computation.
+        DEBUG (bool): Whether to enable debug output.
+    """
     if torch.cuda.is_available():
         torch.cuda.empty_cache()
     # print("Experiment")

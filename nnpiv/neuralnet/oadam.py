@@ -12,7 +12,8 @@ from torch.optim import Optimizer
 
 
 class OAdam(Optimizer):
-    """Implements optimistic Adam algorithm.
+    """
+    Implements optimistic Adam algorithm.
 
     It has been proposed in `Training GANs with Optimism`_.
 
@@ -33,6 +34,14 @@ class OAdam(Optimizer):
         https://arxiv.org/abs/1711.00141
     .. _On the Convergence of Adam and Beyond:
         https://openreview.net/forum?id=ryQu7f-RZ
+
+    Parameters:
+        params (iterable): Parameters optimized by the optimizer.
+        lr (float): Learning rate.
+        betas (tuple): Adam momentum coefficients.
+        eps (float): Numerical stability term.
+        weight_decay (float): Weight decay coefficient.
+        amsgrad (bool): Whether to use the AMSGrad variant.
     """
 
     def __init__(self, params, lr=1e-3, betas=(0.9, 0.999), eps=1e-8,
@@ -55,11 +64,15 @@ class OAdam(Optimizer):
             group.setdefault('amsgrad', False)
 
     def step(self, closure=None):
-        """Performs a single optimization step.
+        """
+        Performs a single optimization step.
 
         Arguments:
             closure (callable, optional): A closure that reevaluates the model
                 and returns the loss.
+
+        Parameters:
+            closure (callable or None): Optional closure that reevaluates the model and returns the loss.
         """
         loss = None
         if closure is not None:

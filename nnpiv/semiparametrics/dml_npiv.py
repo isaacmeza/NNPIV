@@ -1,7 +1,7 @@
 """
 This module implements Debiased Machine Learning for Nonparametric Instrumental Variables (DML-npiv).
-It provides tools for estimating causal effects using a combination of machine learning models and 
-instrumental variables techniques. The module supports cross-validation, kernel density estimation 
+It provides tools for estimating causal effects using a combination of machine learning models and
+instrumental variables techniques. The module supports cross-validation, kernel density estimation
 for localization, and confidence interval computation with pointwise or uniform guarantees.
 
 Classes:
@@ -9,21 +9,21 @@ Classes:
 
 DML_npiv Methods:
     __init__: Initialize the DML_npiv instance with data and model configurations.
-    
+
     _calculate_confidence_interval: Calculate confidence intervals for the estimates.
-    
+
     _localization: Perform localization using kernel density estimation.
-    
+
     _npivfit_outcome: Fit the outcome model using nonparametric instrumental variables.
-    
+
     _propensity_score: Estimate the propensity score.
-    
+
     _npivfit_action: Fit the action model using nonparametric instrumental variables.
-    
+
     _process_fold: Process a single fold for cross-validation.
-    
+
     _split_and_estimate: Split the data and estimate the model using cross-validation.
-    
+
     dml: Perform Debiased Machine Learning for Nonparametric Instrumental Variables.
 """
 
@@ -47,8 +47,7 @@ def _get(opts, key, default):
     """
     Retrieve the value associated with 'key' in 'opts', or return 'default' if not present.
 
-    Parameters
-    ----------
+    Parameters:
     opts : dict
         Dictionary of options.
     key : str
@@ -67,8 +66,7 @@ def _transform_poly(X, opts):
     """
     Transform the input data X using polynomial features.
 
-    Parameters
-    ----------
+    Parameters:
     X : array-like
         Input data.
     opts : dict
@@ -89,12 +87,11 @@ def _transform_poly(X, opts):
 def _fun_threshold_alpha(alpha, g):
     """
     Auxiliary function for computation of optimal alpha for improvement in overlap: CHIM (Dealing with limited overlap in estimation of average treatment effects).
-    
+
     Richard K. Crump, V. Joseph Hotz, Guido W. Imbens, Oscar A. Mitnik
     Biometrika, Volume 96, Issue 1, March 2009.
 
-    Parameters
-    ----------
+    Parameters:
     alpha : float
         Alpha value.
     g : array-like
@@ -116,64 +113,37 @@ class DML_npiv:
     """
     Debiased Machine Learning for Nonparametric Instrumental Variables (DML-npiv) class.
 
-    Parameters
-    ----------
-    Y : array-like
-        Outcome variable.
-    D : array-like
-        Treatment variable.
-    Z : array-like
-        Instrumental variable.
-    W : array-like
-        Negative control outcome.
-    X1 : array-like, optional
-        Additional covariates.
-    V : array-like, optional
-        Localization covariates.
-    v_values : array-like, optional
-        Values for localization.
-    include_V : bool, optional
-        Include localization covariates in the model.
-    ci_type : str, optional
-        Type of confidence interval ('pointwise', 'uniform').
-    loc_kernel : str, optional
-        Kernel for localization. Options include 'gau', 'epa', 'uni', 'tri', etc.
-    bw_loc : str, optional
-        Bandwidth for localization.
-    estimator : str, optional
-        Estimator type ('MR', 'OR', 'IPW').
-    model1 : estimator, optional
-        Model for the first stage.
-    nn_1 : bool, optional
-        Use neural network for the first stage.
-    modelq1 : estimator, optional
-        Model for the second stage.
-    nn_q1 : bool, optional
-        Use neural network for the second stage.
-    alpha : float, optional
-        Significance level for confidence intervals.
-    n_folds : int, optional
-        Number of folds for estimation.
-    n_rep : int, optional
-        Number of repetitions for estimation.
-    random_seed : int, optional
-        Seed for random number generator.
-    prop_score : estimator, optional
-        Model for propensity score.
-    CHIM : bool, optional
-        Use CHIM method. Dropping observations with extreme values of the propensity score - CHIM (2009).
-    verbose : bool, optional
-        Print progress information.
-    fitargs1 : dict, optional
-        Arguments for fitting the first stage model.
-    fitargsq1 : dict, optional
-        Arguments for fitting the second stage model.
-    opts : dict, optional
-        Additional options.
+    Parameters:
+        Y (array-like): Outcome variable.
+        D (array-like): Treatment variable.
+        Z (array-like): Instrumental variable.
+        W (array-like): Negative control outcome.
+        X1 (array-like or None): Additional covariates.
+        V (array-like or None): Localization covariates.
+        v_values (array-like or None): Values for localization.
+        include_V (bool): Whether to include localization covariates in the model.
+        ci_type (str): Type of confidence interval ('pointwise', 'uniform').
+        loc_kernel (str): Kernel for localization. Options include 'gau', 'epa', 'uni', and 'tri'.
+        bw_loc (str): Bandwidth for localization.
+        estimator (str): Estimator type ('MR', 'OR', 'IPW').
+        model1 (estimator): Model for the first stage.
+        nn_1 (bool): Whether to use a neural network for the first stage.
+        modelq1 (estimator): Model for the second stage.
+        nn_q1 (bool): Whether to use a neural network for the second stage.
+        alpha (float): Significance level for confidence intervals.
+        n_folds (int): Number of folds for estimation.
+        n_rep (int): Number of repetitions for estimation.
+        random_seed (int): Seed for the random number generator.
+        prop_score (estimator): Model for the propensity score.
+        CHIM (bool): Whether to drop observations with extreme propensity scores using CHIM (2009).
+        verbose (bool): Whether to print progress information.
+        fitargs1 (dict or None): Arguments for fitting the first-stage model.
+        fitargsq1 (dict or None): Arguments for fitting the second-stage model.
+        opts (dict or None): Additional options.
     """
 
     def __init__(self, Y, D, Z, W, X1=None,
-                 V=None, 
+                 V=None,
                  v_values=None,
                  include_V=True,
                  ci_type='pointwise',
@@ -182,11 +152,11 @@ class DML_npiv:
                  estimator='MR',
                  model1=ApproxRKHSIVCV(kernel_approx='nystrom', n_components=100,
                            kernel='rbf', gamma=.1, delta_scale='auto',
-                           delta_exp=.4, alpha_scales=np.geomspace(1, 10000, 10), cv=5), 
+                           delta_exp=.4, alpha_scales=np.geomspace(1, 10000, 10), cv=5),
                  nn_1=False,
                  modelq1=ApproxRKHSIVCV(kernel_approx='nystrom', n_components=100,
                            kernel='rbf', gamma=.1, delta_scale='auto',
-                           delta_exp=.4, alpha_scales=np.geomspace(1, 10000, 10), cv=5), 
+                           delta_exp=.4, alpha_scales=np.geomspace(1, 10000, 10), cv=5),
                  nn_q1=False,
                  alpha=0.05,
                  n_folds=5,
@@ -199,64 +169,6 @@ class DML_npiv:
                  fitargsq1=None,
                  opts=None
                  ):
-        """
-        Initialize the DML_npiv instance with data and model configurations.
-
-        Parameters
-        ----------
-        Y : array-like
-            Outcome variable.
-        D : array-like
-            Treatment variable.
-        Z : array-like
-            Instrumental variable.
-        W : array-like
-            Negative control outcome.
-        X1 : array-like, optional
-            Additional covariates.
-        V : array-like, optional
-            Localization covariates.
-        v_values : array-like, optional
-            Values for localization.
-        include_V : bool, optional
-            Include localization covariates in the model.            
-        ci_type : str, optional
-            Type of confidence interval ('pointwise', 'uniform').
-        loc_kernel : str, optional
-            Kernel for localization. Options include 'gau', 'epa', 'uni', 'tri', etc.
-        bw_loc : str, optional
-            Bandwidth for localization.
-        estimator : str, optional
-            Estimator type ('MR', 'OR', 'IPW').
-        model1 : estimator, optional
-            Model for the first stage.
-        nn_1 : bool, optional
-            Use neural network for the first stage.
-        modelq1 : estimator, optional
-            Model for the second stage.
-        nn_q1 : bool, optional
-            Use neural network for the second stage.
-        alpha : float, optional
-            Significance level for confidence intervals.
-        n_folds : int, optional
-            Number of folds for estimation.
-        n_rep : int, optional
-            Number of repetitions for estimation.
-        random_seed : int, optional
-            Seed for random number generator.
-        prop_score : estimator, optional
-            Model for propensity score.
-        CHIM : bool, optional
-            Use CHIM method. Dropping observations with extreme values of the propensity score - CHIM (2009).
-        verbose : bool, optional
-            Print progress information.
-        fitargs1 : dict, optional
-            Arguments for fitting the first stage model.
-        fitargsq1 : dict, optional
-            Arguments for fitting the second stage model.
-        opts : dict, optional
-            Additional options.
-        """
         self.Y = Y
         self.D = D
         self.Z = Z
@@ -298,7 +210,7 @@ class DML_npiv:
         lengths = [len(Y), len(D), len(Z), len(W), len(self.X)]
         if len(set(lengths)) != 1:
             raise ValueError("All input vectors must have the same length.")
-        
+
 
         if self.estimator not in ['MR', 'OR', 'IPW']:
             warnings.warn(f"Invalid estimator: {estimator}. Estimator must be one of ['MR', 'OR', 'IPW']. Using MR instead.", UserWarning)
@@ -313,24 +225,23 @@ class DML_npiv:
 
         if self.loc_kernel not in list(kernel_switch.keys()):
             warnings.warn(f"Invalid kernel: {loc_kernel}. Kernel must be one of {list(kernel_switch.keys())}. Using gau instead.", UserWarning)
-            self.loc_kernel = 'gau' 
+            self.loc_kernel = 'gau'
 
         if isinstance(self.bw_loc, str):
             if self.bw_loc not in ['silverman', 'scott']:
                 warnings.warn(f"Invalid bw rule: {bw_loc}. Bandwidth rule must be one of ['silverman', 'scott'] or provided by the user. Using silverman instead.", UserWarning)
-                self.bw_loc = 'silverman'   
+                self.bw_loc = 'silverman'
 
         if self.V is not None:
             if self.v_values is None:
                 warnings.warn(f"v_values is None. Computing localization around mean(V).", UserWarning)
-                self.v_values = np.mean(self.V, axis=0)    
-            
+                self.v_values = np.mean(self.V, axis=0)
+
     def _calculate_confidence_interval(self, theta, theta_var, theta_cov):
         """
         Calculate the confidence interval for the given estimates.
 
-        Parameters
-        ----------
+        Parameters:
         theta : array-like
             Estimated values.
         theta_var : array-like
@@ -347,16 +258,16 @@ class DML_npiv:
 
         if self.ci_type == 'pointwise':
             z_alpha_half = norm.ppf(1 - self.alpha / 2)
-            margin_of_error = z_alpha_half * np.sqrt(theta_var / n) 
+            margin_of_error = z_alpha_half * np.sqrt(theta_var / n)
         else:
             S = np.diag(np.diag(theta_cov))
             S_inv_sqrt = np.diag(1.0 / np.sqrt(np.diag(S)))
-            
+
             Sigma_hat = S_inv_sqrt @ theta_cov @ S_inv_sqrt
-            
+
             # Sample Q from N(0, Sigma_hat)
             Q_samples = np.random.multivariate_normal(np.zeros(theta.shape[0]), Sigma_hat, 5000)
-            
+
             # Compute the (1 - alpha) quantile of the sampled |Q|_infty
             Q_infinity_norms = np.max(np.abs(Q_samples), axis=1)
             c_alpha = np.quantile(Q_infinity_norms, 1 - self.alpha)
@@ -370,8 +281,7 @@ class DML_npiv:
         """
         Perform localization using kernel density estimation.
 
-        Parameters
-        ----------
+        Parameters:
         V : array-like
             Localization covariates.
         v_val : array-like
@@ -387,23 +297,22 @@ class DML_npiv:
         if kernel_switch[self.loc_kernel]().domain is None:
             def K(x):
                 return kernel_switch[self.loc_kernel]()(x)
-        else:    
-            def K(x): 
+        else:
+            def K(x):
                 y = kernel_switch[self.loc_kernel]()(x)*((kernel_switch[self.loc_kernel]().domain[0]<=x) & (x<=kernel_switch[self.loc_kernel]().domain[1]))
                 return y
 
-        v = (V-v_val)/bw    
-        KK = np.prod(list(map(K, v)),axis=1) 
-        omega = np.mean(KK,axis=0)   
+        v = (V-v_val)/bw
+        KK = np.prod(list(map(K, v)),axis=1)
+        omega = np.mean(KK,axis=0)
         ell = KK/omega
         return ell.reshape(-1,1)
-    
+
     def _npivfit_outcome(self, Y, D, X, Z):
         """
         Fit the outcome model using nonparametric instrumental variables.
 
-        Parameters
-        ----------
+        Parameters:
         Y : array-like
             Outcome variable.
         D : array-like
@@ -430,18 +339,18 @@ class DML_npiv:
             if self.nn_1==False:
                 X = _transform_poly(X,self.opts)
                 Z = _transform_poly(Z,self.opts)
-            
-            for d in [0,1]:    
+
+            for d in [0,1]:
                 ind = np.where(D==d)[0]
                 Y1 = Y[ind]
                 X1 = X[ind,:]
                 Z1 = Z[ind]
 
-                if self.fitargs1 is not None:   
+                if self.fitargs1 is not None:
                     bridge_[d] = copy.deepcopy(model_1).fit(Z1, X1, Y1, **self.fitargs1)
                 else:
                     bridge_[d] = copy.deepcopy(model_1).fit(Z1, X1, Y1)
-        
+
         return bridge_[1], bridge_[0]
 
 
@@ -449,8 +358,7 @@ class DML_npiv:
         """
         Estimate the propensity score.
 
-        Parameters
-        ----------
+        Parameters:
         X : array-like
             Covariates.
         W : array-like
@@ -465,11 +373,11 @@ class DML_npiv:
         """
         model_ps = copy.deepcopy(self.prop_score)
         X1 = np.column_stack((X,W))
-            
+
         # First stage
         model_ps.fit(X1, D.flatten())
         ps_hat_1 = model_ps.predict_proba(X1)[:,1]
-        
+
         # Overlap assumption
         ps_hat_1 = np.where(ps_hat_1 == 1, 0.99, ps_hat_1)
         ps_hat_1 = np.where(ps_hat_1 == 0, 0.01, ps_hat_1)
@@ -479,11 +387,11 @@ class DML_npiv:
             # One finds the smallest value of \alpha\in [0,0.5] s.t.
             # $\lambda:=\frac{1}{\alpha(1-\alpha)}$
             # $2\frac{\sum 1(g(X)\leq\lambda)*g(X)}{\sum 1(g(X)\leq\lambda)}-\lambda\geq 0$
-            # 
+            #
             # Equivalently the first value of alpha (in increasing order) such that the constraint is achieved by equality
             # (as the constraint is a monotone increasing function in alpha)
 
-            g_values = [1/(ps_hat_1*(1-ps_hat_1))]  
+            g_values = [1/(ps_hat_1*(1-ps_hat_1))]
             optimized_alphas = []
 
             for g in g_values:
@@ -502,8 +410,7 @@ class DML_npiv:
         """
         Fit the action model using nonparametric instrumental variables.
 
-        Parameters
-        ----------
+        Parameters:
         ps_hat_1 : array-like
             Estimated propensity scores.
         W : array-like
@@ -550,7 +457,7 @@ class DML_npiv:
             else:
                 bridge_[0] = copy.deepcopy(model_q1).fit(A2, A1, 1/ps_hat_0)
                 bridge_[1] = copy.deepcopy(model_q1).fit(A2, A1, 1/ps_hat_1)
-           
+
         return bridge_[1], bridge_[0]
 
 
@@ -558,8 +465,7 @@ class DML_npiv:
         """
         Process a single fold for cross-validation.
 
-        Parameters
-        ----------
+        Parameters:
         fold_idx : int
             Fold index.
         train_data : tuple
@@ -616,11 +522,11 @@ class DML_npiv:
             psi_hat = (gamma_1_hat-gamma_0_hat +
                     test_D * q_1_hat * (test_Y - gamma_1_hat) - (1-test_D) * q_0_hat * (test_Y - gamma_0_hat))
         if self.estimator == 'OR':
-            psi_hat = gamma_1_hat-gamma_0_hat 
+            psi_hat = gamma_1_hat-gamma_0_hat
         if self.estimator == 'IPW':
             psi_hat = test_D * q_1_hat * test_Y - (1 - test_D) * q_0_hat * test_Y
 
-        # Localization 
+        # Localization
         if self.V is not None:
             if isinstance(self.bw_loc, str):
                 if self.bw_loc == 'silverman':
@@ -641,7 +547,7 @@ class DML_npiv:
                     else:
                         warnings.warn(f"bw_loc has incorrect length. Using first element instead.", UserWarning)
                         bw = np.ones((train_V.shape[1]))*self.bw_loc[0]
-                        
+
             ell = [self._localization(test_V, v, bw) for v in self.v_values]
             ell = np.column_stack(ell)
             psi_hat = ell * psi_hat
@@ -649,7 +555,7 @@ class DML_npiv:
         # Print progress bar using tqdm
         if self.verbose==True:
             self.progress_bar.update(1)
-   
+
         return psi_hat
 
 
@@ -664,36 +570,36 @@ class DML_npiv:
         """
         theta = []
         theta_var = []
-        theta_cov = []        
+        theta_cov = []
 
         for rep in range(self.n_rep):
-            
+
             if self.verbose==True:
                 print(f"Rep: {rep+1}")
                 self.progress_bar = tqdm(total=self.n_folds, position=0)
-            
+
             kf = KFold(n_splits=self.n_folds, shuffle=True, random_state=self.random_seed+rep)
             if self.V is None:
                 fold_results = Parallel(n_jobs=-1, backend='threading')(
                     delayed(self._process_fold)(
-                        fold_idx, 
+                        fold_idx,
                         (self.Y[train_index], self.D[train_index], self.W[train_index],
                         self.X[train_index], self.Z[train_index]),
                         (self.Y[test_index], self.D[test_index], self.W[test_index],
-                        self.X[test_index], self.Z[test_index])) 
+                        self.X[test_index], self.Z[test_index]))
                         for fold_idx, (train_index, test_index) in enumerate(kf.split(self.Y))
                 )
-            else:   
+            else:
                 fold_results = Parallel(n_jobs=-1, backend='threading')(
                     delayed(self._process_fold)(
-                        fold_idx, 
+                        fold_idx,
                         (self.Y[train_index], self.D[train_index], self.W[train_index],
                         self.X[train_index], self.Z[train_index], self.V[train_index]),
                         (self.Y[test_index], self.D[test_index], self.W[test_index],
-                        self.X[test_index], self.Z[test_index], self.V[test_index])) 
+                        self.X[test_index], self.Z[test_index], self.V[test_index]))
                         for fold_idx, (train_index, test_index) in enumerate(kf.split(self.Y))
-                )                
-            if self.verbose==True:       
+                )
+            if self.verbose==True:
                 self.progress_bar.close()
 
             # Calculate the average of psi_hat_array for each rep
@@ -713,10 +619,10 @@ class DML_npiv:
         theta_cov_hat = np.mean(np.stack(theta_cov, axis=0), axis=0)
 
         # Calculate the confidence interval
-        confidence_interval = self._calculate_confidence_interval(theta_hat, theta_var_hat, theta_cov_hat) 
+        confidence_interval = self._calculate_confidence_interval(theta_hat, theta_var_hat, theta_cov_hat)
 
         return theta_hat, theta_var_hat, confidence_interval, theta_cov_hat
-    
+
 
     def dml(self):
         """
@@ -732,4 +638,3 @@ class DML_npiv:
             return theta[0], theta_var[0], confidence_interval[0]
         else:
             return theta, theta_cov_hat, confidence_interval
-            

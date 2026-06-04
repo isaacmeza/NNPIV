@@ -1,8 +1,8 @@
 """
 Debiased Machine Learning for long-term causal analysis with a joint or sequential estimator (DML-longterm) class.
-The estimand can be either for a model with a surrogacy assumption (Athey et al., 2020b. [Estimating treatment effects using multiple surrogates: the role of the surrogate score and the surrogate index](https://arxiv.org/abs/1603.09326)) or with a latent unconfounded model (Athey et al., 2020a. [Combining experimental and observational data to estimate treatment effects on long-term outcomes](https://arxiv.org/abs/2006.09676)). 
+The estimand can be either for a model with a surrogacy assumption (Athey et al., 2020b. [Estimating treatment effects using multiple surrogates: the role of the surrogate score and the surrogate index](https://arxiv.org/abs/1603.09326)) or with a latent unconfounded model (Athey et al., 2020a. [Combining experimental and observational data to estimate treatment effects on long-term outcomes](https://arxiv.org/abs/2006.09676)).
 The semiparametric efficiency is derived in Chen and Ritzwoller (2023. [Semiparametric estimation of long-term treatment effects](https://doi.org/10.1016/j.jeconom.2023.105545)).
-The module supports different types of longterm models, cross-validation, kernel density estimation 
+The module supports different types of longterm models, cross-validation, kernel density estimation
 for localization, and confidence interval computation with pointwise or uniform guarantees.
 
 Classes:
@@ -10,11 +10,11 @@ Classes:
 
 DML_longterm Methods:
     __init__: Initialize the DML_longterm instance with data and model configurations.
-    
+
     _calculate_confidence_interval: Calculate confidence intervals for the estimates.
-    
+
     _localization: Perform localization using kernel density estimation.
-    
+
     _nnpivfit_outcome_latent: Fit the outcome model using nonparametric instrumental variables for the latent unconfounded model.
 
     _nnpivfit_outcome_latent_s : Fit the outcome model using nonparametric instrumental variables for the latent unconfounded model sequentially.
@@ -22,20 +22,20 @@ DML_longterm Methods:
     _nnpivfit_outcome_surrogacy: Fit the outcome model using nonparametric instrumental variables for the surrogacy model.
 
     _nnpivfit_outcome_surrogacy_s: Fit the outcome model using nonparametric instrumental variables for the surrogacy model sequentially.
-    
+
     _propensity_score_latent: Estimate the propensity score for the latent unconfounded model.
 
     _propensity_score_surrogacy: Estimate the propensity score for the surrogacy model.
-    
+
     _process_fold: Process a single fold for cross-validation.
-    
+
     _split_and_estimate: Split the data and estimate the model for each fold.
-    
+
     dml: Perform Debiased Machine Learning for Nonparametric Instrumental Variables.
 """
 
 import numpy as np
-from scipy.stats import norm 
+from scipy.stats import norm
 from sklearn.model_selection import KFold
 from sklearn.linear_model import LogisticRegression
 from sklearn.preprocessing import PolynomialFeatures
@@ -56,8 +56,7 @@ def _get(opts, key, default):
     """
     Retrieve the value associated with 'key' in 'opts', or return 'default' if not present.
 
-    Parameters
-    ----------
+    Parameters:
     opts : dict
         Dictionary of options.
     key : str
@@ -76,8 +75,7 @@ def _transform_poly(X, opts):
     """
     Transform the input data X using polynomial features.
 
-    Parameters
-    ----------
+    Parameters:
     X : array-like
         Input data.
     opts : dict
@@ -97,11 +95,10 @@ def _transform_poly(X, opts):
 
 def _fun_threshold_alpha(alpha, g):
     """
-    Auxiliary function for computation of optimal alpha for improvement in overlap: CHIM 
+    Auxiliary function for computation of optimal alpha for improvement in overlap: CHIM
     (Dealing with limited overlap in estimation of average treatment effects, Crump et al., Biometrika, 2009).
 
-    Parameters
-    ----------
+    Parameters:
     alpha : float
         Alpha value.
     g : array-like
@@ -124,8 +121,7 @@ class DML_longterm:
     """
     Debiased Machine Learning for long-term causal analysis (DML-longterm) class with joint/sequential model fitting.
 
-    Parameters
-    ----------
+    Parameters:
     Y : array-like
         Outcome variable.
     D : array-like
@@ -143,7 +139,7 @@ class DML_longterm:
     include_V : bool, optional
         Include localization covariates in the model.
     ci_type : str, optional
-        Type of confidence interval ('pointwise', 'uniform').        
+        Type of confidence interval ('pointwise', 'uniform').
     loc_kernel : str, optional
         Kernel for localization. Options include 'gau', 'epa', 'uni', 'tri', etc.
     bw_loc : str, optional
@@ -157,7 +153,7 @@ class DML_longterm:
     nn_1 : bool /(list), optional
         Use neural network for the outcome stage.
     sample_G : str, optional
-        Estimate treatment effect for the indicated subpopulation (i.e., "G=0", "G=1", "all") 
+        Estimate treatment effect for the indicated subpopulation (i.e., "G=0", "G=1", "all")
     alpha : float, optional
         Significance level for confidence intervals.
     n_folds : int, optional
@@ -180,8 +176,8 @@ class DML_longterm:
     opts : dict, optional
         Additional options.
     """
-    def __init__(self, Y, D, S, G, X1=None, 
-                 V=None, 
+    def __init__(self, Y, D, S, G, X1=None,
+                 V=None,
                  v_values=None,
                  include_V=True,
                  ci_type='pointwise',
@@ -243,7 +239,7 @@ class DML_longterm:
                 warnings.warn("Sequential outcome model fitting requires fitargs1 to be a list. Assuming [fitargs1, fitargs1]", UserWarning)
                 self.fitargs1 = fitargs1
                 self.fitargs2 = fitargs1
-            else:   
+            else:
                 self.fitargs1 = fitargs1[0]
                 self.fitargs2 = fitargs1[1]
         else:
@@ -266,21 +262,21 @@ class DML_longterm:
         lengths = [len(Y), len(D), len(S), len(G), len(self.X)]
         if len(set(lengths)) != 1:
             raise ValueError("All input vectors must have the same length.")
-        
+
         if self.estimator not in ['MR', 'OR', 'hybrid', 'IPW']:
             warnings.warn(f"Invalid estimator: {estimator}. Estimator must be one of ['MR', 'OR', 'hybrid', 'IPW']. Using MR instead.", UserWarning)
             self.estimator = 'MR'
 
         if longterm_model not in ['latent_unconfounded', 'surrogacy']:
             warnings.warn(f"Invalid long-term model: {longterm_model}. Long-term model must be one of ['latent_unconfounded', 'surrogacy']. Using surrogacy instead.", UserWarning)
-            self.longterm_model = 'surrogacy'   
+            self.longterm_model = 'surrogacy'
 
         if longterm_model == 'latent_unconfounded':
             ind = np.where(self.G==1)[0]
             nnan = np.isnan(self.D[ind]).sum()
             if nnan>0:
                 warnings.warn(f"{nnan} missing values in treatment variable in the observational sample. Using surrogacy instead.", UserWarning)
-                self.longterm_model = 'surrogacy'   
+                self.longterm_model = 'surrogacy'
 
         if self.ci_type not in ['pointwise', 'uniform']:
             warnings.warn(f"Invalid confidence interval type: {ci_type}. Confidence interval type must be one of ['pointwise', 'uniform']. Using pointwise instead.", UserWarning)
@@ -291,17 +287,17 @@ class DML_longterm:
 
         if self.loc_kernel not in list(kernel_switch.keys()):
             warnings.warn(f"Invalid kernel: {loc_kernel}. Kernel must be one of {list(kernel_switch.keys())}. Using gau instead.", UserWarning)
-            self.loc_kernel = 'gau' 
+            self.loc_kernel = 'gau'
 
         if isinstance(self.bw_loc, str):
             if self.bw_loc not in ['silverman', 'scott']:
                 warnings.warn(f"Invalid bw rule: {bw_loc}. Bandwidth rule must be one of ['silverman', 'scott'] or provided by the user. Using silverman instead.", UserWarning)
-                self.bw_loc = 'silverman'   
+                self.bw_loc = 'silverman'
 
         if self.V is not None:
             if self.v_values is None:
                 warnings.warn(f"v_values is None. Computing localization around mean(V).", UserWarning)
-                self.v_values = np.mean(self.V, axis=0)    
+                self.v_values = np.mean(self.V, axis=0)
 
     def _resolve_inner_n_jobs(self, inner_n_jobs):
         if inner_n_jobs is None:
@@ -324,8 +320,7 @@ class DML_longterm:
         """
         Calculate the confidence interval for the given estimates.
 
-        Parameters
-        ----------
+        Parameters:
         theta : array-like
             Estimated values.
         theta_var : array-like
@@ -342,16 +337,16 @@ class DML_longterm:
 
         if self.ci_type == 'pointwise':
             z_alpha_half = norm.ppf(1 - self.alpha / 2)
-            margin_of_error = z_alpha_half * np.sqrt(theta_var / n) 
+            margin_of_error = z_alpha_half * np.sqrt(theta_var / n)
         else:
             S = np.diag(np.diag(theta_cov))
             S_inv_sqrt = np.diag(1.0 / np.sqrt(np.diag(S)))
-            
+
             Sigma_hat = S_inv_sqrt @ theta_cov @ S_inv_sqrt
-            
+
             # Sample Q from N(0, Sigma_hat)
             Q_samples = np.random.multivariate_normal(np.zeros(theta.shape[0]), Sigma_hat, 5000)
-            
+
             # Compute the (1 - alpha) quantile of the sampled |Q|_infty
             Q_infinity_norms = np.max(np.abs(Q_samples), axis=1)
             c_alpha = np.quantile(Q_infinity_norms, 1 - self.alpha)
@@ -365,8 +360,7 @@ class DML_longterm:
         """
         Perform localization using kernel density estimation.
 
-        Parameters
-        ----------
+        Parameters:
         V : array-like
             Localization covariates.
         v_val : array-like
@@ -382,14 +376,14 @@ class DML_longterm:
         if kernel_switch[self.loc_kernel]().domain is None:
             def K(x):
                 return kernel_switch[self.loc_kernel]()(x)
-        else:    
-            def K(x): 
+        else:
+            def K(x):
                 y = kernel_switch[self.loc_kernel]()(x)*((kernel_switch[self.loc_kernel]().domain[0]<=x) & (x<=kernel_switch[self.loc_kernel]().domain[1]))
                 return y
 
-        v = (V-v_val)/bw    
-        KK = np.prod(list(map(K, v)),axis=1) 
-        omega = np.mean(KK,axis=0)   
+        v = (V-v_val)/bw
+        KK = np.prod(list(map(K, v)),axis=1)
+        omega = np.mean(KK,axis=0)
         ell = KK/omega
         return ell.reshape(-1,1)
 
@@ -400,8 +394,7 @@ class DML_longterm:
 
         This method is based on the model proposed in Athey, S.; Chetty, R.; Imbens, G., Combining experimental and observational data to estimate treatment effects on long-term outcomes. arXiv preprint arXiv:2006.09676 (2020).
 
-        Parameters
-        ----------
+        Parameters:
         train_Y : array-like
             Training outcome variable.
         train_D : array-like
@@ -486,7 +479,7 @@ class DML_longterm:
             else:
                 model_1_d1.fit(A1_train, B1_train, C1_train, E1_train, Y1_train, subsetted=True, subset_ind1=G1_train)
                 model_1_d0.fit(A0_train, B0_train, C0_train, E0_train, Y0_train, subsetted=True, subset_ind1=G0_train)
-                
+
             if self.nn_1==True:
                 nu_1_hat, delta_d1_hat = model_1_d1.predict(B_test.to(DEVICE), A_test.to(DEVICE), model='avg', burn_in=_get(self.opts, 'burnin', 0))
                 nu_1_hat = nu_1_hat.reshape(-1, 1)
@@ -503,7 +496,7 @@ class DML_longterm:
                 delta_d0_hat = delta_d0_hat.reshape(-1, 1)
 
         return delta_d1_hat, delta_d0_hat, nu_1_hat, nu_0_hat
-    
+
 
     def _nnpivfit_outcome_latent_s(self, Y, D, S, X, G):
         """
@@ -511,8 +504,7 @@ class DML_longterm:
 
         This method is based on the model proposed in Athey, S.; Chetty, R.; Imbens, G., Combining experimental and observational data to estimate treatment effects on long-term outcomes. arXiv preprint arXiv:2006.09676 (2020).
 
-        Parameters
-        ----------
+        Parameters:
         Y : array-like
             Outcome variable.
         D : array-like
@@ -610,7 +602,7 @@ class DML_longterm:
             if self.nn_2 == True:
                 B1_1 = X0_1
                 B1_0 = X0_0
-            else:            
+            else:
                 B1_1 = _transform_poly(X0_1, self.opts)
                 B1_0 = _transform_poly(X0_0, self.opts)
 
@@ -624,9 +616,9 @@ class DML_longterm:
         else:
             bridge_2_d1 = None
             bridge_2_d0 = None
-        
+
         return bridge_1_d1, bridge_1_d0, bridge_2_d1, bridge_2_d0
-    
+
 
     def _nnpivfit_outcome_surrogacy(self, train_Y, train_D, train_S, train_X, train_G,
                                     test_X, test_S):
@@ -635,8 +627,7 @@ class DML_longterm:
 
         This method is based on the model proposed in Athey, S., Chetty, R., Imbens, G., Kang, H., 2020b. Estimating treatment effects using multiple surrogates: the role of the surrogate score and the surrogate index. arXiv preprint arXiv:1603.09326.
 
-        Parameters
-        ----------
+        Parameters:
         train_Y : array-like
             Training outcome variable.
         train_D : array-like
@@ -719,8 +710,7 @@ class DML_longterm:
 
         This method is based on the model proposed in Athey, S., Chetty, R., Imbens, G., Kang, H., 2020b. Estimating treatment effects using multiple surrogates: the role of the surrogate score and the surrogate index. arXiv preprint arXiv:1603.09326.
 
-        Parameters
-        ----------
+        Parameters:
         Y : array-like
             Outcome variable.
         D : array-like
@@ -799,7 +789,7 @@ class DML_longterm:
             if self.nn_2 == True:
                 B1_1 = X0_1
                 B1_0 = X0_0
-            else:            
+            else:
                 B1_1 = _transform_poly(X0_1, self.opts)
                 B1_0 = _transform_poly(X0_0, self.opts)
 
@@ -813,17 +803,16 @@ class DML_longterm:
         else:
             bridge_2_d1 = None
             bridge_2_d0 = None
-        
+
         return bridge_1, bridge_2_d1, bridge_2_d0
-    
+
 
     def _propensity_score_latent(self, S_train, X_train, D_train, G_train,
                            S_test, X_test):
         """
         Estimate the propensity score for the latent unconfounded model.
 
-        Parameters
-        ----------
+        Parameters:
         S_train : array-like
             Training surrogate variable.
         X_train : array-like
@@ -872,7 +861,7 @@ class DML_longterm:
         if self.sample_G != "all":
             model_ps.fit(X_g1_train, D_g1_train.flatten())
             pr_d1_g1_x = model_ps.predict_proba(X_test)[:,1]
-        
+
         #Selection propensity score
         model_ps.fit(X_train, G_train.flatten())
         pr_g1_x = model_ps.predict_proba(X_test)[:,1]
@@ -941,8 +930,7 @@ class DML_longterm:
         """
         Estimate the propensity score for the surrogacy model.
 
-        Parameters
-        ----------
+        Parameters:
         S_train : array-like
             Training surrogate variable.
         X_train : array-like
@@ -1019,8 +1007,7 @@ class DML_longterm:
         """
         Process a single fold for cross-validation.
 
-        Parameters
-        ----------
+        Parameters:
         fold_idx : int
             Fold index.
         train_data : tuple
@@ -1048,7 +1035,7 @@ class DML_longterm:
 
                 if self.sequential_o==True:
                     delta_0, nu_1, nu_0 = self._nnpivfit_outcome_surrogacy_s(train_Y, train_D, train_S, train_X, train_G)
-                    
+
                     if self.estimator == 'MR' or self.estimator == 'hybrid':
                         if self.nn_1 == True:
                             test_S, test_X = tuple(map(toT, [test_S, test_X]))
@@ -1101,22 +1088,22 @@ class DML_longterm:
                             nu_1_hat = nu_1.predict(_transform_poly(test_X, self.opts)).reshape(-1, 1)
                             nu_0_hat = nu_0.predict(_transform_poly(test_X, self.opts)).reshape(-1, 1)
 
-                else:    
+                else:
                     delta_d1_hat, delta_d0_hat, nu_1_hat, nu_0_hat = self._nnpivfit_outcome_latent(train_Y, train_D, train_S, train_X, train_G,
                                                                             test_X, test_S)
 
         # Obtain propensity score for action bridges
         if self.estimator == 'MR' or self.estimator == 'hybrid' or self.estimator == 'IPW':
             if self.longterm_model == 'surrogacy':
-                pr_d1_g0_sx, pr_d1_g0_x, pr_g1_sx, pr_g1_x, alfa = self._propensity_score_surrogacy(train_S, train_X, train_D, train_G, 
+                pr_d1_g0_sx, pr_d1_g0_x, pr_g1_sx, pr_g1_x, alfa = self._propensity_score_surrogacy(train_S, train_X, train_D, train_G,
                                                                   test_S, test_X)
                 mask = np.where((pr_d1_g0_sx >= alfa) & (pr_d1_g0_sx <= 1 - alfa) &
                                 (pr_d1_g0_x >= alfa) & (pr_d1_g0_x <= 1 - alfa) &
                                 (pr_g1_sx >= alfa) & (pr_g1_sx <= 1 - alfa) &
                                 (pr_g1_x >= alfa) & (pr_g1_x <= 1 - alfa))[0]
-                
+
                 if self.sample_G == "all":
-                    # IPW to residuals of approximation of first outcome bridge                
+                    # IPW to residuals of approximation of first outcome bridge
                     alfa_1_hat = (test_G * pr_d1_g0_sx * (1-pr_g1_sx)) / (pr_g1_sx * pr_d1_g0_x * (1-pr_g1_x))
                     alfa_0_hat = (test_G * (1-pr_d1_g0_sx) * (1-pr_g1_sx)) / (pr_g1_sx * (1-pr_d1_g0_x) * (1-pr_g1_x))
 
@@ -1124,7 +1111,7 @@ class DML_longterm:
                     eta_1_hat = ((1-test_G) * test_D ) / (pr_d1_g0_x * (1-pr_g1_x))
                     eta_0_hat = ((1-test_G) * (1-test_D) ) / ((1-pr_d1_g0_x) * (1-pr_g1_x))
                 if self.sample_G == "G=0":
-                    # IPW to residuals of approximation of first outcome bridge                
+                    # IPW to residuals of approximation of first outcome bridge
                     alfa_1_hat = (test_G * pr_d1_g0_sx * (1-pr_g1_sx)) / (pr_g1_sx * pr_d1_g0_x * (1-np.mean(test_G)))
                     alfa_0_hat = (test_G * (1-pr_d1_g0_sx) * (1-pr_g1_sx)) / (pr_g1_sx * (1-pr_d1_g0_x) * (1-np.mean(test_G)))
 
@@ -1132,7 +1119,7 @@ class DML_longterm:
                     eta_1_hat = ((1-test_G) * test_D ) / (pr_d1_g0_x * (1-np.mean(test_G)))
                     eta_0_hat = ((1-test_G) * (1-test_D) ) / ((1-pr_d1_g0_x) * (1-np.mean(test_G)))
                 if self.sample_G == "G=1":
-                    # IPW to residuals of approximation of first outcome bridge                
+                    # IPW to residuals of approximation of first outcome bridge
                     alfa_1_hat = (test_G * pr_d1_g0_sx * (1-pr_g1_sx) * pr_g1_x) / (pr_g1_sx * pr_d1_g0_x * np.mean(test_G) * (1-pr_g1_x))
                     alfa_0_hat = (test_G * (1-pr_d1_g0_sx) * (1-pr_g1_sx) * pr_g1_x) / (pr_g1_sx * (1-pr_d1_g0_x) * np.mean(test_G) * (1-pr_g1_x))
 
@@ -1147,11 +1134,11 @@ class DML_longterm:
                                     (pr_g1_d1_sx >= alfa) & (pr_g1_d1_sx <= 1 - alfa) &
                                     (pr_g1_d0_sx >= alfa) & (pr_g1_d0_sx <= 1 - alfa) &
                                     (pr_g1_x >= alfa) & (pr_g1_x <= 1 - alfa))[0]
-                    
+
                     # IPW to residuals of approximation of first outcome bridge
                     alfa_1_hat = (test_G * test_D * (1-pr_g1_d1_sx)) / (pr_g1_d1_sx * pr_d1_g0_x * (1-pr_g1_x))
                     alfa_0_hat = (test_G * (1-test_D) * (1-pr_g1_d0_sx)) / (pr_g1_d0_sx * (1-pr_d1_g0_x) * (1-pr_g1_x))
-                    
+
                     # IPW to residuals of approximation of second outcome bridge
                     eta_1_hat = ((1-test_G) * test_D ) / (pr_d1_g0_x * (1-pr_g1_x))
                     eta_0_hat = ((1-test_G) * (1-test_D) ) / ((1-pr_d1_g0_x) * (1-pr_g1_x))
@@ -1165,11 +1152,11 @@ class DML_longterm:
                                     (pr_g1_d1_sx >= alfa) & (pr_g1_d1_sx <= 1 - alfa) &
                                     (pr_g1_d0_sx >= alfa) & (pr_g1_d0_sx <= 1 - alfa) &
                                     (pr_g1_x >= alfa) & (pr_g1_x <= 1 - alfa))[0]
-                    
+
                     # IPW to residuals of approximation of first outcome bridge
                     alfa_1_hat = (test_G * test_D * (1-pr_g1_d1_sx) * (1-pr_g1_x) * pr_g1_d1_x) / (pr_g1_d1_sx * pr_d1_g1_x * (1-pr_g1_x) * (1-pr_g1_d1_x) * (1-np.mean(test_G)))
                     alfa_0_hat = (test_G * (1-test_D) * (1-pr_g1_d0_sx) * (1-pr_g1_x) * pr_g1_d0_x) / (pr_g1_d0_sx * (1-pr_d1_g1_x) * (1-pr_g1_x) * (1-pr_g1_d0_x) * (1-np.mean(test_G)))
-                    
+
                     # IPW to residuals of approximation of second outcome bridge
                     eta_1_hat = ((1-test_G) * test_D ) / (pr_d1_g0_x * (1-np.mean(test_G)))
                     eta_0_hat = ((1-test_G) * (1-test_D) ) / ((1-pr_d1_g0_x) * (1-np.mean(test_G)))
@@ -1183,11 +1170,11 @@ class DML_longterm:
                                     (pr_g1_d1_sx >= alfa) & (pr_g1_d1_sx <= 1 - alfa) &
                                     (pr_g1_d0_sx >= alfa) & (pr_g1_d0_sx <= 1 - alfa) &
                                     (pr_g1_x >= alfa) & (pr_g1_x <= 1 - alfa))[0]
-                    
+
                     # IPW to residuals of approximation of first outcome bridge
                     alfa_1_hat = (test_G * test_D * (1-pr_g1_d1_sx) * pr_g1_d1_x) / (pr_g1_d1_sx * pr_d1_g1_x * np.mean(test_G) * (1-pr_g1_d1_x))
                     alfa_0_hat = (test_G * (1-test_D) * (1-pr_g1_d0_sx) * pr_g1_d0_x) / (pr_g1_d0_sx * (1-pr_d1_g1_x) * np.mean(test_G) * (1-pr_g1_d0_x))
-                    
+
                     # IPW to residuals of approximation of second outcome bridge
                     eta_1_hat = ((1-test_G) * test_D * pr_g1_x) / (pr_d1_g0_x * np.mean(test_G) * (1-pr_g1_x))
                     eta_0_hat = ((1-test_G) * (1-test_D) * pr_g1_x) / ((1-pr_d1_g0_x) * np.mean(test_G) * (1-pr_g1_x))
@@ -1197,7 +1184,7 @@ class DML_longterm:
             if self.sample_G == "all":
                 y1_hat = nu_1_hat + alfa_1_hat * (test_Y - delta_d1_hat) + eta_1_hat * (delta_d1_hat - nu_1_hat)
                 y0_hat = nu_0_hat + alfa_0_hat * (test_Y - delta_d0_hat) + eta_0_hat * (delta_d0_hat - nu_0_hat)
-            if self.sample_G == "G=0": 
+            if self.sample_G == "G=0":
                 y1_hat = ((1-test_G) / np.mean(1-test_G)) * nu_1_hat + alfa_1_hat * (test_Y - delta_d1_hat) + eta_1_hat * (delta_d1_hat - nu_1_hat)
                 y0_hat = ((1-test_G) / np.mean(1-test_G)) * nu_0_hat + alfa_0_hat * (test_Y - delta_d0_hat) + eta_0_hat * (delta_d0_hat - nu_0_hat)
             if self.sample_G == "G=1":
@@ -1207,7 +1194,7 @@ class DML_longterm:
             psi_hat = y1_hat - y0_hat
         if self.estimator == 'OR':
             if self.sample_G == "all":
-                psi_hat = nu_1_hat - nu_0_hat 
+                psi_hat = nu_1_hat - nu_0_hat
             if self.sample_G == "G=0":
                 psi_hat = ((1-test_G) / np.mean(1-test_G)) * (nu_1_hat - nu_0_hat)
             if self.sample_G == "G=1":
@@ -1216,9 +1203,9 @@ class DML_longterm:
         if self.estimator == 'hybrid':
             psi_hat = eta_1_hat * delta_d1_hat - eta_0_hat * delta_d0_hat
         if self.estimator == 'IPW':
-            psi_hat = (alfa_1_hat - alfa_0_hat) * test_Y 
+            psi_hat = (alfa_1_hat - alfa_0_hat) * test_Y
 
-        # Localization 
+        # Localization
         if self.V is not None:
             if isinstance(self.bw_loc, str):
                 if self.bw_loc == 'silverman':
@@ -1247,7 +1234,7 @@ class DML_longterm:
 
         if self.estimator == 'MR' or self.estimator == 'hybrid' or self.estimator == 'IPW':
             psi_hat = psi_hat[mask]
-            
+
         if self.verbose==True:
             self.progress_bar.update(1)
 
@@ -1268,29 +1255,29 @@ class DML_longterm:
         theta_cov = []
 
         for rep in range(self.n_rep):
-            
+
             if self.verbose==True:
                 print(f"Rep: {rep+1}")
                 self.progress_bar = tqdm(total=self.n_folds, position=0)
-            
+
             kf = KFold(n_splits=self.n_folds, shuffle=True, random_state=self.random_seed+rep)
             if self.V is None:
                 fold_results = Parallel(n_jobs=self.inner_n_jobs, backend='threading')(
                     delayed(self._process_fold)(
-                        fold_idx, 
+                        fold_idx,
                         (self.Y[train_index], self.D[train_index], self.S[train_index], self.X[train_index], self.G[train_index]),
-                        (self.Y[test_index], self.D[test_index], self.S[test_index], self.X[test_index], self.G[test_index])) 
+                        (self.Y[test_index], self.D[test_index], self.S[test_index], self.X[test_index], self.G[test_index]))
                         for fold_idx, (train_index, test_index) in enumerate(kf.split(self.Y))
                 )
             else:
                 fold_results = Parallel(n_jobs=self.inner_n_jobs, backend='threading')(
                     delayed(self._process_fold)(
-                        fold_idx, 
+                        fold_idx,
                         (self.Y[train_index], self.D[train_index], self.S[train_index], self.X[train_index], self.G[train_index], self.V[train_index]),
-                        (self.Y[test_index], self.D[test_index], self.S[test_index], self.X[test_index], self.G[test_index], self.V[test_index])) 
+                        (self.Y[test_index], self.D[test_index], self.S[test_index], self.X[test_index], self.G[test_index], self.V[test_index]))
                         for fold_idx, (train_index, test_index) in enumerate(kf.split(self.Y))
                 )
-            if self.verbose==True:       
+            if self.verbose==True:
                 self.progress_bar.close()
 
             psi_hat_array = np.concatenate(fold_results, axis=0)
@@ -1305,12 +1292,12 @@ class DML_longterm:
         theta_hat = np.mean(np.stack(theta, axis=0), axis=0)
         theta_var_hat = np.mean(np.stack(theta_var, axis=0), axis=0)
         theta_cov_hat = np.mean(np.stack(theta_cov, axis=0), axis=0)
-        
+
         # Calculate the confidence interval
-        confidence_interval = self._calculate_confidence_interval(theta_hat, theta_var_hat, theta_cov_hat) 
+        confidence_interval = self._calculate_confidence_interval(theta_hat, theta_var_hat, theta_cov_hat)
 
         return theta_hat, theta_var_hat, confidence_interval, theta_cov_hat
-    
+
 
     def dml(self):
         """

@@ -6,6 +6,18 @@ import cvxopt
 
 
 def cvxopt_solve_qp(P, q, G=None, h=None, A=None, b=None, *, max_iters=100):
+    """
+    Cvxopt solve qp.
+
+    Parameters:
+        P (array-like): Quadratic objective matrix.
+        q (array-like): Linear objective vector.
+        G (array-like): Inequality constraint matrix.
+        h (array-like): Inequality constraint vector.
+        A (array-like): First nested-stage treatment or endogenous block.
+        b (array-like): Equality constraint vector.
+        max_iters (int): Maximum number of solver iterations.
+    """
     P = .5 * (P + P.T)  # make sure P is symmetric
     args = [cvxopt.matrix(P), cvxopt.matrix(q)]
     if G is not None:
@@ -21,6 +33,14 @@ def cvxopt_solve_qp(P, q, G=None, h=None, A=None, b=None, *, max_iters=100):
 
 
 def summarize(T, Y, ints=10):
+    """
+    Summarize.
+
+    Parameters:
+        T (array-like): Treatment or endogenous variables.
+        Y (array-like): Outcome values.
+        ints (array-like): Interval or bin assignments.
+    """
     q = np.percentile(T, np.linspace(0, 100, ints), interpolation='nearest')
     #q = np.linspace(np.min(T), np.max(T), ints)
     M = np.zeros((T.shape[0], ints))
@@ -40,6 +60,22 @@ def summarize(T, Y, ints=10):
 def project_convex_lip(T, Y, convexity=None, L=None,
                        monotone=None, ymin=None, ymax=None, epsilon=0,
                        subgradient_penalty=0.00, n_subsamples=None, max_iters=100):
+    """
+    Project convex lip.
+
+    Parameters:
+        T (array-like): Treatment or endogenous variables.
+        Y (array-like): Outcome values.
+        convexity (str or None): Convexity constraint to enforce.
+        L (float): Lipschitz constant.
+        monotone (str or None): Monotonicity constraint to enforce.
+        ymin (float): Lower bound for fitted values.
+        ymax (float): Upper bound for fitted values.
+        epsilon (float): Numerical tolerance for constraints.
+        subgradient_penalty (float): Penalty applied to subgradient constraints.
+        n_subsamples (int or None): Optional number of subsamples.
+        max_iters (int): Maximum number of solver iterations.
+    """
     T = T.flatten()
     Y = Y.flatten()
     n = T.shape[0]

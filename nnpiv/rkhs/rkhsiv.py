@@ -798,6 +798,22 @@ class ApproxRKHSIVL2(ApproxRKHSIV):
 class ApproxRKHSIVL2CV(ApproxRKHSIVL2):
     """
     Approximate RKHS IV L2 estimator with cross-validation.
+
+    Parameters:
+        kernel_approx (str): Kernel approximation method ('nystrom' or 'rbfsampler').
+        n_components (int or float): Number of approximation components.
+            If integer-like and >= 1, treated as a fixed component count.
+            If float in (0, 1], treated as the sample fraction with a floor of 10.
+        kernel (str or callable): Kernel function or string identifier.
+        gamma (str or float): Length scale for the kernel.
+        degree (int): Degree for polynomial kernels.
+        coef0 (float): Zero coefficient for polynomial kernels.
+        kernel_params (dict): Additional parameters for the kernel.
+        delta_scale (str or float): Scale of the critical radius.
+        delta_exp (str or float): Exponent of the critical radius.
+        alpha_scales (str or array-like): Scale of the regularization parameter.
+        n_alphas (int): Number of alpha scales to try.
+        cv (int): Number of folds for cross-validation.
     """
 
     def __init__(self, kernel_approx='nystrom', n_components=10,

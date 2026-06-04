@@ -9,14 +9,9 @@ def cross_product(*XS):
     """
     Compute the cross product of features.
 
-    Parameters
-    ----------
-    X1 : n x d1 matrix
-        First matrix of n samples of d1 features
-        (or an n-element vector, which will be treated as an n x 1 matrix)
-    X2 : n x d2 matrix
-        Second matrix of n samples of d2 features
-        (or an n-element vector, which will be treated as an n x 1 matrix)
+    Parameters:
+        XS (array-like): Feature matrices with the same number of rows.
+            One-dimensional inputs are treated as column vectors.
 
     Returns
     -------
@@ -24,7 +19,6 @@ def cross_product(*XS):
         Matrix of n samples of d1*d2*... cross product features,
         arranged in form such that each row t of X12 contains:
         [X1[t,0]*X2[t,0]*..., ..., X1[t,d1-1]*X2[t,0]*..., X1[t,0]*X2[t,1]*..., ..., X1[t,d1-1]*X2[t,1]*..., ...]
-
     """
     for X in XS:
         assert 2 >= np.ndim(X) >= 1

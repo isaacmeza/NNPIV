@@ -26,6 +26,17 @@ def deep_iv_fit(z, t, y, x=None, epochs=100, hidden=[128, 64, 32]):
     # y - response
     # x - features
 
+    """
+    Deep iv fit.
+
+    Parameters:
+        z (array-like): Instrument values.
+        t (object): Value for `t`.
+        y (array-like): Outcome values.
+        x (array-like): Input values.
+        epochs (int): Number of epochs.
+        hidden (int): Number of hidden units.
+    """
     n = z.shape[0]
     dropout_rate = min(1000. / (1000. + n), 0.5)
     batch_size = 100

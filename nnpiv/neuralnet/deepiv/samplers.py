@@ -11,21 +11,38 @@ else:
     import tensorflow as tf
 
 def random_laplace(shape, mu=0., b=1.):
-    '''
+    """
     Draw random samples from a Laplace distriubtion.
 
     See: https://en.wikipedia.org/wiki/Laplace_distribution#Generating_random_variables_according_to_the_Laplace_distribution
-    '''
+
+    Parameters:
+        shape (tuple): Output shape.
+        mu (array-like): Mean parameter.
+        b (array-like): Equality constraint vector.
+    """
     U = K.random_uniform(shape, -0.5, 0.5)
     return mu - b * K.sign(U) * K.log(1 - 2 * K.abs(U))
 
 def random_normal(shape, mean=0.0, std=1.0):
+    """
+    Random normal.
+
+    Parameters:
+        shape (tuple): Output shape.
+        mean (object): Value for `mean`.
+        std (array-like): Standard-deviation parameter.
+    """
     return K.random_normal(shape, mean, std)
 
 def random_multinomial(logits, seed=None):
-    '''
+    """
     Theano function for sampling from a multinomal with probability given by `logits`
-    '''
+
+    Parameters:
+        logits (array-like): Unnormalized class probabilities.
+        seed (int or None): Random seed.
+    """
     if K.backend() == "theano":
         if seed is None:
             seed = numpy.random.randint(1, 10e6)
@@ -36,12 +53,17 @@ def random_multinomial(logits, seed=None):
                           int(logits.shape[1]))
 
 def random_gmm(pi, mu, sig):
-    '''
+    """
     Sample from a gaussian mixture model. Returns one sample for each row in
     the pi, mu and sig matrices... this is potentially wasteful (because you have to repeat
     the matrices n times if you want to get n samples), but makes it easy to implment
     code where the parameters vary as they are conditioned on different datapoints.
-    '''
+
+    Parameters:
+        pi (array-like): Mixture probabilities.
+        mu (array-like): Mean parameter.
+        sig (array-like): Mixture standard deviations.
+    """
     normals = random_normal(K.shape(mu), mu, sig)
     k = random_multinomial(pi)
     return K.sum(normals * k, axis=1, keepdims=True)

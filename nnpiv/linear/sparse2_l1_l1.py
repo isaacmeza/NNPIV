@@ -42,22 +42,6 @@ class _SparseLinear2AdversarialGMM:
     def __init__(self, mu=0.01, V1=100, V2=100,
                  eta_alpha='auto', eta_w1='auto', eta_beta='auto', eta_w2='auto',
                  n_iter=2000, tol=1e-2, sparsity=None, fit_intercept=True):
-        """
-        Initialize the _SparseLinear2AdversarialGMM.
-
-        Parameters:
-            mu (float): Regularization parameter.
-            V1 (int): Budget parameter for the first stage.
-            V2 (int): Budget parameter for the second stage.
-            eta_alpha (str or float): Learning rate for alpha.
-            eta_w1 (str or float): Learning rate for w1.
-            eta_beta (str or float): Learning rate for beta.
-            eta_w2 (str or float): Learning rate for w2.
-            n_iter (int): Number of iterations.
-            tol (float): Tolerance for duality gap.
-            sparsity (int or None): Sparsity level for the model.
-            fit_intercept (bool): Whether to fit an intercept.
-        """
         self.V1 = V1
         self.V2 = V2
         self.mu = mu
