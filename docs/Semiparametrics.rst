@@ -98,6 +98,7 @@ Model-Specific Semiparametric APIs
    semiparametrics/NPIV
    semiparametrics/Mediation Analysis
    semiparametrics/Long Term Effect
+   semiparametrics/Dynamic Treatment Effect
 
 Related Pages
 -------------

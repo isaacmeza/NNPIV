@@ -80,6 +80,10 @@ Semiparametric APIs
      - Long-term treatment effects
      - long-term/surrogacy blocks
      - effect estimates + CI
+   * - `DML_dynamic`
+     - Dynamic treatment means
+     - `Y, D1, D2, X1, X2` (+ options)
+     - `theta, var, ci`
 
 .. toctree::
    :maxdepth: 2

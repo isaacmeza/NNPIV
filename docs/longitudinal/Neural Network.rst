@@ -18,7 +18,7 @@ We now consider the case where the function classes correspond to neural network
 
 where :math:`\theta_1, \theta_2, \omega_1, \omega_2` are weights of the neural networks.
 
-We use the Optimistic Adam algorithm of `Daskalakis et al. (2017) <http://arxiv.org/abs/1711.00141>`_ to solve the previous minimax problem as was also proposed in `Dikkala et al. (2020) <https://arxiv.org/abs/2006.07201>`_.
+We use the Optimistic Adam algorithm of `Daskalakis et al. (2017) <https://arxiv.org/abs/1711.00141>`_ to solve the previous minimax problem as was also proposed in `Dikkala et al. (2020) <https://arxiv.org/abs/2006.07201>`_.
 
 .. autosummary::
    :toctree: _autosummary

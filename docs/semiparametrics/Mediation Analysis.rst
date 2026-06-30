@@ -47,6 +47,6 @@ Our DML framework allows for various types of estimands. Here, we describe each 
 
 **References**
 
-- Cui, Y., VanderWeele, T. J., Tchetgen Tchetgen, E. J., 2020. `Proximal causal learning for mediation analysis <https://doi.org/10.48550/arXiv.2011.08411>`_.
-- Oliver Dukes, Ilya Shpitser, Eric J Tchetgen Tchetgen, 2023. `Proximal mediation analysis <https://doi.org/10.1093/biomet/asad015>`_, Biometrika, Volume 110, Issue 4.
-- Tchetgen Tchetgen, E. J., Ying, A., Cui, Y., 2020. `Nonparametric identification of the mediation functional <https://doi.org/10.48550/arXiv.2009.10982>`_.
+- Cui, Y., Pu, H., Shi, X., Miao, W., Tchetgen Tchetgen, E. J., 2020. `Semiparametric proximal causal inference <https://doi.org/10.48550/arXiv.2011.08411>`_.
+- Dukes, O., Shpitser, I., Tchetgen Tchetgen, E. J., 2023. `Proximal mediation analysis <https://doi.org/10.1093/biomet/asad015>`_. Biometrika, Volume 110, Issue 4.
+- Tchetgen Tchetgen, E. J., Ying, A., Cui, Y., Shi, X., Miao, W., 2020. `An introduction to proximal causal learning <https://doi.org/10.48550/arXiv.2009.10982>`_.

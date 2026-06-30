@@ -30,3 +30,12 @@ Long-Term Effect Estimation
    :template: class.rst
 
    nnpiv.semiparametrics.DML_longterm
+
+Dynamic Treatment Effect Estimation
+-----------------------------------
+
+.. autosummary::
+   :toctree: semiparametrics/_autosummary
+   :template: class.rst
+
+   nnpiv.semiparametrics.DML_dynamic
