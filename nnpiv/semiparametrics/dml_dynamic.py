@@ -42,7 +42,14 @@ from tqdm import tqdm
 import torch
 
 from nnpiv.rkhs import RKHSIVL2
-from ._utils import summarize_ratio_scores
+from ._utils import (
+    as_2d,
+    as_column,
+    canonicalize_localization_inputs,
+    localization_loadings,
+    prepare_localization,
+    summarize_ratio_scores,
+)
 
 
 DEVICE = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
@@ -114,23 +121,6 @@ def _fun_threshold_alpha(alpha, g):
     num = ind * g
     result = (2 * sum(num) / den - lambda_val) ** 2
     return result
-
-
-def _as_2d(X):
-    """
-    Convert an array-like object to a two-dimensional numpy array.
-    """
-    X = np.asarray(X)
-    if X.ndim == 1:
-        return X.reshape(-1, 1)
-    return X
-
-
-def _as_col(Y):
-    """
-    Convert an array-like object to a single-column numpy array.
-    """
-    return np.asarray(Y).reshape(-1, 1)
 
 
 class DML_dynamic:
@@ -236,13 +226,21 @@ class DML_dynamic:
                  fitargs1=None,
                  opts=None
                  ):
-        self.Y = _as_col(Y)
-        self.D1 = _as_col(D1)
-        self.D2 = _as_col(D2)
-        self.X1 = None if X1 is None else _as_2d(X1)
-        self.X2 = None if X2 is None else _as_2d(X2)
-        self.V = None if V is None else _as_2d(V)
-        self.v_values = v_values
+        self.Y = as_column(Y, "Y")
+        self.D1 = as_column(D1, "D1")
+        self.D2 = as_column(D2, "D2")
+        self.X1 = None if X1 is None else as_2d(X1, "X1")
+        self.X2 = None if X2 is None else as_2d(X2, "X2")
+        if V is None:
+            self.V = None
+            self.v_values = v_values
+        else:
+            if v_values is None:
+                warnings.warn(
+                    "v_values is None. Computing localization around mean(V).",
+                    UserWarning,
+                )
+            self.V, self.v_values = canonicalize_localization_inputs(V, v_values)
         self.include_V = include_V
         self.ci_type = ci_type
         self.loc_kernel = loc_kernel
@@ -356,11 +354,15 @@ class DML_dynamic:
                 warnings.warn(f"Invalid bw rule: {bw_loc}. Bandwidth rule must be one of ['silverman', 'scott'] or provided by the user. Using silverman instead.", UserWarning)
                 self.bw_loc = 'silverman'
 
+        self.bw_loc_ = None
+        self.loc_normalizers_ = None
         if self.V is not None:
-            if self.v_values is None:
-                warnings.warn("v_values is None. Computing localization around mean(V).", UserWarning)
-                self.v_values = np.mean(self.V, axis=0)
-            self.v_values = self._format_v_values(self.v_values)
+            self.V, self.v_values, self.bw_loc_, self.loc_normalizers_ = prepare_localization(
+                self.V,
+                self.v_values,
+                self.bw_loc,
+                kernel_switch[self.loc_kernel](),
+            )
             if self.ci_type == 'uniform' and self.v_values.shape[0] == 1:
                 warnings.warn("Uniform confidence intervals are not supported for one localization value. Using pointwise instead.", UserWarning)
                 self.ci_type = 'pointwise'
@@ -452,65 +454,101 @@ class DML_dynamic:
             Lower and upper bounds of the confidence intervals.
         """
         n = self.Y.shape[0]
+        theta = np.asarray(theta, dtype=float).reshape(-1)
+        theta_var = np.asarray(theta_var, dtype=float).reshape(-1)
+        theta_cov = np.atleast_2d(np.asarray(theta_cov, dtype=float))
 
         if self.ci_type == 'pointwise':
             z_alpha_half = norm.ppf(1 - self.alpha / 2)
-            margin_of_error = z_alpha_half * np.sqrt(theta_var / n)
+            margin_of_error = z_alpha_half * np.sqrt(
+                np.maximum(theta_var, 0.0) / n
+            )
         else:
-            S = np.diag(np.diag(theta_cov))
-            S_inv_sqrt = np.diag(1.0 / np.sqrt(np.diag(S)))
+            if theta_cov.shape != (theta.size, theta.size):
+                raise ValueError(
+                    "theta_cov must have one row and column per target."
+                )
+            if not np.all(np.isfinite(theta_cov)):
+                raise ValueError("theta_cov must contain only finite values.")
 
-            Sigma_hat = S_inv_sqrt @ theta_cov @ S_inv_sqrt
+            variances = np.maximum(np.diag(theta_cov), 0.0)
+            standard_deviations = np.sqrt(variances)
+            tolerance = np.finfo(float).eps * max(
+                1.0, float(np.max(standard_deviations, initial=0.0))
+            )
+            active = standard_deviations > tolerance
+            margin_of_error = np.zeros(theta.size, dtype=float)
 
-            # Sample Q from N(0, Sigma_hat)
-            Q_samples = np.random.multivariate_normal(np.zeros(theta.shape[0]), Sigma_hat, 5000)
+            if np.count_nonzero(active) == 1:
+                c_alpha = norm.ppf(1 - self.alpha / 2)
+                margin_of_error[active] = (
+                    c_alpha * standard_deviations[active] / np.sqrt(n)
+                )
+            elif np.any(active):
+                active_covariance = theta_cov[np.ix_(active, active)]
+                active_sd = standard_deviations[active]
+                correlation = active_covariance / np.outer(active_sd, active_sd)
+                correlation = (correlation + correlation.T) / 2
+                np.fill_diagonal(correlation, 1.0)
 
-            # Compute the (1 - alpha) quantile of the sampled |Q|_infty
-            Q_infinity_norms = np.max(np.abs(Q_samples), axis=1)
-            c_alpha = np.quantile(Q_infinity_norms, 1 - self.alpha)
-            margin_of_error = c_alpha * np.sqrt(np.diag(theta_cov) / n)
+                # Remove negligible negative eigenvalues caused by numerical
+                # covariance error, then renormalize to a correlation matrix.
+                eigenvalues, eigenvectors = np.linalg.eigh(correlation)
+                correlation = (
+                    eigenvectors
+                    @ np.diag(np.maximum(eigenvalues, 0.0))
+                    @ eigenvectors.T
+                )
+                projected_sd = np.sqrt(np.maximum(np.diag(correlation), 0.0))
+                correlation = correlation / np.outer(projected_sd, projected_sd)
+                correlation = (correlation + correlation.T) / 2
+                np.fill_diagonal(correlation, 1.0)
+
+                rng = np.random.default_rng(self.random_seed)
+                samples = rng.multivariate_normal(
+                    np.zeros(active_sd.size),
+                    correlation,
+                    size=5000,
+                    check_valid="ignore",
+                )
+                c_alpha = np.quantile(
+                    np.max(np.abs(samples), axis=1), 1 - self.alpha
+                )
+                margin_of_error[active] = c_alpha * active_sd / np.sqrt(n)
 
         lower_bound = theta - margin_of_error
         upper_bound = theta + margin_of_error
         return np.column_stack((lower_bound, upper_bound))
 
-    def _localization(self, V, v_val, bw):
+    def _localization(self, V, v_val=None, bw=None):
         """
-        Perform localization using kernel density estimation.
+        Compute localization loadings using the run-level specification.
 
         Parameters:
         V : array-like
             Localization covariates.
-        v_val : array-like
-            Values for localization.
-        bw : float
-            Bandwidth for localization.
-
+        v_val, bw : array-like, optional
+            A legacy one-off evaluation value and bandwidth. When omitted,
+            use the fixed run-level grid, bandwidth, and normalizers.
         Returns
         -------
         array-like
-            Fold-normalized kernel loadings.
+            Kernel loadings with shape ``(n_samples, n_targets)`` using the
+            bandwidth and normalizers fixed when the estimator was created.
         """
-        if kernel_switch[self.loc_kernel]().domain is None:
-            def K(x):
-                return kernel_switch[self.loc_kernel]()(x)
-        else:
-            def K(x):
-                y = kernel_switch[self.loc_kernel]()(x)*((kernel_switch[self.loc_kernel]().domain[0]<=x) & (x<=kernel_switch[self.loc_kernel]().domain[1]))
-                return y
-
-        bw = np.where(np.asarray(bw) == 0, 1.0, bw)
-        v = (V-v_val)/bw
-        KK = np.prod(list(map(K, v)),axis=1)
-        omega = np.mean(KK,axis=0)
-        if not np.isfinite(omega) or abs(omega) <= np.finfo(float).eps:
-            raise ValueError(
-                "The localization kernel has a nonfinite or zero empirical "
-                "normalizer. Choose a localization value with sample support "
-                "or increase the bandwidth."
+        kernel = kernel_switch[self.loc_kernel]()
+        if v_val is None and bw is None:
+            return localization_loadings(
+                V, self.v_values, self.bw_loc_, kernel, self.loc_normalizers_
             )
-        ell = KK/omega
-        return ell.reshape(-1,1)
+        if v_val is None or bw is None:
+            raise ValueError("v_val and bw must be supplied together.")
+        V, values, bandwidth, normalizers = prepare_localization(
+            V, v_val, bw, kernel
+        )
+        return localization_loadings(
+            V, values, bandwidth, kernel, normalizers
+        )
 
     def _fit_regression(self, model, X, Y, fitargs=None, nn=False):
         """
@@ -738,7 +776,7 @@ class DML_dynamic:
         train_S1, test_S1 = train_data[3], test_data[3]
         train_S2, test_S2 = train_data[4], test_data[4]
         if self.V is not None:
-            train_V, test_V = train_data[5], test_data[5]
+            test_V = test_data[5]
 
         if self.estimator == 'MR' or self.estimator == 'OR':
             delta_model = self._npivfit_outcome(train_Y, train_D1, train_D2, train_S2)
@@ -781,33 +819,9 @@ class DML_dynamic:
 
         # Localization
         if self.V is not None:
-            if isinstance(self.bw_loc, str):
-                if self.bw_loc == 'silverman':
-                    IQR = np.percentile(train_V, 75, axis=0)-np.percentile(train_V, 25, axis=0)
-                    A = np.min([np.std(train_V, axis=0), IQR/1.349], axis=0)
-                    n = train_V.shape[0]
-                    bw = .9 * A * n ** (-0.2)
-                elif self.bw_loc == 'scott':
-                    A = np.std(train_V, axis=0)
-                    n = train_V.shape[0]
-                    bw = 1.059 * A * n ** (-0.2)
-            else:
-                bw_loc = np.asarray(self.bw_loc)
-                if bw_loc.ndim == 0:
-                    bw = np.ones((train_V.shape[1]))*float(bw_loc)
-                elif len(bw_loc)==1:
-                    bw = np.ones((train_V.shape[1]))*bw_loc[0]
-                else:
-                    if len(bw_loc)==train_V.shape[1]:
-                        bw = bw_loc
-                    else:
-                        warnings.warn("bw_loc has incorrect length. Using first element instead.", UserWarning)
-                        bw = np.ones((train_V.shape[1]))*bw_loc[0]
-
-            ell = [self._localization(test_V, v, bw) for v in self.v_values]
-            ell = np.column_stack(ell)
+            ell = self._localization(test_V)
             psi_hat = ell * psi_hat
-            theta_loading = ell
+            theta_loading = ell * theta_loading
 
         if self.estimator == 'MR' or self.estimator == 'IPW':
             # Retain the full sample for inference and represent CHIM trimming
@@ -879,6 +893,7 @@ class DML_dynamic:
             theta_rep, theta_var_rep, theta_cov_rep = summarize_ratio_scores(
                 psi_hat_array, theta_loading_array
             )
+            theta_cov_rep = np.atleast_2d(theta_cov_rep)
 
             theta.append(theta_rep)
             theta_var.append(theta_var_rep)

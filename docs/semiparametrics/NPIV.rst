@@ -15,11 +15,12 @@ When ``V`` is supplied, ``DML_npiv`` estimates the finite-bandwidth target
           {\mathbb{E}[K\{(V-v)/\lambda\}]},
 
 where :math:`H` is the uncentered MR, OR, or IPW score selected by the user.
-Writing :math:`\ell_{\lambda,v}=K/\mathbb{E}[K]`, the centered influence value
-is :math:`\ell_{\lambda,v}\{H-\theta_\lambda(v)\}`, not
-:math:`\ell_{\lambda,v}H-\theta_\lambda(v)`. Pointwise and uniform inference
-use this ratio centering. Without ``V``, the loading is one and the estimator
-reduces to the ordinary average-score calculation.
+Writing :math:`\ell_{\lambda,v}=K/\mathbb{E}[K]`, the centered score contribution is :math:`\ell_{\lambda,v}\{H-\theta_\lambda(v)\}`, not :math:`\ell_{\lambda,v}H-\theta_\lambda(v)`.
+Pointwise and uniform inference use this ratio centering.
+Without ``V``, the loading is one and the estimator reduces to the ordinary average-score calculation.
+
+All routes use this centering; see :ref:`localized-ratio-targets` for the influence-function distinction and nuisance requirements.
+Use ``include_V=True`` for the usual conditional causal interpretation.
 
 .. autosummary::
    :toctree: _autosummary

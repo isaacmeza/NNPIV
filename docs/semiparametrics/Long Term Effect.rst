@@ -19,7 +19,8 @@ Effects for the experimental or observational subpopulation use target-specific 
 
 .. admonition:: Project STAR application
 
-   The Project STAR application sets ``sample_G="G=0"`` so that the proposed estimators target the experimental Project STAR population, while retaining both the STAR and NYC observations for nuisance estimation. For the heterogeneous analysis by prior ability, prior ability is included in the nuisance models, and the evaluation percentiles, bandwidth, and kernel normalization are computed using Project STAR observations with nonmissing prior ability. Thus, localization is specific to the target subgroup even though the NYC observations remain in the estimation sample to learn the long-term outcome mechanism.
+   The plotted proposed estimators use ``sample_G="all"`` and therefore target the pooled STAR and NYC population; the oracle remains STAR-only.
+   In the heterogeneous analysis, prior ability defines the grid and kernel weights only (``include_V=False``); it is excluded from the nuisance models and oracle NPIV inputs. The proposed estimators use the pooled nonmissing-prior sample for their grid, bandwidth, and kernel normalization, while the STAR oracle uses the same grid and bandwidth with STAR normalization. These are finite-bandwidth localizations of the chosen score, not automatically the usual conditional causal effect given prior ability.
 
 Surrogacy Model
 ----------------
@@ -149,38 +150,30 @@ For either model, the uncentered score for treatment arm :math:`d` is
 Target-specific localization
 ----------------------------
 
-For a localization variable :math:`V`, evaluation value :math:`v`, and
-bandwidth :math:`\lambda`, the experimental-target weight is
+For a localization variable :math:`V`, evaluation value :math:`v`, and bandwidth :math:`\lambda`, the experimental-target weight is
 
 .. math::
    \ell_{\lambda,v}^{(0)}(V)
    =\frac{K\{(V-v)/\lambda\}}
           {\mathbb{E}[K\{(V-v)/\lambda\}\mid G=0]}.
 
-The finite-bandwidth target is a ratio.  Consequently, if
-:math:`H_{d,\lambda}^{(0)}=\ell_{\lambda,v}^{(0)}H_d^{(0)}`, its centered
-influence value is
+The finite-bandwidth target is a ratio.
+Consequently, if :math:`H_{d,\lambda}^{(0)}=\ell_{\lambda,v}^{(0)}H_d^{(0)}`, its centered influence value is
 
 .. math::
    H_{d,\lambda}^{(0)}(W)
    -q_0(W)\ell_{\lambda,v}^{(0)}(V)\theta_{d,\lambda}^{(0)},
 
-not :math:`H_{d,\lambda}^{(0)}-\theta_{d,\lambda}^{(0)}`.  The implementation
-uses this ratio centering for pointwise and uniform covariance estimation.
-For a treatment contrast, subtract the corresponding expressions for
-:math:`d=0` from those for :math:`d=1`.
+not :math:`H_{d,\lambda}^{(0)}-\theta_{d,\lambda}^{(0)}`.
+The implementation uses this ratio centering for pointwise and uniform covariance estimation.
+For a treatment contrast, subtract the corresponding expressions for :math:`d=0` from those for :math:`d=1`.
 
-The observational-population construction is analogous, with
-:math:`q_1(W)=\mathbb{1}_{G=1}/\mathbb{P}(G=1)` and kernel normalization
-conditional on :math:`G=1`. For the pooled target, :math:`q=1` and the kernel
-is normalized over the pooled population.
+The observational-population construction is analogous, with :math:`q_1(W)=\mathbb{1}_{G=1}/\mathbb{P}(G=1)` and kernel normalization conditional on :math:`G=1`.
+For the pooled target, :math:`q=1` and the kernel is normalized over the pooled population.
 
-When ``sample_G`` selects a subgroup, automatic bandwidth selection and kernel
-normalization use that subgroup. If ``v_values`` is omitted, the implementation
-localizes at the target-subgroup mean; explicitly supplied values should be
-chosen from the intended target distribution.
-Setting ``include_V=True`` appends :math:`V` to the covariates used by the
-nuisance models in addition to using it for localization.
+When ``sample_G`` selects a subgroup, automatic bandwidth selection and kernel normalization use that subgroup.
+If ``v_values`` is omitted, the implementation localizes at the target-subgroup mean; explicitly supplied values should be chosen from the intended target distribution.
+Setting ``include_V=True`` appends :math:`V` to the covariates used by the nuisance models in addition to using it for localization.
 
 .. autosummary::
    :toctree: _autosummary

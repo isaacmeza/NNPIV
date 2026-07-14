@@ -42,9 +42,8 @@ Our DML framework allows for various types of estimands. Here, we describe each 
 Localization
 ------------
 
-Let :math:`H` be the uncentered score for the selected mediation estimand; for
-effects defined by treatment-arm contrasts, the contrast is formed before
-localization. When ``V`` is supplied, ``DML_mediated`` estimates
+Let :math:`H` be the uncentered score for the selected mediation estimand; for effects defined by treatment-arm contrasts, the contrast is formed before localization.
+When ``V`` is supplied, ``DML_mediated`` estimates
 
 .. math::
 
@@ -52,11 +51,12 @@ localization. When ``V`` is supplied, ``DML_mediated`` estimates
    =\frac{\mathbb{E}[K\{(V-v)/\lambda\}H]}
           {\mathbb{E}[K\{(V-v)/\lambda\}]}.
 
-With :math:`\ell_{\lambda,v}=K/\mathbb{E}[K]`, the centered influence value is
-:math:`\ell_{\lambda,v}\{H-\theta_\lambda(v)\}`. In particular, inference
-centers the localized score by :math:`\ell_{\lambda,v}\theta_\lambda(v)`, not
-by the unweighted scalar :math:`\theta_\lambda(v)`. The same ratio centering is
-used for pointwise and uniform confidence intervals.
+With :math:`\ell_{\lambda,v}=K/\mathbb{E}[K]`, the centered score contribution is :math:`\ell_{\lambda,v}\{H-\theta_\lambda(v)\}`.
+In particular, inference centers the localized score by :math:`\ell_{\lambda,v}\theta_\lambda(v)`, not by the unweighted scalar :math:`\theta_\lambda(v)`.
+The same ratio centering is used for pointwise and uniform confidence intervals.
+
+All routes use this centering; see :ref:`localized-ratio-targets` for the influence-function distinction and nuisance requirements.
+Use ``include_V=True`` for the usual conditional causal interpretation.
 
 .. autosummary::
    :toctree: _autosummary

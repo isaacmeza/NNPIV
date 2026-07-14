@@ -70,11 +70,13 @@ Interpretation: fold-wise orthogonalization reduces sensitivity to nuisance
 estimation errors, enabling practical inference with flexible first-stage
 learners.
 
+.. _localized-ratio-targets:
+
 Localized Ratio Targets
 -----------------------
 
-Let :math:`H_i(v)` denote an uncentered orthogonal-score contribution and let
-:math:`a_i(v)` denote the loading that defines the target. The estimator solves
+Let :math:`H_i(v)` denote an uncentered score contribution and let :math:`a_i(v)` denote the loading that defines the target.
+The estimator solves
 
 .. math::
 
@@ -83,7 +85,7 @@ Let :math:`H_i(v)` denote an uncentered orthogonal-score contribution and let
    \widehat\theta(v)
    =\frac{\mathbb{E}_n[H_i(v)]}{\mathbb{E}_n[a_i(v)]}.
 
-The corresponding estimated influence value is
+The corresponding centered score contribution is
 
 .. math::
 
@@ -91,13 +93,15 @@ The corresponding estimated influence value is
    =\frac{H_i(v)-a_i(v)\widehat\theta(v)}
           {\mathbb{E}_n[a_i(v)]}.
 
-For an ordinary average, :math:`a_i=1`. For kernel localization,
-:math:`H_i(v)=\ell_i(v)H_i` and :math:`a_i(v)=\ell_i(v)`, so when the kernel
-loading has empirical mean one,
-:math:`\widehat\phi_i(v)=\ell_i(v)\{H_i-\widehat\theta(v)\}`. A subgroup target
-uses a normalized group loading :math:`q_i`; a localized subgroup target uses
-:math:`q_i\ell_i(v)`. Thus localization changes not only the numerator of the
-point estimate but also the centering used for variance and covariance.
+For an ordinary average, :math:`a_i=1`.
+For kernel localization, :math:`H_i(v)=\ell_i(v)H_i` and :math:`a_i(v)=\ell_i(v)`, so when the kernel loading has empirical mean one, :math:`\widehat\phi_i(v)=\ell_i(v)\{H_i-\widehat\theta(v)\}`.
+A subgroup target uses a normalized group loading :math:`q_i`; a localized subgroup target uses :math:`q_i\ell_i(v)`.
+Thus localization changes not only the numerator of the point estimate but also the centering used for variance and covariance.
+
+This correction applies to every score route.
+If the base score is a valid influence-function score (notably MR), the centered contribution is its localized influence value; OR, IPW, and hybrid retain their nuisance correctness and rate requirements.
+For a conditional causal interpretation, include ``V`` in nuisance conditioning with ``include_V=True``.
+The target is finite-bandwidth, conditional on the selected grid and bandwidth.
 
 Progressive Recipe
 ------------------

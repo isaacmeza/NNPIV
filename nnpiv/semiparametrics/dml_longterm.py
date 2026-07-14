@@ -48,7 +48,14 @@ import torch
 from nnpiv.rkhs import RKHS2IVCV, ApproxRKHSIVCV, RKHS2IVL2
 from joblib import Parallel, delayed, cpu_count
 from scipy.optimize import minimize_scalar
-from ._utils import summarize_ratio_scores
+from ._utils import (
+    as_2d,
+    as_column,
+    canonicalize_localization_inputs,
+    localization_loadings,
+    prepare_localization,
+    summarize_ratio_scores,
+)
 
 DEVICE = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
 toT = lambda a: torch.as_tensor(a, dtype=torch.float32, device=DEVICE)
@@ -82,12 +89,14 @@ def inverse_counterfactual_treatment_propensity(
     )
 
 
-def target_group_loading(G, sample_G):
+def target_group_loading(G, sample_G, target_share=None):
     """Return the normalized loading for the requested target population.
 
     ``G=0`` denotes the experimental population and ``G=1`` the
-    observational population. The returned array is always a column vector
-    and has empirical mean one.
+    observational population. The returned array is always a column vector.
+    If ``target_share`` is omitted, the share is estimated from ``G`` and the
+    loading has empirical mean one. Supplying the full-sample target share
+    keeps the same target normalization in every cross-fitting fold.
     """
     G = np.asarray(G, dtype=float).reshape(-1, 1)
 
@@ -100,7 +109,10 @@ def target_group_loading(G, sample_G):
     else:
         raise ValueError("sample_G must be one of 'all', 'G=0', or 'G=1'.")
 
-    target_share = np.mean(indicator)
+    if target_share is None:
+        target_share = np.mean(indicator)
+    else:
+        target_share = float(target_share)
     if not np.isfinite(target_share) or target_share <= 0:
         raise ValueError(
             f"No observations from the target population {sample_G} "
@@ -264,13 +276,19 @@ class DML_longterm:
                  fitargs1=None,
                  opts=None
                  ):
-        self.Y = Y
-        self.D = D
-        self.S = S
-        self.G = G
-        self.X1 = X1
-        self.V = V
-        self.v_values = v_values
+        self.Y = as_column(Y, "Y")
+        self.D = as_column(D, "D")
+        self.S = as_2d(S, "S")
+        self.G = as_column(G, "G")
+        self.X1 = None if X1 is None else as_2d(X1, "X1")
+        self._v_values_was_none = v_values is None
+        if V is None:
+            self.V = None
+            self.v_values = None
+        else:
+            self.V, self.v_values = canonicalize_localization_inputs(
+                V, v_values
+            )
         self.include_V = include_V
         self.ci_type = ci_type
         self.loc_kernel = loc_kernel
@@ -324,7 +342,11 @@ class DML_longterm:
             else:
                 self.X = self.X1
 
-        lengths = [len(Y), len(D), len(S), len(G), len(self.X)]
+        lengths = [
+            len(self.Y), len(self.D), len(self.S), len(self.G), len(self.X)
+        ]
+        if self.V is not None:
+            lengths.append(len(self.V))
         if len(set(lengths)) != 1:
             raise ValueError("All input vectors must have the same length.")
 
@@ -334,6 +356,23 @@ class DML_longterm:
 
         if self.sample_G not in ['all', 'G=0', 'G=1']:
             raise ValueError("sample_G must be one of 'all', 'G=0', or 'G=1'.")
+
+        group = np.asarray(self.G).reshape(-1)
+        if self.sample_G == "all":
+            self._target_mask = np.ones(group.shape[0], dtype=bool)
+            self._target_group_share = 1.0
+        else:
+            target_group = 0 if self.sample_G == "G=0" else 1
+            self._target_mask = group == target_group
+            self._target_group_share = float(np.mean(self._target_mask))
+            if (
+                not np.isfinite(self._target_group_share)
+                or self._target_group_share <= 0
+            ):
+                raise ValueError(
+                    f"No observations from the target population {self.sample_G} "
+                    "are available."
+                )
 
         if longterm_model not in ['latent_unconfounded', 'surrogacy']:
             warnings.warn(f"Invalid long-term model: {longterm_model}. Long-term model must be one of ['latent_unconfounded', 'surrogacy']. Using surrogacy instead.", UserWarning)
@@ -362,24 +401,32 @@ class DML_longterm:
                 warnings.warn(f"Invalid bw rule: {bw_loc}. Bandwidth rule must be one of ['silverman', 'scott'] or provided by the user. Using silverman instead.", UserWarning)
                 self.bw_loc = 'silverman'
 
+        self._loc_kernel_object = kernel_switch[self.loc_kernel]()
+        self._bw_loc_resolved = None
+        self._loc_normalizers = None
         if self.V is not None:
-            if self.v_values is None:
-                target_V = self.V
-                if self.sample_G in ["G=0", "G=1"]:
-                    target_group = 0 if self.sample_G == "G=0" else 1
-                    target_mask = np.asarray(self.G).reshape(-1) == target_group
-                    target_V = self.V[target_mask]
-                    if target_V.shape[0] == 0:
-                        raise ValueError(
-                            f"No observations from the target population {self.sample_G} "
-                            "are available to construct v_values."
-                        )
+            target_V = self.V[self._target_mask]
+            localization_values = self.v_values
+            if self._v_values_was_none:
                 warnings.warn(
                     "v_values is None. Computing localization around the mean "
                     "of V in the target population.",
                     UserWarning,
                 )
-                self.v_values = np.mean(target_V, axis=0)
+                localization_values = np.mean(target_V, axis=0)
+
+            (
+                self.V,
+                self.v_values,
+                self._bw_loc_resolved,
+                self._loc_normalizers,
+            ) = prepare_localization(
+                self.V,
+                localization_values,
+                self.bw_loc,
+                self._loc_kernel_object,
+                target_V=target_V,
+            )
 
     def _resolve_inner_n_jobs(self, inner_n_jobs):
         if inner_n_jobs is None:
@@ -417,61 +464,106 @@ class DML_longterm:
             Lower and upper bounds of the confidence intervals.
         """
         n = self.Y.shape[0]
+        theta = np.asarray(theta, dtype=float).reshape(-1)
+        theta_var = np.asarray(theta_var, dtype=float).reshape(-1)
+        theta_cov = np.atleast_2d(np.asarray(theta_cov, dtype=float))
 
         if self.ci_type == 'pointwise':
             z_alpha_half = norm.ppf(1 - self.alpha / 2)
-            margin_of_error = z_alpha_half * np.sqrt(theta_var / n)
+            margin_of_error = z_alpha_half * np.sqrt(
+                np.maximum(theta_var, 0.0) / n
+            )
         else:
-            S = np.diag(np.diag(theta_cov))
-            S_inv_sqrt = np.diag(1.0 / np.sqrt(np.diag(S)))
+            if theta_cov.shape != (theta.size, theta.size):
+                raise ValueError(
+                    "theta_cov must have one row and column per target."
+                )
+            if not np.all(np.isfinite(theta_cov)):
+                raise ValueError("theta_cov must contain only finite values.")
 
-            Sigma_hat = S_inv_sqrt @ theta_cov @ S_inv_sqrt
+            variances = np.maximum(np.diag(theta_cov), 0.0)
+            standard_deviations = np.sqrt(variances)
+            tolerance = np.finfo(float).eps * max(
+                1.0, float(np.max(standard_deviations, initial=0.0))
+            )
+            active = standard_deviations > tolerance
+            margin_of_error = np.zeros(theta.size, dtype=float)
 
-            # Sample Q from N(0, Sigma_hat)
-            Q_samples = np.random.multivariate_normal(np.zeros(theta.shape[0]), Sigma_hat, 5000)
+            if np.count_nonzero(active) == 1:
+                c_alpha = norm.ppf(1 - self.alpha / 2)
+                margin_of_error[active] = (
+                    c_alpha * standard_deviations[active] / np.sqrt(n)
+                )
+            elif np.any(active):
+                active_covariance = theta_cov[np.ix_(active, active)]
+                active_sd = standard_deviations[active]
+                correlation = active_covariance / np.outer(active_sd, active_sd)
+                correlation = (correlation + correlation.T) / 2
+                np.fill_diagonal(correlation, 1.0)
 
-            # Compute the (1 - alpha) quantile of the sampled |Q|_infty
-            Q_infinity_norms = np.max(np.abs(Q_samples), axis=1)
-            c_alpha = np.quantile(Q_infinity_norms, 1 - self.alpha)
-            margin_of_error = c_alpha * np.sqrt(np.diag(theta_cov) / n)
+                # Remove negligible negative eigenvalues caused by numerical
+                # covariance error, then renormalize to a correlation matrix.
+                eigenvalues, eigenvectors = np.linalg.eigh(correlation)
+                correlation = (
+                    eigenvectors
+                    @ np.diag(np.maximum(eigenvalues, 0.0))
+                    @ eigenvectors.T
+                )
+                projected_sd = np.sqrt(np.maximum(np.diag(correlation), 0.0))
+                correlation = correlation / np.outer(projected_sd, projected_sd)
+                correlation = (correlation + correlation.T) / 2
+                np.fill_diagonal(correlation, 1.0)
+
+                rng = np.random.default_rng(self.random_seed)
+                samples = rng.multivariate_normal(
+                    np.zeros(active_sd.size),
+                    correlation,
+                    size=5000,
+                    check_valid="ignore",
+                )
+                c_alpha = np.quantile(
+                    np.max(np.abs(samples), axis=1), 1 - self.alpha
+                )
+                margin_of_error[active] = c_alpha * active_sd / np.sqrt(n)
 
         lower_bound = theta - margin_of_error
         upper_bound = theta + margin_of_error
         return np.column_stack((lower_bound, upper_bound))
 
-    def _localization(self, V, v_val, bw, G=None):
+    def _localization(self, V, v_val=None, bw=None, G=None):
         """
         Perform localization using kernel density estimation.
 
         Parameters:
         V : array-like
             Localization covariates.
-        v_val : array-like
-            Values for localization.
-        bw : float
-            Bandwidth for localization.
+        v_val, bw : array-like, optional
+            A legacy one-off evaluation value and bandwidth. When omitted,
+            use the fixed run-level target-population specification.
         G : array-like, optional
             Sample indicator aligned with ``V``, where ``0`` denotes the
             experimental sample and ``1`` denotes the observational sample.
-            Required for fold-specific localization when ``sample_G`` is
+            Required for subgroup localization when ``sample_G`` is
             ``"G=0"`` or ``"G=1"``.
 
         Returns
         -------
         array-like
-            Fold-normalized kernel loadings for the selected target
-            population.
+            Kernel loadings normalized in the selected target population.
         """
-        if kernel_switch[self.loc_kernel]().domain is None:
-            def K(x):
-                return kernel_switch[self.loc_kernel]()(x)
-        else:
-            def K(x):
-                y = kernel_switch[self.loc_kernel]()(x)*((kernel_switch[self.loc_kernel]().domain[0]<=x) & (x<=kernel_switch[self.loc_kernel]().domain[1]))
-                return y
+        if v_val is None and bw is None:
+            return localization_loadings(
+                V,
+                self.v_values,
+                self._bw_loc_resolved,
+                self._loc_kernel_object,
+                self._loc_normalizers,
+            )
+        if v_val is None or bw is None:
+            raise ValueError("v_val and bw must be supplied together.")
 
-        v = (V-v_val)/bw
-        KK = np.prod(list(map(K, v)),axis=1)
+        V, v_values = canonicalize_localization_inputs(V, v_val)
+        target_V = V
         if self.sample_G in ["G=0", "G=1"]:
             if G is None:
                 if self.G is None or len(self.G) != len(V):
@@ -480,25 +572,30 @@ class DML_longterm:
                     )
                 G = self.G
             G = np.asarray(G).reshape(-1)
-            if G.shape[0] != KK.shape[0]:
+            if G.shape[0] != V.shape[0]:
                 raise ValueError("G and V must have the same number of observations.")
             target_group = 0 if self.sample_G == "G=0" else 1
-            target_KK = KK[G == target_group]
-            if target_KK.shape[0] == 0:
+            target_V = V[G == target_group]
+            if target_V.shape[0] == 0:
                 raise ValueError(
                     f"No observations from the target subgroup {self.sample_G} "
                     "are available for localization."
                 )
-            omega = np.mean(target_KK, axis=0)
-        else:
-            omega = np.mean(KK,axis=0)
-        if not np.all(np.isfinite(omega)) or np.any(np.abs(omega) <= np.finfo(float).eps):
-            raise ValueError(
-                "The localization normalizer is zero or nonfinite. "
-                "Choose a larger bandwidth or evaluation value with target-sample support."
-            )
-        ell = KK/omega
-        return ell.reshape(-1,1)
+
+        V, v_values, bandwidth, normalizers = prepare_localization(
+            V,
+            v_values,
+            bw,
+            self._loc_kernel_object,
+            target_V=target_V,
+        )
+        return localization_loadings(
+            V,
+            v_values,
+            bandwidth,
+            self._loc_kernel_object,
+            normalizers,
+        )
 
     def _nnpivfit_outcome_latent(self, train_Y, train_D, train_S, train_X, train_G,
                                  test_X, test_S):
@@ -1208,6 +1305,7 @@ class DML_longterm:
 
         # Obtain propensity score for action bridges
         if self.estimator == 'MR' or self.estimator == 'hybrid' or self.estimator == 'IPW':
+            target_share = self._target_group_share
             if self.longterm_model == 'surrogacy':
                 pr_d1_g0_sx, pr_d1_g0_x, pr_g1_sx, pr_g1_x, alfa = self._propensity_score_surrogacy(train_S, train_X, train_D, train_G,
                                                                   test_S, test_X)
@@ -1226,20 +1324,20 @@ class DML_longterm:
                     eta_0_hat = ((1-test_G) * (1-test_D) ) / ((1-pr_d1_g0_x) * (1-pr_g1_x))
                 if self.sample_G == "G=0":
                     # IPW to residuals of approximation of first outcome bridge
-                    alfa_1_hat = (test_G * pr_d1_g0_sx * (1-pr_g1_sx)) / (pr_g1_sx * pr_d1_g0_x * (1-np.mean(test_G)))
-                    alfa_0_hat = (test_G * (1-pr_d1_g0_sx) * (1-pr_g1_sx)) / (pr_g1_sx * (1-pr_d1_g0_x) * (1-np.mean(test_G)))
+                    alfa_1_hat = (test_G * pr_d1_g0_sx * (1-pr_g1_sx)) / (pr_g1_sx * pr_d1_g0_x * target_share)
+                    alfa_0_hat = (test_G * (1-pr_d1_g0_sx) * (1-pr_g1_sx)) / (pr_g1_sx * (1-pr_d1_g0_x) * target_share)
 
                     # IPW to residuals of approximation of second outcome bridge
-                    eta_1_hat = ((1-test_G) * test_D ) / (pr_d1_g0_x * (1-np.mean(test_G)))
-                    eta_0_hat = ((1-test_G) * (1-test_D) ) / ((1-pr_d1_g0_x) * (1-np.mean(test_G)))
+                    eta_1_hat = ((1-test_G) * test_D ) / (pr_d1_g0_x * target_share)
+                    eta_0_hat = ((1-test_G) * (1-test_D) ) / ((1-pr_d1_g0_x) * target_share)
                 if self.sample_G == "G=1":
                     # IPW to residuals of approximation of first outcome bridge
-                    alfa_1_hat = (test_G * pr_d1_g0_sx * (1-pr_g1_sx) * pr_g1_x) / (pr_g1_sx * pr_d1_g0_x * np.mean(test_G) * (1-pr_g1_x))
-                    alfa_0_hat = (test_G * (1-pr_d1_g0_sx) * (1-pr_g1_sx) * pr_g1_x) / (pr_g1_sx * (1-pr_d1_g0_x) * np.mean(test_G) * (1-pr_g1_x))
+                    alfa_1_hat = (test_G * pr_d1_g0_sx * (1-pr_g1_sx) * pr_g1_x) / (pr_g1_sx * pr_d1_g0_x * target_share * (1-pr_g1_x))
+                    alfa_0_hat = (test_G * (1-pr_d1_g0_sx) * (1-pr_g1_sx) * pr_g1_x) / (pr_g1_sx * (1-pr_d1_g0_x) * target_share * (1-pr_g1_x))
 
                     # IPW to residuals of approximation of second outcome bridge
-                    eta_1_hat = ((1-test_G) * test_D * pr_g1_x) / (pr_d1_g0_x * np.mean(test_G) * (1-pr_g1_x))
-                    eta_0_hat = ((1-test_G) * (1-test_D) * pr_g1_x) / ((1-pr_d1_g0_x) * np.mean(test_G) * (1-pr_g1_x))
+                    eta_1_hat = ((1-test_G) * test_D * pr_g1_x) / (pr_d1_g0_x * target_share * (1-pr_g1_x))
+                    eta_0_hat = ((1-test_G) * (1-test_D) * pr_g1_x) / ((1-pr_d1_g0_x) * target_share * (1-pr_g1_x))
             else:
                 if self.sample_G == "all":
                     pr_d1_g0_x, pr_g1_d1_sx, pr_g1_d0_sx, pr_g1_x, alfa = self._propensity_score_latent(train_S, train_X, train_D, train_G,
@@ -1277,16 +1375,16 @@ class DML_longterm:
                     sample_odds_g0 = (1-pr_g1_x) / pr_g1_x
                     alfa_1_hat = (
                         test_G * test_D * sample_odds_g0 * inverse_rho_1
-                        / (1-np.mean(test_G))
+                        / target_share
                     )
                     alfa_0_hat = (
                         test_G * (1-test_D) * sample_odds_g0 * inverse_rho_0
-                        / (1-np.mean(test_G))
+                        / target_share
                     )
 
                     # IPW to residuals of approximation of second outcome bridge
-                    eta_1_hat = ((1-test_G) * test_D ) / (pr_d1_g0_x * (1-np.mean(test_G)))
-                    eta_0_hat = ((1-test_G) * (1-test_D) ) / ((1-pr_d1_g0_x) * (1-np.mean(test_G)))
+                    eta_1_hat = ((1-test_G) * test_D ) / (pr_d1_g0_x * target_share)
+                    eta_0_hat = ((1-test_G) * (1-test_D) ) / ((1-pr_d1_g0_x) * target_share)
                 if self.sample_G == "G=1":
                     pr_d1_g0_x, pr_d1_g1_x, pr_g1_d1_x, pr_g1_d0_x, pr_g1_d1_sx, pr_g1_d0_sx, pr_g1_x, alfa = self._propensity_score_latent(train_S, train_X, train_D, train_G,
                                                                         test_S, test_X)
@@ -1299,16 +1397,18 @@ class DML_longterm:
                                     (pr_g1_x >= alfa) & (pr_g1_x <= 1 - alfa))[0]
 
                     # IPW to residuals of approximation of first outcome bridge
-                    alfa_1_hat = (test_G * test_D * (1-pr_g1_d1_sx) * pr_g1_d1_x) / (pr_g1_d1_sx * pr_d1_g1_x * np.mean(test_G) * (1-pr_g1_d1_x))
-                    alfa_0_hat = (test_G * (1-test_D) * (1-pr_g1_d0_sx) * pr_g1_d0_x) / (pr_g1_d0_sx * (1-pr_d1_g1_x) * np.mean(test_G) * (1-pr_g1_d0_x))
+                    alfa_1_hat = (test_G * test_D * (1-pr_g1_d1_sx) * pr_g1_d1_x) / (pr_g1_d1_sx * pr_d1_g1_x * target_share * (1-pr_g1_d1_x))
+                    alfa_0_hat = (test_G * (1-test_D) * (1-pr_g1_d0_sx) * pr_g1_d0_x) / (pr_g1_d0_sx * (1-pr_d1_g1_x) * target_share * (1-pr_g1_d0_x))
 
                     # IPW to residuals of approximation of second outcome bridge
-                    eta_1_hat = ((1-test_G) * test_D * pr_g1_x) / (pr_d1_g0_x * np.mean(test_G) * (1-pr_g1_x))
-                    eta_0_hat = ((1-test_G) * (1-test_D) * pr_g1_x) / ((1-pr_d1_g0_x) * np.mean(test_G) * (1-pr_g1_x))
+                    eta_1_hat = ((1-test_G) * test_D * pr_g1_x) / (pr_d1_g0_x * target_share * (1-pr_g1_x))
+                    eta_0_hat = ((1-test_G) * (1-test_D) * pr_g1_x) / ((1-pr_d1_g0_x) * target_share * (1-pr_g1_x))
 
         # The target loading multiplies theta in the centered influence
         # function. It is one for the pooled target and q_G for a subgroup.
-        theta_loading = target_group_loading(test_G, self.sample_G)
+        theta_loading = target_group_loading(
+            test_G, self.sample_G, self._target_group_share
+        )
 
         # Calculate the uncentered score function depending on the estimator
         if self.estimator == 'MR':
@@ -1338,39 +1438,13 @@ class DML_longterm:
 
         # Localization
         if self.V is not None:
-            if isinstance(self.bw_loc, str):
-                bandwidth_V = train_V
-                if self.sample_G in ["G=0", "G=1"]:
-                    target_group = 0 if self.sample_G == "G=0" else 1
-                    target_mask = np.asarray(train_G).reshape(-1) == target_group
-                    bandwidth_V = train_V[target_mask]
-                    if bandwidth_V.shape[0] == 0:
-                        raise ValueError(
-                            f"No observations from the target subgroup {self.sample_G} "
-                            "are available for bandwidth calculation."
-                        )
-                if self.bw_loc == 'silverman':
-                    IQR = np.percentile(bandwidth_V, 75, axis=0)-np.percentile(bandwidth_V, 25, axis=0)
-                    A = np.min([np.std(bandwidth_V, axis=0), IQR/1.349], axis=0)
-                    n = bandwidth_V.shape[0]
-                    bw = .9 * A * n ** (-0.2)
-                elif self.bw_loc == 'scott':
-                    A = np.std(bandwidth_V, axis=0)
-                    n = bandwidth_V.shape[0]
-                    bw = 1.059 * A * n ** (-0.2)
-            else:
-                bw_loc = np.atleast_1d(self.bw_loc)
-                if len(bw_loc)==1:
-                    bw = np.ones((train_V.shape[1]))*bw_loc[0]
-                else:
-                    if len(bw_loc)==train_V.shape[1]:
-                        bw = bw_loc
-                    else:
-                        warnings.warn(f"bw_loc has incorrect length. Using first element instead.", UserWarning)
-                        bw = np.ones((train_V.shape[1]))*bw_loc[0]
-
-            ell = [self._localization(test_V, v, bw, G=test_G) for v in self.v_values]
-            ell = np.column_stack(ell)
+            ell = localization_loadings(
+                test_V,
+                self.v_values,
+                self._bw_loc_resolved,
+                self._loc_kernel_object,
+                self._loc_normalizers,
+            )
 
             psi_hat = ell * psi_hat
             theta_loading = ell * theta_loading
