@@ -40,6 +40,7 @@ import torch
 from nnpiv.rkhs import ApproxRKHSIVCV
 from joblib import Parallel, delayed
 from scipy.optimize import minimize_scalar
+from ._utils import summarize_ratio_scores
 
 device = torch.cuda.current_device() if torch.cuda.is_available() else None
 
@@ -119,8 +120,9 @@ class DML_npiv:
         Z (array-like): Instrumental variable.
         W (array-like): Negative control outcome.
         X1 (array-like or None): Additional covariates.
-        V (array-like or None): Localization covariates.
-        v_values (array-like or None): Values for localization.
+        V (array-like or None): Localization covariates. Supplying ``V`` changes
+            the estimand to a finite-bandwidth kernel-ratio target.
+        v_values (array-like or None): Evaluation points for localization.
         include_V (bool): Whether to include localization covariates in the model.
         ci_type (str): Type of confidence interval ('pointwise', 'uniform').
         loc_kernel (str): Kernel for localization. Options include 'gau', 'epa', 'uni', and 'tri'.
@@ -245,9 +247,10 @@ class DML_npiv:
         theta : array-like
             Estimated values.
         theta_var : array-like
-            Variance of the estimates.
+            Estimated variance of the centered influence values.
         theta_cov : array-like
-            Covariance matrix of the estimates.
+            Estimated covariance of the centered influence values across
+            evaluation points.
 
         Returns
         -------
@@ -292,7 +295,7 @@ class DML_npiv:
         Returns
         -------
         array-like
-            Weights for localization.
+            Fold-normalized kernel loadings.
         """
         if kernel_switch[self.loc_kernel]().domain is None:
             def K(x):
@@ -305,6 +308,11 @@ class DML_npiv:
         v = (V-v_val)/bw
         KK = np.prod(list(map(K, v)),axis=1)
         omega = np.mean(KK,axis=0)
+        if not np.all(np.isfinite(omega)) or np.any(np.abs(omega) <= np.finfo(float).eps):
+            raise ValueError(
+                "The localization normalizer is zero or nonfinite. "
+                "Choose a larger bandwidth or evaluation value with sample support."
+            )
         ell = KK/omega
         return ell.reshape(-1,1)
 
@@ -475,8 +483,9 @@ class DML_npiv:
 
         Returns
         -------
-        array-like
-            Estimated moment functions for the test data.
+        tuple
+            Uncentered moment functions and the corresponding target loading
+            for the test data.
         """
         train_Y, test_Y = train_data[0], test_data[0]
         train_D, test_D = train_data[1], test_data[1]
@@ -526,6 +535,10 @@ class DML_npiv:
         if self.estimator == 'IPW':
             psi_hat = test_D * q_1_hat * test_Y - (1 - test_D) * q_0_hat * test_Y
 
+        # The loading multiplying theta is one for an average target and ell
+        # for a data-normalized kernel-ratio target.
+        theta_loading = np.ones((psi_hat.shape[0], 1), dtype=float)
+
         # Localization
         if self.V is not None:
             if isinstance(self.bw_loc, str):
@@ -539,24 +552,26 @@ class DML_npiv:
                     n = train_V.shape[0]
                     bw = 1.059 * A * n ** (-0.2)
             else:
-                if len(self.bw_loc)==1:
-                    bw = np.ones((train_V.shape[1]))*self.bw_loc[0]
+                bw_loc = np.atleast_1d(self.bw_loc)
+                if len(bw_loc)==1:
+                    bw = np.ones((train_V.shape[1]))*bw_loc[0]
                 else:
-                    if len(self.bw_loc)==train_V.shape[1]:
-                        bw = self.bw_loc
+                    if len(bw_loc)==train_V.shape[1]:
+                        bw = bw_loc
                     else:
                         warnings.warn(f"bw_loc has incorrect length. Using first element instead.", UserWarning)
-                        bw = np.ones((train_V.shape[1]))*self.bw_loc[0]
+                        bw = np.ones((train_V.shape[1]))*bw_loc[0]
 
             ell = [self._localization(test_V, v, bw) for v in self.v_values]
             ell = np.column_stack(ell)
             psi_hat = ell * psi_hat
+            theta_loading = ell * theta_loading
 
         # Print progress bar using tqdm
         if self.verbose==True:
             self.progress_bar.update(1)
 
-        return psi_hat
+        return psi_hat, theta_loading
 
 
     def _split_and_estimate(self):
@@ -566,7 +581,11 @@ class DML_npiv:
         Returns
         -------
         tuple
-            Estimated values, variances, and confidence intervals.
+            Without ``V``, returns the estimate, influence-value variance, and
+            confidence interval. With ``V``, returns estimates, the
+            influence-value covariance matrix across evaluation points, and
+            confidence intervals. Variance and covariance are not divided by
+            the sample size.
         """
         theta = []
         theta_var = []
@@ -603,10 +622,11 @@ class DML_npiv:
                 self.progress_bar.close()
 
             # Calculate the average of psi_hat_array for each rep
-            psi_hat_array = np.concatenate(fold_results, axis=0)
-            theta_rep = np.mean(psi_hat_array, axis=0)
-            theta_var_rep = np.var(psi_hat_array, axis=0, ddof=1)
-            theta_cov_rep = np.cov(psi_hat_array, rowvar=False)
+            psi_hat_array = np.concatenate([result[0] for result in fold_results], axis=0)
+            theta_loading_array = np.concatenate([result[1] for result in fold_results], axis=0)
+            theta_rep, theta_var_rep, theta_cov_rep = summarize_ratio_scores(
+                psi_hat_array, theta_loading_array
+            )
 
             # Store results for each rep
             theta.append(theta_rep)
@@ -631,7 +651,11 @@ class DML_npiv:
         Returns
         -------
         tuple
-            Estimated values, variances, and confidence intervals.
+            Without ``V``, returns the estimate, influence-value variance, and
+            confidence interval. With ``V``, returns estimates, the
+            influence-value covariance matrix across evaluation points, and
+            confidence intervals. Variance and covariance are not divided by
+            the sample size.
         """
         theta, theta_var, confidence_interval, theta_cov_hat = self._split_and_estimate()
         if self.V is None:

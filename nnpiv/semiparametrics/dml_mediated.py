@@ -49,6 +49,7 @@ import torch
 from nnpiv.rkhs import RKHS2IVCV, ApproxRKHSIVCV, RKHS2IVL2
 from joblib import Parallel, delayed, cpu_count
 from scipy.optimize import minimize_scalar
+from ._utils import summarize_ratio_scores
 
 DEVICE = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
 toT = lambda a: torch.as_tensor(a, dtype=torch.float32, device=DEVICE)
@@ -63,7 +64,8 @@ def _get(opts, key, default):
     """
     Retrieve the value associated with 'key' in 'opts', or return 'default' if not present.
 
-    Parameters:
+    Parameters
+    ----------
     opts : dict
         Dictionary of options.
     key : str
@@ -128,7 +130,8 @@ class DML_mediated:
     """
     Debiased Machine Learning for mediation analysis (DML-mediation) class with joint/sequential model fitting.
 
-    Parameters:
+    Parameters
+    ----------
     Y : array-like
         Outcome variable.
     D : array-like
@@ -142,17 +145,22 @@ class DML_mediated:
     X1 : array-like, optional
         Additional covariates.
     V : array-like, optional
-        Localization covariates.
+        Localization covariates. Supplying ``V`` changes the estimand to a
+        finite-bandwidth kernel-ratio target.
     v_values : array-like, optional
-        Values for localization.
+        Localization evaluation values. For one-dimensional ``V``, a
+        one-dimensional array denotes multiple evaluation points. For
+        multivariate ``V``, rows denote evaluation points and columns must
+        correspond to the columns of ``V``.
     include_V : bool, optional
         Include localization covariates in the model.
     ci_type : str, optional
         Type of confidence interval ('pointwise', 'uniform').
     loc_kernel : str, optional
         Kernel for localization. Options include 'gau', 'epa', 'uni', 'tri', etc.
-    bw_loc : str, optional
-        Bandwidth for localization.
+    bw_loc : str, scalar, or array-like, optional
+        Bandwidth rule or user-supplied localization bandwidth. A scalar is
+        applied to every localization covariate.
     estimator : str, optional
         Estimator type ('MR', 'OR', 'hybrid', 'IPW').
     estimand : str, optional
@@ -243,8 +251,13 @@ class DML_mediated:
         self.W = W
         self.Z = Z
         self.X1 = X1
-        self.V = V
-        self.v_values = v_values
+        self.V = None if V is None else np.asarray(V)
+        if self.V is not None:
+            if self.V.ndim == 1:
+                self.V = self.V.reshape(-1, 1)
+            elif self.V.ndim != 2:
+                raise ValueError("V must be a one- or two-dimensional array.")
+        self.v_values = None if v_values is None else np.asarray(v_values)
         self.include_V = include_V
         self.ci_type = ci_type
         self.loc_kernel = loc_kernel
@@ -330,6 +343,35 @@ class DML_mediated:
         if len(set(lengths)) != 1:
             raise ValueError("All input vectors must have the same length.")
 
+        if self.V is not None:
+            n_localization_covariates = self.V.shape[1]
+            if self.v_values is None:
+                warnings.warn(f"v_values is None. Computing localization around mean(V).", UserWarning)
+                self.v_values = np.mean(self.V, axis=0, keepdims=True)
+            elif self.v_values.ndim == 0:
+                if n_localization_covariates != 1:
+                    raise ValueError(
+                        "A scalar v_values is valid only for a one-dimensional V."
+                    )
+                self.v_values = self.v_values.reshape(1, 1)
+            elif self.v_values.ndim == 1:
+                if n_localization_covariates == 1:
+                    self.v_values = self.v_values.reshape(-1, 1)
+                elif self.v_values.size == n_localization_covariates:
+                    self.v_values = self.v_values.reshape(1, -1)
+                else:
+                    raise ValueError(
+                        "For multivariate V, a one-dimensional v_values must "
+                        "contain one value per localization covariate."
+                    )
+            elif (
+                self.v_values.ndim != 2
+                or self.v_values.shape[1] != n_localization_covariates
+            ):
+                raise ValueError(
+                    "v_values must have one column per localization covariate."
+                )
+
         if self.estimator not in ['MR', 'OR', 'hybrid', 'IPW']:
             warnings.warn(f"Invalid estimator: {estimator}. Estimator must be one of ['MR', 'OR', 'hybrid', 'IPW']. Using MR instead.", UserWarning)
             self.estimator = 'MR'
@@ -345,7 +387,7 @@ class DML_mediated:
         if self.ci_type not in ['pointwise', 'uniform']:
             warnings.warn(f"Invalid confidence interval type: {ci_type}. Confidence interval type must be one of ['pointwise', 'uniform']. Using pointwise instead.", UserWarning)
             self.ci_type = 'pointwise'
-        if self.ci_type == 'uniform' and (self.v_values is None or self.v_values.shape[0] == 1 or self.V is None):
+        if self.ci_type == 'uniform' and (self.V is None or self.v_values is None or self.v_values.shape[0] == 1):
             warnings.warn(f"Uniform confidence intervals are not supported for less than one localization value. Using pointwise instead.", UserWarning)
             self.ci_type = 'pointwise'
 
@@ -357,11 +399,6 @@ class DML_mediated:
             if self.bw_loc not in ['silverman', 'scott']:
                 warnings.warn(f"Invalid bw rule: {bw_loc}. Bandwidth rule must be one of ['silverman', 'scott'] or provided by the user. Using silverman instead.", UserWarning)
                 self.bw_loc = 'silverman'
-
-        if self.V is not None:
-            if self.v_values is None:
-                warnings.warn(f"v_values is None. Computing localization around mean(V).", UserWarning)
-                self.v_values = np.mean(self.V, axis=0)
 
     def _resolve_inner_n_jobs(self, inner_n_jobs):
         if inner_n_jobs is None:
@@ -388,9 +425,10 @@ class DML_mediated:
         theta : array-like
             Estimated values.
         theta_var : array-like
-            Variance of the estimates.
+            Estimated variance of the centered influence values.
         theta_cov : array-like
-            Covariance matrix of the estimates.
+            Estimated covariance of the centered influence values across
+            evaluation points.
 
         Returns
         -------
@@ -435,7 +473,7 @@ class DML_mediated:
         Returns
         -------
         array-like
-            Weights for localization.
+            Fold-normalized kernel loadings.
         """
         if kernel_switch[self.loc_kernel]().domain is None:
             def K(x):
@@ -448,6 +486,11 @@ class DML_mediated:
         v = (V-v_val)/bw
         KK = np.prod(list(map(K, v)),axis=1)
         omega = np.mean(KK,axis=0)
+        if not np.all(np.isfinite(omega)) or np.any(np.abs(omega) <= np.finfo(float).eps):
+            raise ValueError(
+                "The localization normalizer is zero or nonfinite. "
+                "Choose a larger bandwidth or evaluation value with sample support."
+            )
         ell = KK/omega
         return ell.reshape(-1,1)
 
@@ -1082,8 +1125,9 @@ class DML_mediated:
 
         Returns
         -------
-        array-like
-            Estimated moment functions for the test data.
+        tuple
+            Estimated moment functions and the loading multiplying the target
+            parameter for the test data.
         """
         train_Y, test_Y = train_data[0], test_data[0]
         train_D, test_D = train_data[1], test_data[1]
@@ -1122,6 +1166,9 @@ class DML_mediated:
             psi_hat = self._scores_mediated(train_Y, train_D, train_M, train_W, train_X, train_Z,
                                             test_Y, test_D, test_M, test_W, test_X, test_Z)
 
+        # The parameter loading is one for an average target and ell for a
+        # data-normalized kernel-ratio target.
+        theta_loading = np.ones((psi_hat.shape[0], 1), dtype=float)
 
         # Localization
         if self.V is not None:
@@ -1136,24 +1183,26 @@ class DML_mediated:
                     n = train_V.shape[0]
                     bw = 1.059 * A * n ** (-0.2)
             else:
-                if len(self.bw_loc)==1:
-                    bw = np.ones((train_V.shape[1]))*self.bw_loc[0]
+                bw_loc = np.atleast_1d(self.bw_loc)
+                if len(bw_loc)==1:
+                    bw = np.ones((train_V.shape[1]))*bw_loc[0]
                 else:
-                    if len(self.bw_loc)==train_V.shape[1]:
-                        bw = self.bw_loc
+                    if len(bw_loc)==train_V.shape[1]:
+                        bw = bw_loc
                     else:
                         warnings.warn(f"bw_loc has incorrect length. Using first element instead.", UserWarning)
-                        bw = np.ones((train_V.shape[1]))*self.bw_loc[0]
+                        bw = np.ones((train_V.shape[1]))*bw_loc[0]
 
             ell = [self._localization(test_V, v, bw) for v in self.v_values]
             ell = np.column_stack(ell)
             psi_hat = ell * psi_hat
+            theta_loading = ell * theta_loading
 
         # Print progress bar using tqdm
         if self.verbose==True:
             self.progress_bar.update(1)
 
-        return psi_hat
+        return psi_hat, theta_loading
 
 
     def _split_and_estimate(self):
@@ -1163,7 +1212,11 @@ class DML_mediated:
         Returns
         -------
         tuple
-            Estimated values, variances, and confidence intervals.
+            Without ``V``, returns the estimate, influence-value variance, and
+            confidence interval. With ``V``, returns estimates, the
+            influence-value covariance matrix across evaluation points, and
+            confidence intervals. Variance and covariance are not divided by
+            the sample size.
         """
         theta = []
         theta_var = []
@@ -1199,11 +1252,12 @@ class DML_mediated:
             if self.verbose==True:
                 self.progress_bar.close()
 
-            # Calculate the average of psi_hat_array for each rep
-            psi_hat_array = np.concatenate(fold_results, axis=0)
-            theta_rep = np.mean(psi_hat_array, axis=0)
-            theta_var_rep = np.var(psi_hat_array, axis=0, ddof=1)
-            theta_cov_rep = np.cov(psi_hat_array, rowvar=False)
+            # Solve the ratio moment and summarize its centered influence values.
+            psi_hat_array = np.concatenate([result[0] for result in fold_results], axis=0)
+            theta_loading_array = np.concatenate([result[1] for result in fold_results], axis=0)
+            theta_rep, theta_var_rep, theta_cov_rep = summarize_ratio_scores(
+                psi_hat_array, theta_loading_array
+            )
 
             # Store results for each rep
             theta.append(theta_rep)
@@ -1228,7 +1282,11 @@ class DML_mediated:
         Returns
         -------
         tuple
-            Estimated values, variances, and confidence intervals.
+            Without ``V``, returns the estimate, influence-value variance, and
+            confidence interval. With ``V``, returns estimates, the
+            influence-value covariance matrix across evaluation points, and
+            confidence intervals. Variance and covariance are not divided by
+            the sample size.
         """
         theta, theta_var, confidence_interval, theta_cov_hat = self._split_and_estimate()
         if self.V is None:

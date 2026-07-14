@@ -85,6 +85,13 @@ Semiparametric APIs
      - `Y, D1, D2, X1, X2` (+ options)
      - `theta, var, ci`
 
+For all four classes, supplying ``V`` selects finite-bandwidth localized ratio
+targets. In that case the second returned object is the estimated covariance of
+the correctly centered influence values across evaluation points. Without
+``V``, it is the influence-value variance. These quantities are divided by the
+sample size internally when confidence intervals are constructed; they are not
+the variance or covariance of the estimator itself.
+
 .. toctree::
    :maxdepth: 2
 

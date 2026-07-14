@@ -9,13 +9,17 @@ If the analyst has access to an additional observational sample that includes th
 
    Formally, define the long-term counterfactual :math:`\mathbb{E}\left[Y^{(d)}\right]` as the counterfactual mean outcome for the full population in the thought experiment in which everyone is assigned treatment value :math:`D=d`.
 
-The long-term effect defined for the experimental or observational subpopulation is similar, introducing the fixed local weighting :math:`\ell(G)=\mathbb{1}_{G=0} / \mathbb{P}(G=0)` or :math:`\ell(G)=\mathbb{1}_{G=1} / \mathbb{P}(G=1)`, respectively.
+Effects for the experimental or observational subpopulation use target-specific influence-function weights. Select them with ``sample_G="G=0"`` or ``sample_G="G=1"``, respectively. Subgroup targeting is not obtained merely by multiplying the pooled-population score by a group indicator: the leading regression term and the residual-correction weights change with the target population.
 
 .. note::
 
    In addition to the population ATE, the implementation supports **conditional long‑term ATEs** within the experimental or observational subpopulations:
    :math:`\mathbb{E}[Y^{(1)}-Y^{(0)} \mid G=0]` and :math:`\mathbb{E}[Y^{(1)}-Y^{(0)} \mid G=1]`.
-   Set ``sample_G="G=0"`` or ``sample_G="G=1"`` to target these effects; use ``sample_G="all"`` for the population ATE. Identification and influence‑function estimators (with the associated nuisance components) for the Surrogacy and Latent‑Unconfounded models are given in **Theorem 3.1** and **Theorem B.2** of Chen & Ritzwoller (2023).
+   Set ``sample_G="G=0"`` or ``sample_G="G=1"`` to target these effects; use ``sample_G="all"`` for the pooled-population target. Identification and influence‑function estimators (with the associated nuisance components) for the Surrogacy and Latent‑Unconfounded models are given in **Theorem 3.1** and **Theorem B.2** of Chen & Ritzwoller (2023).
+
+.. admonition:: Project STAR application
+
+   The Project STAR application sets ``sample_G="G=0"`` so that the proposed estimators target the experimental Project STAR population, while retaining both the STAR and NYC observations for nuisance estimation. For the heterogeneous analysis by prior ability, prior ability is included in the nuisance models, and the evaluation percentiles, bandwidth, and kernel normalization are computed using Project STAR observations with nonmissing prior ability. Thus, localization is specific to the target subgroup even though the NYC observations remain in the estimation sample to learn the long-term outcome mechanism.
 
 Surrogacy Model
 ----------------
@@ -28,7 +32,7 @@ Define the regression and the conditional distribution
    \mathbb{P}(m \mid d, x, g) & = \mathbb{P}(M=m \mid D=d, X=x, G=g)
    \end{aligned}
 
-the four nuisances associated to the model are
+For the pooled target, ``sample_G="all"``, the four nuisances associated with the model are
 
 .. math::
    \begin{aligned}
@@ -58,7 +62,7 @@ When we observe :math:`D` in the observational sample, the regression becomes
    \mathbb{P}(m \mid d, x, g) & = \mathbb{P}(M=m \mid D=d, X=x, G=g)
    \end{aligned}
 
-and the nuisances under this model are given by
+For the pooled target, ``sample_G="all"``, the nuisances under this model are given by
 
 .. math::
    \begin{aligned}
@@ -76,11 +80,113 @@ The long-term counterfactual is
    & =\mathbb{E}\left[\nu_0\left(W\right)+\alpha_0(W)\left\{Y-\delta_0(W)\right\}+\eta_0(W)\left\{\delta_0(W)-\nu_0(W)\right\}\right] 
    \end{aligned}
 
+Experimental-population target
+------------------------------
+
+Let :math:`\pi_0=\mathbb{P}(G=0)` and
+
+.. math::
+   q_0(W)=\frac{\mathbb{1}_{G=0}}{\pi_0}.
+
+For the Surrogacy model, write
+:math:`e_d(x)=\mathbb{P}(D=d\mid X=x,G=0)`,
+:math:`e_d(m,x)=\mathbb{P}(D=d\mid M=m,X=x,G=0)`, and
+:math:`s(m,x)=\mathbb{P}(G=1\mid M=m,X=x)`.  The experimental-target
+residual weights are
+
+.. math::
+   \begin{aligned}
+   \alpha_d^{(0)}(W)
+   &=\frac{\mathbb{1}_{G=1}e_d(M,X)\{1-s(M,X)\}}
+           {s(M,X)e_d(X)\pi_0},\\
+   \eta_d^{(0)}(W)
+   &=\frac{\mathbb{1}_{G=0}\mathbb{1}_{D=d}}
+           {e_d(X)\pi_0}.
+   \end{aligned}
+
+For the Latent-Unconfounded model, let
+:math:`\gamma(x)=\mathbb{P}(G=1\mid X=x)` and define the counterfactual
+treatment propensity
+
+.. math::
+   \rho_d(m,x)
+   =\mathbb{P}\{D=d\mid M(d)=m,X=x,G=1\}.
+
+Although :math:`M(d)` is not jointly observed with both treatment states, this
+propensity is identified by the observable Bayes-rule representation
+
+.. math::
+   \rho_d(m,x)
+   =\frac{\mathbb{P}(G=1\mid M=m,D=d,X=x)}
+          {\mathbb{P}(G=0\mid M=m,D=d,X=x)}
+    \frac{\mathbb{P}(G=0\mid D=d,X=x)}
+         {\mathbb{P}(G=1\mid D=d,X=x)}
+    \mathbb{P}(D=d\mid X=x,G=1).
+
+This is the propensity estimated by the corresponding ``sample_G="G=0"``
+branch; it is generally not the ordinary observed-data propensity
+:math:`\mathbb{P}(D=d\mid M=m,X=x,G=1)`.  Then
+
+.. math::
+   \begin{aligned}
+   \alpha_d^{(0)}(W)
+   &=\frac{\mathbb{1}_{G=1}\mathbb{1}_{D=d}}{\pi_0}
+     \frac{1-\gamma(X)}{\gamma(X)}
+     \frac{1}{\rho_d(M,X)},\\
+   \eta_d^{(0)}(W)
+   &=\frac{\mathbb{1}_{G=0}\mathbb{1}_{D=d}}
+           {e_d(X)\pi_0}.
+   \end{aligned}
+
+For either model, the uncentered score for treatment arm :math:`d` is
+
+.. math::
+   H_d^{(0)}(W)
+   =q_0(W)\nu_d(X)
+    +\alpha_d^{(0)}(W)\{Y-\delta_d(W)\}
+    +\eta_d^{(0)}(W)\{\delta_d(W)-\nu_d(X)\}.
+
+Target-specific localization
+----------------------------
+
+For a localization variable :math:`V`, evaluation value :math:`v`, and
+bandwidth :math:`\lambda`, the experimental-target weight is
+
+.. math::
+   \ell_{\lambda,v}^{(0)}(V)
+   =\frac{K\{(V-v)/\lambda\}}
+          {\mathbb{E}[K\{(V-v)/\lambda\}\mid G=0]}.
+
+The finite-bandwidth target is a ratio.  Consequently, if
+:math:`H_{d,\lambda}^{(0)}=\ell_{\lambda,v}^{(0)}H_d^{(0)}`, its centered
+influence value is
+
+.. math::
+   H_{d,\lambda}^{(0)}(W)
+   -q_0(W)\ell_{\lambda,v}^{(0)}(V)\theta_{d,\lambda}^{(0)},
+
+not :math:`H_{d,\lambda}^{(0)}-\theta_{d,\lambda}^{(0)}`.  The implementation
+uses this ratio centering for pointwise and uniform covariance estimation.
+For a treatment contrast, subtract the corresponding expressions for
+:math:`d=0` from those for :math:`d=1`.
+
+The observational-population construction is analogous, with
+:math:`q_1(W)=\mathbb{1}_{G=1}/\mathbb{P}(G=1)` and kernel normalization
+conditional on :math:`G=1`. For the pooled target, :math:`q=1` and the kernel
+is normalized over the pooled population.
+
+When ``sample_G`` selects a subgroup, automatic bandwidth selection and kernel
+normalization use that subgroup. If ``v_values`` is omitted, the implementation
+localizes at the target-subgroup mean; explicitly supplied values should be
+chosen from the intended target distribution.
+Setting ``include_V=True`` appends :math:`V` to the covariates used by the
+nuisance models in addition to using it for localization.
+
 .. autosummary::
    :toctree: _autosummary
    :template: class.rst
 
-   dml_longterm.DML_longterm
+   nnpiv.semiparametrics.DML_longterm
 
 **References**
 

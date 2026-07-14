@@ -61,7 +61,22 @@ The first-period nuisance :math:`\nu_d(W)` can be fitted by regressing :math:`\h
    + \frac{\mathbb{1}(D_2=d_2)}{\hat{\pi}_{2d}(S_2)}
      \{Y-\hat{\delta}_d(W)\}.
 
-Localization works as in the other semiparametric DML classes. Since dynamic effects localize on period-1 variables, ``V`` is appended to ``X1`` when ``include_V=True`` and is also used to form local kernel weights.
+Localization works as in the other semiparametric DML classes. Since dynamic
+effects localize on period-1 variables, ``V`` is appended to ``X1`` when
+``include_V=True`` and is also used to form local kernel weights. For the
+uncentered path-specific score :math:`\psi_d`, the finite-bandwidth target is
+
+.. math::
+
+   \theta_{d,\lambda}(v)
+   =\frac{\mathbb{E}[K\{(V-v)/\lambda\}\psi_d]}
+          {\mathbb{E}[K\{(V-v)/\lambda\}]}.
+
+Writing :math:`\ell_{\lambda,v}=K/\mathbb{E}[K]`, its centered influence value
+is :math:`\ell_{\lambda,v}\{\psi_d-\theta_{d,\lambda}(v)\}`. When
+``CHIM=True``, the overlap indicator multiplies both the score and its loading,
+so estimation remains a ratio moment for the overlap-restricted localized
+target. Inference treats the estimated trimming rule as fixed.
 
 The outcome stage is always nested/sequential. By default, ``DML_dynamic`` uses an RKHS IV learner for both :math:`\delta_d` and :math:`\nu_d`, matching the default style of the other DML classes. Outcome learners should follow the package NPIV-style interface ``fit(Z, T, Y)`` and ``predict(T)``; linear notebook examples use ``nnpiv.tsls.tsls`` for this reason. To use distinct learners for the two nested regressions, pass them as ``model1=[delta_model, nu_model]``. Neural network learners can be used by setting ``nn_1=True`` for both stages or ``nn_1=[delta_is_nn, nu_is_nn]`` for stage-specific control. The propensity score model defaults to ``LogisticRegression()``; overlap trimming is handled through ``CHIM=True``.
 
@@ -69,7 +84,7 @@ The outcome stage is always nested/sequential. By default, ``DML_dynamic`` uses 
    :toctree: _autosummary
    :template: class.rst
 
-   dml_dynamic.DML_dynamic
+   nnpiv.semiparametrics.DML_dynamic
  
 **References**
 

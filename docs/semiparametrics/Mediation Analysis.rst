@@ -39,11 +39,30 @@ Our DML framework allows for various types of estimands. Here, we describe each 
   .. math::
      E[Y(1, M(0))]
 
+Localization
+------------
+
+Let :math:`H` be the uncentered score for the selected mediation estimand; for
+effects defined by treatment-arm contrasts, the contrast is formed before
+localization. When ``V`` is supplied, ``DML_mediated`` estimates
+
+.. math::
+
+   \theta_\lambda(v)
+   =\frac{\mathbb{E}[K\{(V-v)/\lambda\}H]}
+          {\mathbb{E}[K\{(V-v)/\lambda\}]}.
+
+With :math:`\ell_{\lambda,v}=K/\mathbb{E}[K]`, the centered influence value is
+:math:`\ell_{\lambda,v}\{H-\theta_\lambda(v)\}`. In particular, inference
+centers the localized score by :math:`\ell_{\lambda,v}\theta_\lambda(v)`, not
+by the unweighted scalar :math:`\theta_\lambda(v)`. The same ratio centering is
+used for pointwise and uniform confidence intervals.
+
 .. autosummary::
    :toctree: _autosummary
    :template: class.rst
 
-   dml_mediated.DML_mediated
+   nnpiv.semiparametrics.DML_mediated
 
 **References**
 

@@ -70,6 +70,35 @@ Interpretation: fold-wise orthogonalization reduces sensitivity to nuisance
 estimation errors, enabling practical inference with flexible first-stage
 learners.
 
+Localized Ratio Targets
+-----------------------
+
+Let :math:`H_i(v)` denote an uncentered orthogonal-score contribution and let
+:math:`a_i(v)` denote the loading that defines the target. The estimator solves
+
+.. math::
+
+   \mathbb{E}_n[H_i(v)-a_i(v)\theta(v)]=0,
+   \qquad
+   \widehat\theta(v)
+   =\frac{\mathbb{E}_n[H_i(v)]}{\mathbb{E}_n[a_i(v)]}.
+
+The corresponding estimated influence value is
+
+.. math::
+
+   \widehat\phi_i(v)
+   =\frac{H_i(v)-a_i(v)\widehat\theta(v)}
+          {\mathbb{E}_n[a_i(v)]}.
+
+For an ordinary average, :math:`a_i=1`. For kernel localization,
+:math:`H_i(v)=\ell_i(v)H_i` and :math:`a_i(v)=\ell_i(v)`, so when the kernel
+loading has empirical mean one,
+:math:`\widehat\phi_i(v)=\ell_i(v)\{H_i-\widehat\theta(v)\}`. A subgroup target
+uses a normalized group loading :math:`q_i`; a localized subgroup target uses
+:math:`q_i\ell_i(v)`. Thus localization changes not only the numerator of the
+point estimate but also the centering used for variance and covariance.
+
 Progressive Recipe
 ------------------
 
@@ -87,7 +116,8 @@ Progressive Recipe
    theta, var, ci = dml.dml()
 
    # Step 3: inspect estimate and uncertainty
-   print(theta, np.sqrt(var), ci)
+   se = np.sqrt(var / len(Y))
+   print(theta, se, ci)
 
 Model-Specific Semiparametric APIs
 ----------------------------------

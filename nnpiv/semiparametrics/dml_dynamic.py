@@ -42,6 +42,7 @@ from tqdm import tqdm
 import torch
 
 from nnpiv.rkhs import RKHSIVL2
+from ._utils import summarize_ratio_scores
 
 
 DEVICE = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
@@ -160,7 +161,9 @@ class DML_dynamic:
     X2 : array-like, optional
         Intermediate covariates observed after D1 and before D2.
     V : array-like, optional
-        Localization covariates. These are period-1 variables and are appended to X1 when include_V is True.
+        Localization covariates. Supplying ``V`` changes the estimand to a
+        finite-bandwidth kernel-ratio target. These are period-1 variables and
+        are appended to X1 when include_V is True.
     v_values : array-like, optional
         Values for localization.
     include_V : bool, optional
@@ -438,9 +441,10 @@ class DML_dynamic:
         theta : array-like
             Estimated values.
         theta_var : array-like
-            Variance of the estimates.
+            Estimated variance of the centered influence values.
         theta_cov : array-like
-            Covariance matrix of the estimates.
+            Estimated covariance of the centered influence values across
+            evaluation points.
 
         Returns
         -------
@@ -485,7 +489,7 @@ class DML_dynamic:
         Returns
         -------
         array-like
-            Weights for localization.
+            Fold-normalized kernel loadings.
         """
         if kernel_switch[self.loc_kernel]().domain is None:
             def K(x):
@@ -499,6 +503,12 @@ class DML_dynamic:
         v = (V-v_val)/bw
         KK = np.prod(list(map(K, v)),axis=1)
         omega = np.mean(KK,axis=0)
+        if not np.isfinite(omega) or abs(omega) <= np.finfo(float).eps:
+            raise ValueError(
+                "The localization kernel has a nonfinite or zero empirical "
+                "normalizer. Choose a localization value with sample support "
+                "or increase the bandwidth."
+            )
         ell = KK/omega
         return ell.reshape(-1,1)
 
@@ -718,8 +728,9 @@ class DML_dynamic:
 
         Returns
         -------
-        array-like
-            Estimated moment functions for the test data.
+        tuple
+            Uncentered score contributions and the corresponding parameter
+            loadings for the test data.
         """
         train_Y, test_Y = train_data[0], test_data[0]
         train_D1, test_D1 = train_data[1], test_data[1]
@@ -766,6 +777,8 @@ class DML_dynamic:
             alpha_hat = ind_path / (pi1_hat * pi2_hat)
             psi_hat = alpha_hat * test_Y
 
+        theta_loading = np.ones((psi_hat.shape[0], 1), dtype=float)
+
         # Localization
         if self.V is not None:
             if isinstance(self.bw_loc, str):
@@ -794,14 +807,21 @@ class DML_dynamic:
             ell = [self._localization(test_V, v, bw) for v in self.v_values]
             ell = np.column_stack(ell)
             psi_hat = ell * psi_hat
+            theta_loading = ell
 
         if self.estimator == 'MR' or self.estimator == 'IPW':
-            psi_hat = psi_hat[mask]
+            # Retain the full sample for inference and represent CHIM trimming
+            # in both sides of the ratio moment.  This targets
+            # E[m * ell * H] / E[m * ell], where m is the overlap indicator.
+            overlap_loading = np.zeros((psi_hat.shape[0], 1), dtype=float)
+            overlap_loading[mask] = 1.0
+            psi_hat = overlap_loading * psi_hat
+            theta_loading = overlap_loading * theta_loading
 
         if self.verbose == True:
             self.progress_bar.update(1)
 
-        return psi_hat
+        return psi_hat, theta_loading
 
     def _split_and_estimate(self):
         """
@@ -810,7 +830,11 @@ class DML_dynamic:
         Returns
         -------
         tuple
-            Estimated values, variances, and confidence intervals.
+            Without ``V``, returns the estimate, influence-value variance, and
+            confidence interval. With ``V``, returns estimates, the
+            influence-value covariance matrix across evaluation points, and
+            confidence intervals. Variance and covariance are not divided by
+            the sample size.
         """
         theta = []
         theta_var = []
@@ -846,10 +870,15 @@ class DML_dynamic:
             if self.verbose == True:
                 self.progress_bar.close()
 
-            psi_hat_array = np.concatenate(fold_results, axis=0)
-            theta_rep = np.mean(psi_hat_array, axis=0)
-            theta_var_rep = np.var(psi_hat_array, axis=0, ddof=1)
-            theta_cov_rep = np.cov(psi_hat_array, rowvar=False)
+            psi_hat_array = np.concatenate(
+                [result[0] for result in fold_results], axis=0
+            )
+            theta_loading_array = np.concatenate(
+                [result[1] for result in fold_results], axis=0
+            )
+            theta_rep, theta_var_rep, theta_cov_rep = summarize_ratio_scores(
+                psi_hat_array, theta_loading_array
+            )
 
             theta.append(theta_rep)
             theta_var.append(theta_var_rep)
@@ -870,7 +899,11 @@ class DML_dynamic:
         Returns
         -------
         tuple
-            Estimated values, variances, and confidence intervals.
+            Without ``V``, returns the estimate, influence-value variance, and
+            confidence interval. With ``V``, returns estimates, the
+            influence-value covariance matrix across evaluation points, and
+            confidence intervals. Variance and covariance are not divided by
+            the sample size.
         """
         theta, theta_var, confidence_interval, theta_cov_hat = self._split_and_estimate()
         if self.V is None:

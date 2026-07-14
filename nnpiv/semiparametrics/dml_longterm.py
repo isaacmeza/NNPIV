@@ -48,15 +48,73 @@ import torch
 from nnpiv.rkhs import RKHS2IVCV, ApproxRKHSIVCV, RKHS2IVL2
 from joblib import Parallel, delayed, cpu_count
 from scipy.optimize import minimize_scalar
+from ._utils import summarize_ratio_scores
 
 DEVICE = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
 toT = lambda a: torch.as_tensor(a, dtype=torch.float32, device=DEVICE)
+
+
+def inverse_counterfactual_treatment_propensity(
+    sample_given_treatment_surrogate,
+    sample_given_treatment,
+    treatment_given_observational,
+):
+    """Identify ``1 / P(D=d | M(d), X, G=1)`` from observables.
+
+    The identity is the Bayes-rule representation used for the experimental-
+    population latent-unconfounded influence function. The probability inputs
+    are, respectively, ``P(G=1 | D=d,M,X)``, ``P(G=1 | D=d,X)``, and
+    ``P(D=d | X,G=1)``.
+    """
+    sample_given_treatment_surrogate = np.asarray(
+        sample_given_treatment_surrogate, dtype=float
+    )
+    sample_given_treatment = np.asarray(sample_given_treatment, dtype=float)
+    treatment_given_observational = np.asarray(
+        treatment_given_observational, dtype=float
+    )
+    return (
+        (1.0 - sample_given_treatment_surrogate)
+        / sample_given_treatment_surrogate
+        * sample_given_treatment
+        / (1.0 - sample_given_treatment)
+        / treatment_given_observational
+    )
+
+
+def target_group_loading(G, sample_G):
+    """Return the normalized loading for the requested target population.
+
+    ``G=0`` denotes the experimental population and ``G=1`` the
+    observational population. The returned array is always a column vector
+    and has empirical mean one.
+    """
+    G = np.asarray(G, dtype=float).reshape(-1, 1)
+
+    if sample_G == "all":
+        return np.ones_like(G, dtype=float)
+    if sample_G == "G=0":
+        indicator = 1.0 - G
+    elif sample_G == "G=1":
+        indicator = G
+    else:
+        raise ValueError("sample_G must be one of 'all', 'G=0', or 'G=1'.")
+
+    target_share = np.mean(indicator)
+    if not np.isfinite(target_share) or target_share <= 0:
+        raise ValueError(
+            f"No observations from the target population {sample_G} "
+            "are present in this fold."
+        )
+    return indicator / target_share
+
 
 def _get(opts, key, default):
     """
     Retrieve the value associated with 'key' in 'opts', or return 'default' if not present.
 
-    Parameters:
+    Parameters
+    ----------
     opts : dict
         Dictionary of options.
     key : str
@@ -121,7 +179,8 @@ class DML_longterm:
     """
     Debiased Machine Learning for long-term causal analysis (DML-longterm) class with joint/sequential model fitting.
 
-    Parameters:
+    Parameters
+    ----------
     Y : array-like
         Outcome variable.
     D : array-like
@@ -129,11 +188,13 @@ class DML_longterm:
     S : array-like
         Surrogate variable.
     G : array-like
-        Group variable.
+        Sample indicator: ``G=0`` denotes the experimental sample and ``G=1``
+        denotes the observational sample.
     X1 : array-like, optional
         Additional covariates.
     V : array-like, optional
-        Localization covariates.
+        Localization covariates. Supplying ``V`` changes the estimand to a
+        finite-bandwidth kernel-ratio target in the selected population.
     v_values : array-like, optional
         Values for localization.
     include_V : bool, optional
@@ -153,7 +214,11 @@ class DML_longterm:
     nn_1 : bool /(list), optional
         Use neural network for the outcome stage.
     sample_G : str, optional
-        Estimate treatment effect for the indicated subpopulation (i.e., "G=0", "G=1", "all")
+        Population targeted by the treatment-effect estimate: ``"G=0"`` for
+        the experimental population, ``"G=1"`` for the observational
+        population, or ``"all"`` for the pooled population (the default).
+        Selecting a subgroup changes the target population but retains both
+        samples for nuisance estimation.
     alpha : float, optional
         Significance level for confidence intervals.
     n_folds : int, optional
@@ -267,6 +332,9 @@ class DML_longterm:
             warnings.warn(f"Invalid estimator: {estimator}. Estimator must be one of ['MR', 'OR', 'hybrid', 'IPW']. Using MR instead.", UserWarning)
             self.estimator = 'MR'
 
+        if self.sample_G not in ['all', 'G=0', 'G=1']:
+            raise ValueError("sample_G must be one of 'all', 'G=0', or 'G=1'.")
+
         if longterm_model not in ['latent_unconfounded', 'surrogacy']:
             warnings.warn(f"Invalid long-term model: {longterm_model}. Long-term model must be one of ['latent_unconfounded', 'surrogacy']. Using surrogacy instead.", UserWarning)
             self.longterm_model = 'surrogacy'
@@ -296,8 +364,22 @@ class DML_longterm:
 
         if self.V is not None:
             if self.v_values is None:
-                warnings.warn(f"v_values is None. Computing localization around mean(V).", UserWarning)
-                self.v_values = np.mean(self.V, axis=0)
+                target_V = self.V
+                if self.sample_G in ["G=0", "G=1"]:
+                    target_group = 0 if self.sample_G == "G=0" else 1
+                    target_mask = np.asarray(self.G).reshape(-1) == target_group
+                    target_V = self.V[target_mask]
+                    if target_V.shape[0] == 0:
+                        raise ValueError(
+                            f"No observations from the target population {self.sample_G} "
+                            "are available to construct v_values."
+                        )
+                warnings.warn(
+                    "v_values is None. Computing localization around the mean "
+                    "of V in the target population.",
+                    UserWarning,
+                )
+                self.v_values = np.mean(target_V, axis=0)
 
     def _resolve_inner_n_jobs(self, inner_n_jobs):
         if inner_n_jobs is None:
@@ -324,9 +406,10 @@ class DML_longterm:
         theta : array-like
             Estimated values.
         theta_var : array-like
-            Variance of the estimates.
+            Estimated variance of the centered influence values.
         theta_cov : array-like
-            Covariance matrix of the estimates.
+            Estimated covariance of the centered influence values across
+            evaluation points.
 
         Returns
         -------
@@ -356,7 +439,7 @@ class DML_longterm:
         upper_bound = theta + margin_of_error
         return np.column_stack((lower_bound, upper_bound))
 
-    def _localization(self, V, v_val, bw):
+    def _localization(self, V, v_val, bw, G=None):
         """
         Perform localization using kernel density estimation.
 
@@ -367,11 +450,17 @@ class DML_longterm:
             Values for localization.
         bw : float
             Bandwidth for localization.
+        G : array-like, optional
+            Sample indicator aligned with ``V``, where ``0`` denotes the
+            experimental sample and ``1`` denotes the observational sample.
+            Required for fold-specific localization when ``sample_G`` is
+            ``"G=0"`` or ``"G=1"``.
 
         Returns
         -------
         array-like
-            Weights for localization.
+            Fold-normalized kernel loadings for the selected target
+            population.
         """
         if kernel_switch[self.loc_kernel]().domain is None:
             def K(x):
@@ -383,7 +472,31 @@ class DML_longterm:
 
         v = (V-v_val)/bw
         KK = np.prod(list(map(K, v)),axis=1)
-        omega = np.mean(KK,axis=0)
+        if self.sample_G in ["G=0", "G=1"]:
+            if G is None:
+                if self.G is None or len(self.G) != len(V):
+                    raise ValueError(
+                        "G must be provided and aligned with V for subgroup localization."
+                    )
+                G = self.G
+            G = np.asarray(G).reshape(-1)
+            if G.shape[0] != KK.shape[0]:
+                raise ValueError("G and V must have the same number of observations.")
+            target_group = 0 if self.sample_G == "G=0" else 1
+            target_KK = KK[G == target_group]
+            if target_KK.shape[0] == 0:
+                raise ValueError(
+                    f"No observations from the target subgroup {self.sample_G} "
+                    "are available for localization."
+                )
+            omega = np.mean(target_KK, axis=0)
+        else:
+            omega = np.mean(KK,axis=0)
+        if not np.all(np.isfinite(omega)) or np.any(np.abs(omega) <= np.finfo(float).eps):
+            raise ValueError(
+                "The localization normalizer is zero or nonfinite. "
+                "Choose a larger bandwidth or evaluation value with target-sample support."
+            )
         ell = KK/omega
         return ell.reshape(-1,1)
 
@@ -1017,8 +1130,9 @@ class DML_longterm:
 
         Returns
         -------
-        array-like
-            Estimated moment functions for the test data.
+        tuple
+            Uncentered moment functions and the corresponding target loading
+            for the test data.
         """
         train_Y, test_Y = train_data[0], test_data[0]
         train_D, test_D = train_data[1], test_data[1]
@@ -1154,8 +1268,21 @@ class DML_longterm:
                                     (pr_g1_x >= alfa) & (pr_g1_x <= 1 - alfa))[0]
 
                     # IPW to residuals of approximation of first outcome bridge
-                    alfa_1_hat = (test_G * test_D * (1-pr_g1_d1_sx) * (1-pr_g1_x) * pr_g1_d1_x) / (pr_g1_d1_sx * pr_d1_g1_x * (1-pr_g1_x) * (1-pr_g1_d1_x) * (1-np.mean(test_G)))
-                    alfa_0_hat = (test_G * (1-test_D) * (1-pr_g1_d0_sx) * (1-pr_g1_x) * pr_g1_d0_x) / (pr_g1_d0_sx * (1-pr_d1_g1_x) * (1-pr_g1_x) * (1-pr_g1_d0_x) * (1-np.mean(test_G)))
+                    inverse_rho_1 = inverse_counterfactual_treatment_propensity(
+                        pr_g1_d1_sx, pr_g1_d1_x, pr_d1_g1_x
+                    )
+                    inverse_rho_0 = inverse_counterfactual_treatment_propensity(
+                        pr_g1_d0_sx, pr_g1_d0_x, 1-pr_d1_g1_x
+                    )
+                    sample_odds_g0 = (1-pr_g1_x) / pr_g1_x
+                    alfa_1_hat = (
+                        test_G * test_D * sample_odds_g0 * inverse_rho_1
+                        / (1-np.mean(test_G))
+                    )
+                    alfa_0_hat = (
+                        test_G * (1-test_D) * sample_odds_g0 * inverse_rho_0
+                        / (1-np.mean(test_G))
+                    )
 
                     # IPW to residuals of approximation of second outcome bridge
                     eta_1_hat = ((1-test_G) * test_D ) / (pr_d1_g0_x * (1-np.mean(test_G)))
@@ -1179,26 +1306,30 @@ class DML_longterm:
                     eta_1_hat = ((1-test_G) * test_D * pr_g1_x) / (pr_d1_g0_x * np.mean(test_G) * (1-pr_g1_x))
                     eta_0_hat = ((1-test_G) * (1-test_D) * pr_g1_x) / ((1-pr_d1_g0_x) * np.mean(test_G) * (1-pr_g1_x))
 
-        # Calculate the score function depending on the estimator
+        # The target loading multiplies theta in the centered influence
+        # function. It is one for the pooled target and q_G for a subgroup.
+        theta_loading = target_group_loading(test_G, self.sample_G)
+
+        # Calculate the uncentered score function depending on the estimator
         if self.estimator == 'MR':
             if self.sample_G == "all":
                 y1_hat = nu_1_hat + alfa_1_hat * (test_Y - delta_d1_hat) + eta_1_hat * (delta_d1_hat - nu_1_hat)
                 y0_hat = nu_0_hat + alfa_0_hat * (test_Y - delta_d0_hat) + eta_0_hat * (delta_d0_hat - nu_0_hat)
             if self.sample_G == "G=0":
-                y1_hat = ((1-test_G) / np.mean(1-test_G)) * nu_1_hat + alfa_1_hat * (test_Y - delta_d1_hat) + eta_1_hat * (delta_d1_hat - nu_1_hat)
-                y0_hat = ((1-test_G) / np.mean(1-test_G)) * nu_0_hat + alfa_0_hat * (test_Y - delta_d0_hat) + eta_0_hat * (delta_d0_hat - nu_0_hat)
+                y1_hat = theta_loading * nu_1_hat + alfa_1_hat * (test_Y - delta_d1_hat) + eta_1_hat * (delta_d1_hat - nu_1_hat)
+                y0_hat = theta_loading * nu_0_hat + alfa_0_hat * (test_Y - delta_d0_hat) + eta_0_hat * (delta_d0_hat - nu_0_hat)
             if self.sample_G == "G=1":
-                y1_hat = (test_G / np.mean(test_G)) * nu_1_hat + alfa_1_hat * (test_Y - delta_d1_hat) + eta_1_hat * (delta_d1_hat - nu_1_hat)
-                y0_hat = (test_G / np.mean(test_G)) * nu_0_hat + alfa_0_hat * (test_Y - delta_d0_hat) + eta_0_hat * (delta_d0_hat - nu_0_hat)
+                y1_hat = theta_loading * nu_1_hat + alfa_1_hat * (test_Y - delta_d1_hat) + eta_1_hat * (delta_d1_hat - nu_1_hat)
+                y0_hat = theta_loading * nu_0_hat + alfa_0_hat * (test_Y - delta_d0_hat) + eta_0_hat * (delta_d0_hat - nu_0_hat)
 
             psi_hat = y1_hat - y0_hat
         if self.estimator == 'OR':
             if self.sample_G == "all":
                 psi_hat = nu_1_hat - nu_0_hat
             if self.sample_G == "G=0":
-                psi_hat = ((1-test_G) / np.mean(1-test_G)) * (nu_1_hat - nu_0_hat)
+                psi_hat = theta_loading * (nu_1_hat - nu_0_hat)
             if self.sample_G == "G=1":
-                psi_hat = (test_G / np.mean(test_G)) * (nu_1_hat - nu_0_hat)
+                psi_hat = theta_loading * (nu_1_hat - nu_0_hat)
 
         if self.estimator == 'hybrid':
             psi_hat = eta_1_hat * delta_d1_hat - eta_0_hat * delta_d0_hat
@@ -1208,37 +1339,55 @@ class DML_longterm:
         # Localization
         if self.V is not None:
             if isinstance(self.bw_loc, str):
+                bandwidth_V = train_V
+                if self.sample_G in ["G=0", "G=1"]:
+                    target_group = 0 if self.sample_G == "G=0" else 1
+                    target_mask = np.asarray(train_G).reshape(-1) == target_group
+                    bandwidth_V = train_V[target_mask]
+                    if bandwidth_V.shape[0] == 0:
+                        raise ValueError(
+                            f"No observations from the target subgroup {self.sample_G} "
+                            "are available for bandwidth calculation."
+                        )
                 if self.bw_loc == 'silverman':
-                    IQR = np.percentile(train_V, 75, axis=0)-np.percentile(train_V, 25, axis=0)
-                    A = np.min([np.std(train_V, axis=0), IQR/1.349], axis=0)
-                    n = train_V.shape[0]
+                    IQR = np.percentile(bandwidth_V, 75, axis=0)-np.percentile(bandwidth_V, 25, axis=0)
+                    A = np.min([np.std(bandwidth_V, axis=0), IQR/1.349], axis=0)
+                    n = bandwidth_V.shape[0]
                     bw = .9 * A * n ** (-0.2)
                 elif self.bw_loc == 'scott':
-                    A = np.std(train_V, axis=0)
-                    n = train_V.shape[0]
+                    A = np.std(bandwidth_V, axis=0)
+                    n = bandwidth_V.shape[0]
                     bw = 1.059 * A * n ** (-0.2)
             else:
-                if len(self.bw_loc)==1:
-                    bw = np.ones((train_V.shape[1]))*self.bw_loc[0]
+                bw_loc = np.atleast_1d(self.bw_loc)
+                if len(bw_loc)==1:
+                    bw = np.ones((train_V.shape[1]))*bw_loc[0]
                 else:
-                    if len(self.bw_loc)==train_V.shape[1]:
-                        bw = self.bw_loc
+                    if len(bw_loc)==train_V.shape[1]:
+                        bw = bw_loc
                     else:
                         warnings.warn(f"bw_loc has incorrect length. Using first element instead.", UserWarning)
-                        bw = np.ones((train_V.shape[1]))*self.bw_loc[0]
+                        bw = np.ones((train_V.shape[1]))*bw_loc[0]
 
-            ell = [self._localization(test_V, v, bw) for v in self.v_values]
+            ell = [self._localization(test_V, v, bw, G=test_G) for v in self.v_values]
             ell = np.column_stack(ell)
 
             psi_hat = ell * psi_hat
+            theta_loading = ell * theta_loading
 
         if self.estimator == 'MR' or self.estimator == 'hybrid' or self.estimator == 'IPW':
-            psi_hat = psi_hat[mask]
+            # Keep the full fold so inference continues to use the original
+            # sample size.  CHIM defines an overlap-restricted ratio target,
+            # so its indicator must multiply both numerator and loading.
+            overlap_loading = np.zeros((psi_hat.shape[0], 1), dtype=float)
+            overlap_loading[mask] = 1.0
+            psi_hat = overlap_loading * psi_hat
+            theta_loading = overlap_loading * theta_loading
 
         if self.verbose==True:
             self.progress_bar.update(1)
 
-        return psi_hat
+        return psi_hat, theta_loading
 
 
     def _split_and_estimate(self):
@@ -1248,7 +1397,11 @@ class DML_longterm:
         Returns
         -------
         tuple
-            Estimated values, variances, and confidence intervals.
+            Without ``V``, returns the estimate, influence-value variance, and
+            confidence interval. With ``V``, returns estimates, the
+            influence-value covariance matrix across evaluation points, and
+            confidence intervals. Variance and covariance are not divided by
+            the sample size.
         """
         theta = []
         theta_var = []
@@ -1280,10 +1433,11 @@ class DML_longterm:
             if self.verbose==True:
                 self.progress_bar.close()
 
-            psi_hat_array = np.concatenate(fold_results, axis=0)
-            theta_rep = np.mean(psi_hat_array, axis=0)
-            theta_var_rep = np.var(psi_hat_array, axis=0, ddof=1)
-            theta_cov_rep = np.cov(psi_hat_array, rowvar=False)
+            psi_hat_array = np.concatenate([result[0] for result in fold_results], axis=0)
+            theta_loading_array = np.concatenate([result[1] for result in fold_results], axis=0)
+            theta_rep, theta_var_rep, theta_cov_rep = summarize_ratio_scores(
+                psi_hat_array, theta_loading_array
+            )
 
             theta.append(theta_rep)
             theta_var.append(theta_var_rep)
@@ -1306,7 +1460,11 @@ class DML_longterm:
         Returns
         -------
         tuple
-            Estimated values, variances, and confidence intervals.
+            Without ``V``, returns the estimate, influence-value variance, and
+            confidence interval. With ``V``, returns estimates, the
+            influence-value covariance matrix across evaluation points, and
+            confidence intervals. Variance and covariance are not divided by
+            the sample size.
         """
         theta, theta_var, confidence_interval, theta_cov_hat = self._split_and_estimate()
         if self.V is None:
