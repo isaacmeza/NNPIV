@@ -1,16 +1,21 @@
 """
-This module provides implementations of RKHS Instrumental Variable (IV) estimators.
+Frozen legacy implementations of the sequential RKHS IV estimators.
+
+This module snapshots ``rkhsiv.py`` at repository commit
+``38e36748f7a77ee1a64d45ae7437ae3501fadcb8`` before the controlled
+``RKHSIV`` revision. Numerical code is unchanged; only class names are
+suffixed with ``_legacy`` so old and new estimators can be imported together.
 
 Classes:
-    _BaseRKHSIV: Base class for RKHS IV methods.
-    RKHSIV: RKHS IV estimator.
-    RKHSIVCV: RKHS IV estimator with cross-validation.
-    RKHSIVL2: RKHS IV estimator with L2 regularization.
-    RKHSIVL2CV: RKHS IV estimator with L2 regularization and cross-validation.
-    ApproxRKHSIV: Approximate RKHS IV estimator using kernel approximations.
-    ApproxRKHSIVCV: Approximate RKHS IV estimator with cross-validation using kernel approximations.
-    ApproxRKHSIVL2: Approximate RKHS IV estimator with L2 regularization.
-    ApproxRKHSIVL2CV: Approximate RKHS IV estimator with L2 regularization and cross-validation.
+    _BaseRKHSIV_legacy: Frozen base class for RKHS IV methods.
+    RKHSIV_legacy: Frozen RKHS IV estimator.
+    RKHSIVCV_legacy: Frozen cross-validated RKHS IV estimator.
+    RKHSIVL2_legacy: Frozen empirical-L2 RKHS IV estimator.
+    RKHSIVL2CV_legacy: Frozen cross-validated empirical-L2 estimator.
+    ApproxRKHSIV_legacy: Frozen approximate RKHS IV estimator.
+    ApproxRKHSIVCV_legacy: Frozen cross-validated approximate estimator.
+    ApproxRKHSIVL2_legacy: Frozen approximate empirical-L2 estimator.
+    ApproxRKHSIVL2CV_legacy: Frozen cross-validated approximate L2 estimator.
 """
 
 # Licensed under the MIT License.
@@ -18,11 +23,7 @@ Classes:
 from sklearn.metrics.pairwise import pairwise_kernels, euclidean_distances
 from sklearn.model_selection import KFold
 from sklearn.kernel_approximation import Nystroem, RBFSampler
-from sklearn.utils import _safe_indexing
 import numpy as np
-
-
-_DEFAULT_PINV_RCOND = 1e-15
 
 
 def _check_auto(param):
@@ -65,7 +66,7 @@ def _sqrt_psd_matrix(K):
     return (evecs * np.sqrt(evals)) @ evecs.T
 
 
-class _BaseRKHSIV:
+class _BaseRKHSIV_legacy:
     """
     Base class for RKHS IV methods.
 
@@ -125,55 +126,8 @@ class _BaseRKHSIV:
         return pairwise_kernels(X, Y, metric=self.kernel,
                                 filter_params=True, **params)
 
-    def _resolve_fitted_gamma(self, X, kernel_role):
-        """Resolve one kernel bandwidth from fitting data."""
-        if callable(self.kernel):
-            return None
-        if not _check_auto(self.gamma):
-            return self.gamma
 
-        pairwise_dists = euclidean_distances(X, X)
-        median_dist = float(np.median(pairwise_dists))
-        if not np.isfinite(median_dist) or median_dist <= 0:
-            raise ValueError(
-                f"Cannot resolve `gamma='auto'` for the {kernel_role} kernel: "
-                "the median pairwise distance in the fitting data must be "
-                "finite and strictly positive."
-            )
-        # Use the same median-distance convention as the base kernel helper.
-        return 1.0 / (2 * median_dist)
-
-    def _get_kernel_at_fitted_gamma(self, X, Y=None, fitted_gamma=None):
-        """Evaluate a kernel using the bandwidth fixed during ``fit``."""
-        if callable(self.kernel):
-            params = self.kernel_params or {}
-        else:
-            params = {
-                "gamma": fitted_gamma,
-                "degree": self.degree,
-                "coef0": self.coef0,
-            }
-        return pairwise_kernels(
-            X, Y, metric=self.kernel, filter_params=True, **params
-        )
-
-    @staticmethod
-    def _symmetric_range_basis(K):
-        """Return the positive eigenspace retained at the default pinv cutoff."""
-        K = np.asarray(K, dtype=float)
-        K = 0.5 * (K + K.T)
-        eigenvalues, eigenvectors = np.linalg.eigh(K)
-        scale = (
-            float(np.max(np.abs(eigenvalues)))
-            if eigenvalues.size
-            else 0.0
-        )
-        cutoff = _DEFAULT_PINV_RCOND * scale
-        retained = eigenvalues > cutoff
-        return eigenvectors[:, retained], eigenvalues[retained]
-
-
-class RKHSIV(_BaseRKHSIV):
+class RKHSIV_legacy(_BaseRKHSIV_legacy):
     """
     RKHS IV estimator.
 
@@ -202,15 +156,6 @@ class RKHSIV(_BaseRKHSIV):
         self.delta_exp = delta_exp
         self.alpha_scale = alpha_scale
 
-    @staticmethod
-    def _compute_instrument_operator(Kf, n, delta):
-        """Compute ``M_delta`` without explicitly forming a matrix inverse."""
-        RootKf = _sqrt_psd_matrix(Kf)
-        regularized_Kf = (
-            Kf / (2 * n * delta**2) + np.eye(n) / 2
-        )
-        return RootKf @ np.linalg.solve(regularized_Kf, RootKf)
-
     def fit(self, Z, T, Y):
         """
         Fit the RKHS IV estimator.
@@ -228,18 +173,13 @@ class RKHSIV(_BaseRKHSIV):
         delta = self._get_delta(n)
         alpha = self._get_alpha(delta, self._get_alpha_scale())
 
-        self.gamma_t_ = self._resolve_fitted_gamma(T, "treatment")
-        self.gamma_z_ = self._resolve_fitted_gamma(Z, "instrument")
-        Kh = self._get_kernel_at_fitted_gamma(
-            T, fitted_gamma=self.gamma_t_
-        )
-        Kf = self._get_kernel_at_fitted_gamma(
-            Z, fitted_gamma=self.gamma_z_
-        )
+        Kh = self._get_kernel(T)
+        Kf = self._get_kernel(Z)
 
-        M = self._compute_instrument_operator(Kf, n, delta)
+        RootKf = _sqrt_psd_matrix(Kf)
+        M = RootKf @ np.linalg.inv(
+            Kf / (2 * n * delta**2) + np.eye(n) / 2) @ RootKf
         self.T = T.copy()
-        # NumPy's default pseudoinverse tolerance defines the numerical rank.
         self.a = np.linalg.pinv(Kh @ M @ Kh + alpha * Kh) @ Kh @ M @ Y
         return self
 
@@ -253,14 +193,7 @@ class RKHSIV(_BaseRKHSIV):
         Returns:
             array-like: Predicted outcomes.
         """
-        if hasattr(self, "gamma_t_"):
-            kernel = self._get_kernel_at_fitted_gamma(
-                T_test, Y=self.T, fitted_gamma=self.gamma_t_
-            )
-        else:
-            # Some subclasses construct kernels without storing a bandwidth.
-            kernel = self._get_kernel(T_test, Y=self.T)
-        return kernel @ self.a
+        return self._get_kernel(T_test, Y=self.T) @ self.a
 
     def score(self, Z, T, Y, delta='auto'):
         """
@@ -277,37 +210,16 @@ class RKHSIV(_BaseRKHSIV):
         """
         Y = _to_column_vector(Y)
         n = Y.shape[0]
-
-        if not hasattr(self, "gamma_z_"):
-            # Subclasses without a stored bandwidth use their configured
-            # kernel construction and sample-dependent critical radius.
-            score_delta = self._get_delta(n)
-            Kf = self._get_kernel(Z)
-            RootKf = _sqrt_psd_matrix(Kf)
-            M = RootKf @ np.linalg.inv(
-                Kf / (2 * n * score_delta**2) + np.eye(n) / 2
-            ) @ RootKf
-            Y_pred = self.predict(T)
-            return (
-                _to_scalar((Y - Y_pred).T @ M @ (Y - Y_pred)) / n**2
-            )
-
-        if _check_auto(delta):
-            delta = self._get_delta(n)
-        else:
-            delta = float(delta)
-            if not np.isfinite(delta) or delta <= 0:
-                raise ValueError("`delta` must be finite and strictly positive.")
-
-        Kf = self._get_kernel_at_fitted_gamma(
-            Z, fitted_gamma=self.gamma_z_
-        )
-        M = self._compute_instrument_operator(Kf, n, delta)
+        delta = self._get_delta(n)
+        Kf = self._get_kernel(Z)
+        RootKf = _sqrt_psd_matrix(Kf)
+        M = RootKf @ np.linalg.inv(
+            Kf / (2 * n * delta**2) + np.eye(n) / 2) @ RootKf
         Y_pred = self.predict(T)
         return _to_scalar((Y - Y_pred).T @ M @ (Y - Y_pred)) / n**2
 
 
-class RKHSIVCV(RKHSIV):
+class RKHSIVCV_legacy(RKHSIV_legacy):
     """
     RKHS IV estimator with cross-validation.
 
@@ -352,74 +264,34 @@ class RKHSIVCV(RKHSIV):
             self: Fitted estimator.
         """
         Y = _to_column_vector(Y)
-        Z = np.asarray(Z)
-        T = np.asarray(T)
         n = Y.shape[0]
 
+        Kh = self._get_kernel(T)
+        Kf = self._get_kernel(Z)
+
+        RootKf = _sqrt_psd_matrix(Kf)
+
         alpha_scales = self._get_alpha_scales()
-        fold_specific_gamma = (
-            not callable(self.kernel) and _check_auto(self.gamma)
-        )
-
-        if not fold_specific_gamma:
-            gamma_t = self._resolve_fitted_gamma(T, "treatment")
-            gamma_z = self._resolve_fitted_gamma(Z, "instrument")
-            Kh = self._get_kernel_at_fitted_gamma(
-                T, fitted_gamma=gamma_t
-            )
-            Kf = self._get_kernel_at_fitted_gamma(
-                Z, fitted_gamma=gamma_z
-            )
-
+        n_train = n * (self.cv - 1) / self.cv
+        n_test = n / self.cv
+        delta_train = self._get_delta(n_train)
+        delta_test = self._get_delta(n_test)
+        delta = self._get_delta(n)
         scores = []
-        for train, test in KFold(n_splits=self.cv).split(Z):
-            n_train = len(train)
-            n_test = len(test)
-            delta_train = self._get_delta(n_train)
-            delta_test = self._get_delta(n_test)
-
-            if fold_specific_gamma:
-                gamma_t_train = self._resolve_fitted_gamma(
-                    T[train], "treatment"
-                )
-                gamma_z_train = self._resolve_fitted_gamma(
-                    Z[train], "instrument"
-                )
-                Kh_train = self._get_kernel_at_fitted_gamma(
-                    T[train], fitted_gamma=gamma_t_train
-                )
-                Kh_test_train = self._get_kernel_at_fitted_gamma(
-                    T[test], Y=T[train], fitted_gamma=gamma_t_train
-                )
-                Kf_train = self._get_kernel_at_fitted_gamma(
-                    Z[train], fitted_gamma=gamma_z_train
-                )
-                Kf_test = self._get_kernel_at_fitted_gamma(
-                    Z[test], fitted_gamma=gamma_z_train
-                )
-            else:
-                Kh_train = Kh[np.ix_(train, train)]
-                Kh_test_train = Kh[np.ix_(test, train)]
-                Kf_train = Kf[np.ix_(train, train)]
-                Kf_test = Kf[np.ix_(test, test)]
-
-            M_train = self._compute_instrument_operator(
-                Kf_train, n_train, delta_train
-            )
-            M_test = self._compute_instrument_operator(
-                Kf_test, n_test, delta_test
-            )
+        for it, (train, test) in enumerate(KFold(n_splits=self.cv).split(Z)):
+            M_train = RootKf[np.ix_(train, train)] @ np.linalg.inv(
+                Kf[np.ix_(train, train)] / (2 * n_train * (delta_train**2)) + np.eye(len(train)) / 2) @ RootKf[np.ix_(train, train)]
+            M_test = RootKf[np.ix_(test, test)] @ np.linalg.inv(
+                Kf[np.ix_(test, test)] / (2 * n_test * (delta_test**2)) + np.eye(len(test)) / 2) @ RootKf[np.ix_(test, test)]
+            Kh_train = Kh[np.ix_(train, train)]
             KMK_train = Kh_train @ M_train @ Kh_train
             B_train = Kh_train @ M_train @ Y[train]
-            fold_scores = []
+            scores.append([])
             for alpha_scale in alpha_scales:
                 alpha = self._get_alpha(delta_train, alpha_scale)
                 a = np.linalg.pinv(KMK_train + alpha * Kh_train) @ B_train
-                res = Y[test] - Kh_test_train @ a
-                fold_scores.append(
-                    _to_scalar(res.T @ M_test @ res) / (n_test**2)
-                )
-            scores.append(fold_scores)
+                res = Y[test] - Kh[np.ix_(test, train)] @ a
+                scores[it].append(_to_scalar(res.T @ M_test @ res) / (res.shape[0]**2))
 
         self.alpha_scales = alpha_scales
         self.avg_scores = np.mean(np.array(scores), axis=0)
@@ -428,34 +300,20 @@ class RKHSIVCV(RKHSIV):
         delta = self._get_delta(n)
         self.best_alpha = self._get_alpha(delta, self.best_alpha_scale)
 
-        if fold_specific_gamma:
-            self.gamma_t_ = self._resolve_fitted_gamma(T, "treatment")
-            self.gamma_z_ = self._resolve_fitted_gamma(Z, "instrument")
-            Kh = self._get_kernel_at_fitted_gamma(
-                T, fitted_gamma=self.gamma_t_
-            )
-            Kf = self._get_kernel_at_fitted_gamma(
-                Z, fitted_gamma=self.gamma_z_
-            )
-        else:
-            self.gamma_t_ = gamma_t
-            self.gamma_z_ = gamma_z
-        M = self._compute_instrument_operator(Kf, n, delta)
+        M = RootKf @ np.linalg.inv(
+            Kf / (2 * n * delta**2) + np.eye(n) / 2) @ RootKf
 
         self.T = T.copy()
-        # NumPy's default pseudoinverse tolerance defines the numerical rank.
         self.a = np.linalg.pinv(
             Kh @ M @ Kh + self.best_alpha * Kh) @ Kh @ M @ Y
         return self
 
 
-class RKHSIVL2(_BaseRKHSIV):
+class RKHSIVL2_legacy(_BaseRKHSIV_legacy):
     """
     RKHS IV estimator with L2 regularization.
 
-    The instrument projection is constructed from the positive eigenspace of
-    its Gram matrix. The kernel coefficients are obtained from the
-    L2-regularized normal equation.
+    This class implements an RKHS IV estimator with L2 regularization.
 
     Parameters:
         kernel (str or callable): Kernel function or string identifier.
@@ -490,28 +348,16 @@ class RKHSIVL2(_BaseRKHSIV):
             self: Fitted estimator.
         """
         Y = _to_column_vector(Y)
-        Z = np.asarray(Z)
-        T = np.asarray(T)
         n = Y.shape[0]
         delta = self._get_delta(n)
         alpha = delta**4
 
-        self.gamma_t_ = self._resolve_fitted_gamma(T, "treatment")
-        self.gamma_z_ = self._resolve_fitted_gamma(Z, "instrument")
-        Kh = self._get_kernel_at_fitted_gamma(
-            T, fitted_gamma=self.gamma_t_
-        )
-        Kf = self._get_kernel_at_fitted_gamma(
-            Z, fitted_gamma=self.gamma_z_
-        )
+        Kh = self._get_kernel(T)
+        Kf = self._get_kernel(Z)
 
-        instrument_basis, _ = self._symmetric_range_basis(Kf)
-        Pz = instrument_basis @ instrument_basis.T
-
+        M = np.linalg.pinv(Kf) @ Kf
         self.T = T.copy()
-        self.a = np.linalg.pinv(
-            Kh @ Pz @ Kh + alpha * Kh @ Kh
-        ) @ Kh @ Pz @ Y
+        self.a = np.linalg.pinv(Kh @ M @ Kh + alpha * Kh @ Kh) @ Kh @ M @ Y
         return self
 
     def predict(self, T_test):
@@ -524,22 +370,14 @@ class RKHSIVL2(_BaseRKHSIV):
         Returns:
             array-like: Predicted outcomes.
         """
-        if hasattr(self, "gamma_t_"):
-            kernel = self._get_kernel_at_fitted_gamma(
-                T_test, Y=self.T, fitted_gamma=self.gamma_t_
-            )
-        else:
-            kernel = self._get_kernel(T_test, Y=self.T)
-        return kernel @ self.a
+        return self._get_kernel(T_test, Y=self.T) @ self.a
 
 
-class RKHSIVL2CV(RKHSIVL2):
+class RKHSIVL2CV_legacy(RKHSIVL2_legacy):
     """
     RKHS IV estimator with L2 regularization and cross-validation.
 
-    Instrument projections are constructed from the positive eigenspaces of
-    their Gram matrices. Candidate models and the final model retain the
-    coefficient-space L2 normal equations.
+    This class implements an RKHS IV estimator with L2 regularization and cross-validation.
 
     Parameters:
         kernel (str or callable): Kernel function or string identifier.
@@ -580,107 +418,46 @@ class RKHSIVL2CV(RKHSIVL2):
             self: Fitted estimator.
         """
         Y = _to_column_vector(Y)
-        Z = np.asarray(Z)
-        T = np.asarray(T)
         n = Y.shape[0]
 
+        Kh = self._get_kernel(T)
+        Kf = self._get_kernel(Z)
+
         alpha_scales = self._get_alpha_scales()
-        fold_specific_gamma = (
-            not callable(self.kernel) and _check_auto(self.gamma)
-        )
-
-        if not fold_specific_gamma:
-            gamma_t = self._resolve_fitted_gamma(T, "treatment")
-            gamma_z = self._resolve_fitted_gamma(Z, "instrument")
-            Kh = self._get_kernel_at_fitted_gamma(
-                T, fitted_gamma=gamma_t
-            )
-            Kf = self._get_kernel_at_fitted_gamma(
-                Z, fitted_gamma=gamma_z
-            )
-
+        n_train = n * (self.cv - 1) / self.cv
+        n_test = n / self.cv
+        delta_train = self._get_delta(n_train)
+        delta = self._get_delta(n)
         scores = []
-        for train, test in KFold(n_splits=self.cv).split(Z):
-            n_train = len(train)
-            n_test = len(test)
-            delta_train = self._get_delta(n_train)
-
-            if fold_specific_gamma:
-                gamma_t_train = self._resolve_fitted_gamma(
-                    T[train], "treatment"
-                )
-                gamma_z_train = self._resolve_fitted_gamma(
-                    Z[train], "instrument"
-                )
-                Kh_train = self._get_kernel_at_fitted_gamma(
-                    T[train], fitted_gamma=gamma_t_train
-                )
-                Kh_test_train = self._get_kernel_at_fitted_gamma(
-                    T[test], Y=T[train], fitted_gamma=gamma_t_train
-                )
-                Kf_train = self._get_kernel_at_fitted_gamma(
-                    Z[train], fitted_gamma=gamma_z_train
-                )
-                Kf_test = self._get_kernel_at_fitted_gamma(
-                    Z[test], fitted_gamma=gamma_z_train
-                )
-            else:
-                Kh_train = Kh[np.ix_(train, train)]
-                Kh_test_train = Kh[np.ix_(test, train)]
-                Kf_train = Kf[np.ix_(train, train)]
-                Kf_test = Kf[np.ix_(test, test)]
-
-            train_basis, _ = self._symmetric_range_basis(Kf_train)
-            test_basis, _ = self._symmetric_range_basis(Kf_test)
-            Pz_train = train_basis @ train_basis.T
-            Pz_test = test_basis @ test_basis.T
-            KMK_train = Kh_train @ Pz_train @ Kh_train
-            B_train = Kh_train @ Pz_train @ Y[train]
-            fold_scores = []
+        for it, (train, test) in enumerate(KFold(n_splits=self.cv).split(Z)):
+            M_train = np.linalg.pinv(Kf[np.ix_(train, train)]) @ Kf[np.ix_(train, train)]
+            M_test = np.linalg.pinv(Kf[np.ix_(test, test)]) @ Kf[np.ix_(test, test)]
+            Kh_train = Kh[np.ix_(train, train)]
+            KMK_train = Kh_train @ M_train @ Kh_train
+            B_train = Kh_train @ M_train @ Y[train]
+            scores.append([])
             for alpha_scale in alpha_scales:
                 alpha = alpha_scale * delta_train**4
-                a = np.linalg.pinv(
-                    KMK_train + alpha * Kh_train @ Kh_train
-                ) @ B_train
-                res = Y[test] - Kh_test_train @ a
-                fold_scores.append(
-                    _to_scalar(res.T @ Pz_test @ res) / (n_test**2)
-                )
-            scores.append(fold_scores)
+                a = np.linalg.pinv(KMK_train + alpha * Kh_train @ Kh_train) @ B_train
+                res = Y[test] - Kh[np.ix_(test, train)] @ a
+                scores[it].append(_to_scalar(res.T @ M_test @ res) / (res.shape[0]**2))
 
-        self.alpha_scales_ = np.asarray(alpha_scales, dtype=float).copy()
+        self.alpha_scales = alpha_scales
         self.avg_scores = np.mean(np.array(scores), axis=0)
-        self.best_alpha_scale = self.alpha_scales_[
-            np.argmin(self.avg_scores)
-        ]
+        self.best_alpha_scale = alpha_scales[np.argmin(self.avg_scores)]
 
         delta = self._get_delta(n)
         self.best_alpha = self.best_alpha_scale * delta**4
 
-        if fold_specific_gamma:
-            self.gamma_t_ = self._resolve_fitted_gamma(T, "treatment")
-            self.gamma_z_ = self._resolve_fitted_gamma(Z, "instrument")
-            Kh = self._get_kernel_at_fitted_gamma(
-                T, fitted_gamma=self.gamma_t_
-            )
-            Kf = self._get_kernel_at_fitted_gamma(
-                Z, fitted_gamma=self.gamma_z_
-            )
-        else:
-            self.gamma_t_ = gamma_t
-            self.gamma_z_ = gamma_z
-
-        instrument_basis, _ = self._symmetric_range_basis(Kf)
-        Pz = instrument_basis @ instrument_basis.T
+        M = np.linalg.pinv(Kf) @ Kf
 
         self.T = T.copy()
         self.a = np.linalg.pinv(
-            Kh @ Pz @ Kh + self.best_alpha * Kh @ Kh
-        ) @ Kh @ Pz @ Y
+            Kh @ M @ Kh + self.best_alpha * Kh @ Kh) @ Kh @ M @ Y
         return self
 
 
-class ApproxRKHSIV(_BaseRKHSIV):
+class ApproxRKHSIV_legacy(_BaseRKHSIV_legacy):
     """
     Approximate RKHS IV estimator using kernel approximations.
 
@@ -752,24 +529,22 @@ class ApproxRKHSIV(_BaseRKHSIV):
 
         return max(1, resolved)
 
-    def _get_new_approx_instance(self, n_samples=None, fitted_gamma=None):
+    def _get_new_approx_instance(self, n_samples=None):
         """
         Create a new kernel approximation instance.
 
         Parameters:
             n_samples (int, optional): Sample count used to resolve/cap components.
-            fitted_gamma (float, optional): Bandwidth resolved from fitting data.
 
         Returns:
             object: Kernel approximation instance.
         """
-        gamma = self.gamma if fitted_gamma is None else fitted_gamma
         if (self.kernel_approx == 'rbfsampler') and (self.kernel == 'rbf'):
             n_components = self._resolve_n_components(n_samples=n_samples)
-            return RBFSampler(gamma=gamma, n_components=n_components, random_state=1)
+            return RBFSampler(gamma=self.gamma, n_components=n_components, random_state=1)
         elif self.kernel_approx == 'nystrom':
             n_components = self._resolve_n_components(n_samples=n_samples)
-            return Nystroem(kernel=self.kernel, gamma=gamma, coef0=self.coef0, degree=self.degree, kernel_params=self.kernel_params,
+            return Nystroem(kernel=self.kernel, gamma=self.gamma, coef0=self.coef0, degree=self.degree, kernel_params=self.kernel_params,
                             random_state=1, n_components=n_components)
         else:
             raise AttributeError("Invalid kernel approximator")
@@ -790,15 +565,9 @@ class ApproxRKHSIV(_BaseRKHSIV):
         n = Y.shape[0]
         delta = self._get_delta(n)
         alpha = self._get_alpha(delta, self._get_alpha_scale())
-        self.gamma_z_ = self._resolve_fitted_gamma(Z, "instrument")
-        self.gamma_t_ = self._resolve_fitted_gamma(T, "treatment")
-        self.featZ = self._get_new_approx_instance(
-            n_samples=n, fitted_gamma=self.gamma_z_
-        )
+        self.featZ = self._get_new_approx_instance(n_samples=n)
         RootKf = self.featZ.fit_transform(Z)
-        self.featT = self._get_new_approx_instance(
-            n_samples=n, fitted_gamma=self.gamma_t_
-        )
+        self.featT = self._get_new_approx_instance(n_samples=n)
         RootKh = self.featT.fit_transform(T)
         n_feat_f = RootKf.shape[1]
         n_feat_h = RootKh.shape[1]
@@ -838,18 +607,10 @@ class ApproxRKHSIV(_BaseRKHSIV):
         """
         Y = _to_column_vector(Y)
         n = Y.shape[0]
-        if _check_auto(delta):
-            delta = self._get_delta(n)
-        else:
-            delta = float(delta)
-            if not np.isfinite(delta) or delta <= 0:
-                raise ValueError("`delta` must be finite and strictly positive.")
-
-        featZ = self._get_new_approx_instance(
-            n_samples=n,
-            fitted_gamma=getattr(self, "gamma_z_", None),
-        )
+        delta = self._get_delta(n)
+        featZ = self._get_new_approx_instance(n_samples=n)
         RootKf = featZ.fit_transform(Z)
+        RootKh = self.featT.fit_transform(T)
         n_feat_f = RootKf.shape[1]
         Q = np.linalg.pinv(RootKf.T @ RootKf /
                            (2 * n * delta**2) + np.eye(n_feat_f) / 2)
@@ -858,12 +619,11 @@ class ApproxRKHSIV(_BaseRKHSIV):
         return _to_scalar(res.T @ Q @ res) / n**2
 
 
-class ApproxRKHSIVCV(ApproxRKHSIV):
+class ApproxRKHSIVCV_legacy(ApproxRKHSIV_legacy):
     """
     Approximate RKHS IV estimator with cross-validation using kernel approximations.
 
-    Each feature approximation is fitted on its training fold and then used to
-    transform the corresponding held-out fold.
+    This class implements an approximate RKHS IV estimator with cross-validation using kernel approximations.
 
     Parameters:
         kernel_approx (str): Kernel approximation method ('nystrom' or 'rbfsampler').
@@ -913,38 +673,21 @@ class ApproxRKHSIVCV(ApproxRKHSIV):
         Y = _to_column_vector(Y)
         n = Y.shape[0]
 
-        alpha_scales = np.asarray(
-            self._get_alpha_scales(), dtype=float
-        )
+        self.featZ = self._get_new_approx_instance(n_samples=n)
+        RootKf = self.featZ.fit_transform(Z)
+        self.featT = self._get_new_approx_instance(n_samples=n)
+        RootKh = self.featT.fit_transform(T)
+
+        alpha_scales = self._get_alpha_scales()
+        n_train = n * (self.cv - 1) / self.cv
+        n_test = n / self.cv
+        delta_train = self._get_delta(n_train)
+        delta_test = self._get_delta(n_test)
+        delta = self._get_delta(n)
         scores = []
-        for train, test in KFold(n_splits=self.cv).split(np.arange(n)):
-            n_train = len(train)
-            n_test = len(test)
-            delta_train = self._get_delta(n_train)
-            delta_test = self._get_delta(n_test)
-
-            Z_train = _safe_indexing(Z, train)
-            Z_test = _safe_indexing(Z, test)
-            T_train = _safe_indexing(T, train)
-            T_test = _safe_indexing(T, test)
-
-            gamma_z_train = self._resolve_fitted_gamma(
-                Z_train, "instrument"
-            )
-            gamma_t_train = self._resolve_fitted_gamma(
-                T_train, "treatment"
-            )
-            feat_z_train = self._get_new_approx_instance(
-                n_samples=n_train, fitted_gamma=gamma_z_train
-            )
-            feat_t_train = self._get_new_approx_instance(
-                n_samples=n_train, fitted_gamma=gamma_t_train
-            )
-            RootKf_train = feat_z_train.fit_transform(Z_train)
-            RootKf_test = feat_z_train.transform(Z_test)
-            RootKh_train = feat_t_train.fit_transform(T_train)
-            RootKh_test = feat_t_train.transform(T_test)
-
+        for it, (train, test) in enumerate(KFold(n_splits=self.cv).split(Z)):
+            RootKf_train, RootKf_test = RootKf[train], RootKf[test]
+            RootKh_train, RootKh_test = RootKh[train], RootKh[test]
             n_feat_f_train = RootKf_train.shape[1]
             n_feat_f_test = RootKf_test.shape[1]
             n_feat_h_train = RootKh_train.shape[1]
@@ -955,36 +698,21 @@ class ApproxRKHSIVCV(ApproxRKHSIV):
             A_train = RootKh_train.T @ RootKf_train
             AQA_train = A_train @ Q_train @ A_train.T
             B_train = A_train @ Q_train @ RootKf_train.T @ Y[train]
-            fold_scores = []
+            scores.append([])
             for alpha_scale in alpha_scales:
                 alpha = self._get_alpha(delta_train, alpha_scale)
                 a = np.linalg.pinv(AQA_train + alpha *
                                    np.eye(n_feat_h_train)) @ B_train
                 res = RootKf_test.T @ (Y[test] - RootKh_test @ a)
-                fold_scores.append(
-                    _to_scalar(res.T @ Q_test @ res) / (n_test**2)
-                )
-            scores.append(fold_scores)
+                scores[it].append(_to_scalar(res.T @ Q_test @ res) / (len(test)**2))
 
-        self.alpha_scales_ = alpha_scales.copy()
+        self.alpha_scales = alpha_scales
         self.avg_scores = np.mean(np.array(scores), axis=0)
-        self.best_alpha_scale = float(
-            self.alpha_scales_[np.argmin(self.avg_scores)]
-        )
+        self.best_alpha_scale = alpha_scales[np.argmin(self.avg_scores)]
 
         delta = self._get_delta(n)
         self.best_alpha = self._get_alpha(delta, self.best_alpha_scale)
 
-        self.gamma_z_ = self._resolve_fitted_gamma(Z, "instrument")
-        self.gamma_t_ = self._resolve_fitted_gamma(T, "treatment")
-        self.featZ = self._get_new_approx_instance(
-            n_samples=n, fitted_gamma=self.gamma_z_
-        )
-        RootKf = self.featZ.fit_transform(Z)
-        self.featT = self._get_new_approx_instance(
-            n_samples=n, fitted_gamma=self.gamma_t_
-        )
-        RootKh = self.featT.fit_transform(T)
         n_feat_f = RootKf.shape[1]
         n_feat_h = RootKh.shape[1]
         Q = np.linalg.pinv(RootKf.T @ RootKf /
@@ -997,74 +725,12 @@ class ApproxRKHSIVCV(ApproxRKHSIV):
         return self
 
 
-class ApproxRKHSIVL2(ApproxRKHSIV):
+class ApproxRKHSIVL2_legacy(ApproxRKHSIV_legacy):
     """
     Approximate RKHS IV estimator with L2 regularization.
 
-    Instrument projections are represented by thin-SVD range bases. The
-    sample-space empirical-L2 equation is contracted through the learner thin
-    SVD so its pseudoinverse truncation is retained in a feature-sized system.
+    This class mirrors ``RKHSIVL2`` using finite kernel feature approximations.
     """
-
-    @staticmethod
-    def _feature_gram_range_basis(features):
-        """Return the range retained by the default Gram pinv cutoff."""
-        left_vectors, singular_values, _ = np.linalg.svd(
-            features, full_matrices=False
-        )
-        if not singular_values.size or singular_values[0] == 0:
-            return left_vectors[:, :0], singular_values[:0]
-        cutoff = np.sqrt(_DEFAULT_PINV_RCOND) * singular_values[0]
-        retained = singular_values > cutoff
-        return left_vectors[:, retained], singular_values[retained]
-
-    @classmethod
-    def _l2_reduced_system_terms(
-        cls,
-        instrument_features,
-        learner_features,
-        outcome,
-    ):
-        instrument_basis, _ = cls._feature_gram_range_basis(
-            instrument_features
-        )
-        learner_left, learner_singular, learner_right_t = np.linalg.svd(
-            learner_features, full_matrices=False
-        )
-        projected_learner_basis = instrument_basis.T @ learner_left
-        projected_outcome = instrument_basis.T @ outcome
-        squared_singular = learner_singular**2
-        weighted_projected_basis = (
-            projected_learner_basis * squared_singular[None, :]
-        )
-        return (
-            weighted_projected_basis.T @ weighted_projected_basis,
-            np.diag(squared_singular**2),
-            squared_singular[:, None]
-            * (projected_learner_basis.T @ projected_outcome),
-            learner_singular,
-            learner_right_t,
-            learner_left,
-        )
-
-    @staticmethod
-    def _solve_l2_feature_system(
-        projected_moment,
-        l2_penalty,
-        rhs,
-        learner_singular,
-        learner_right_t,
-        learner_left,
-        alpha,
-    ):
-        reduced_coefficient = np.linalg.pinv(
-            projected_moment + alpha * l2_penalty
-        ) @ rhs
-        feature_coefficient = learner_right_t.T @ (
-            learner_singular[:, None] * reduced_coefficient
-        )
-        dual_coefficient = learner_left @ reduced_coefficient
-        return feature_coefficient, dual_coefficient
 
     def fit(self, Z, T, Y):
         """
@@ -1081,30 +747,19 @@ class ApproxRKHSIVL2(ApproxRKHSIV):
         Y = _to_column_vector(Y)
         n = Y.shape[0]
         delta = self._get_delta(n)
-        alpha = (
-            delta**4
-            if _check_auto(self.alpha_scale)
-            else self._get_alpha(delta, self.alpha_scale)
-        )
+        alpha = delta**4
 
-        self.gamma_z_ = self._resolve_fitted_gamma(Z, "instrument")
-        self.gamma_t_ = self._resolve_fitted_gamma(T, "treatment")
-        self.featZ = self._get_new_approx_instance(
-            n_samples=n, fitted_gamma=self.gamma_z_
-        )
+        self.featZ = self._get_new_approx_instance(n_samples=n)
         RootKf = self.featZ.fit_transform(Z)
-        self.featT = self._get_new_approx_instance(
-            n_samples=n, fitted_gamma=self.gamma_t_
-        )
+        self.featT = self._get_new_approx_instance(n_samples=n)
         RootKh = self.featT.fit_transform(T)
-
-        equation_terms = self._l2_reduced_system_terms(
-            RootKf, RootKh, Y
-        )
-        self.theta_, self.a = self._solve_l2_feature_system(
-            *equation_terms, alpha
-        )
         self.RootKh_train_ = RootKh
+
+        Kf = RootKf @ RootKf.T
+        Kh = RootKh @ RootKh.T
+        M = np.linalg.pinv(Kf) @ Kf
+
+        self.a = np.linalg.pinv(Kh @ M @ Kh + alpha * Kh @ Kh) @ Kh @ M @ Y
         self.fitted_delta = delta
         return self
 
@@ -1118,7 +773,8 @@ class ApproxRKHSIVL2(ApproxRKHSIV):
         Returns:
             array-like: Predicted outcomes.
         """
-        return self.featT.transform(T) @ self.theta_
+        RootKh_test = self.featT.transform(T)
+        return RootKh_test @ self.RootKh_train_.T @ self.a
 
     def score(self, Z, T, Y, delta='auto'):
         """
@@ -1136,25 +792,17 @@ class ApproxRKHSIVL2(ApproxRKHSIV):
         _ = delta
         Y = _to_column_vector(Y)
         n = Y.shape[0]
-        featZ = self._get_new_approx_instance(
-            n_samples=n,
-            fitted_gamma=getattr(self, "gamma_z_", None),
-        )
+        featZ = self._get_new_approx_instance(n_samples=n)
         RootKf = featZ.fit_transform(Z)
-        instrument_basis, _ = self._feature_gram_range_basis(RootKf)
+        Kf = RootKf @ RootKf.T
+        M = np.linalg.pinv(Kf) @ Kf
         Y_pred = self.predict(T)
-        projected_residual = instrument_basis.T @ (Y - Y_pred)
-        return _to_scalar(
-            projected_residual.T @ projected_residual
-        ) / n**2
+        return _to_scalar((Y - Y_pred).T @ M @ (Y - Y_pred)) / n**2
 
 
-class ApproxRKHSIVL2CV(ApproxRKHSIVL2):
+class ApproxRKHSIVL2CV_legacy(ApproxRKHSIVL2_legacy):
     """
     Approximate RKHS IV L2 estimator with cross-validation.
-
-    Each feature approximation is fitted on its training fold and then used to
-    transform the corresponding held-out fold.
 
     Parameters:
         kernel_approx (str): Kernel approximation method ('nystrom' or 'rbfsampler').
@@ -1204,81 +852,50 @@ class ApproxRKHSIVL2CV(ApproxRKHSIVL2):
         Y = _to_column_vector(Y)
         n = Y.shape[0]
 
-        alpha_scales = np.asarray(
-            self._get_alpha_scales(), dtype=float
-        )
+        self.featZ = self._get_new_approx_instance(n_samples=n)
+        RootKf = self.featZ.fit_transform(Z)
+        self.featT = self._get_new_approx_instance(n_samples=n)
+        RootKh = self.featT.fit_transform(T)
+
+        alpha_scales = self._get_alpha_scales()
+        n_train = n * (self.cv - 1) / self.cv
+        n_test = n / self.cv
+        delta_train = self._get_delta(n_train)
+        delta = self._get_delta(n)
         scores = []
 
-        for train, test in KFold(n_splits=self.cv).split(np.arange(n)):
-            n_train = len(train)
-            n_test = len(test)
-            delta_train = self._get_delta(n_train)
+        for it, (train, test) in enumerate(KFold(n_splits=self.cv).split(Z)):
+            RootKf_train, RootKf_test = RootKf[train], RootKf[test]
+            RootKh_train, RootKh_test = RootKh[train], RootKh[test]
 
-            Z_train = _safe_indexing(Z, train)
-            Z_test = _safe_indexing(Z, test)
-            T_train = _safe_indexing(T, train)
-            T_test = _safe_indexing(T, test)
+            Kf_train = RootKf_train @ RootKf_train.T
+            Kf_test = RootKf_test @ RootKf_test.T
+            Kh_train = RootKh_train @ RootKh_train.T
+            Kh_test_train = RootKh_test @ RootKh_train.T
 
-            gamma_z_train = self._resolve_fitted_gamma(
-                Z_train, "instrument"
-            )
-            gamma_t_train = self._resolve_fitted_gamma(
-                T_train, "treatment"
-            )
-            feat_z_train = self._get_new_approx_instance(
-                n_samples=n_train, fitted_gamma=gamma_z_train
-            )
-            feat_t_train = self._get_new_approx_instance(
-                n_samples=n_train, fitted_gamma=gamma_t_train
-            )
-            RootKf_train = feat_z_train.fit_transform(Z_train)
-            RootKf_test = feat_z_train.transform(Z_test)
-            RootKh_train = feat_t_train.fit_transform(T_train)
-            RootKh_test = feat_t_train.transform(T_test)
-            test_basis, _ = self._feature_gram_range_basis(RootKf_test)
-            equation_terms = self._l2_reduced_system_terms(
-                RootKf_train, RootKh_train, Y[train]
-            )
+            M_train = np.linalg.pinv(Kf_train) @ Kf_train
+            M_test = np.linalg.pinv(Kf_test) @ Kf_test
+            KMK_train = Kh_train @ M_train @ Kh_train
+            B_train = Kh_train @ M_train @ Y[train]
 
-            fold_scores = []
+            scores.append([])
             for alpha_scale in alpha_scales:
                 alpha = float(alpha_scale) * (delta_train**4)
-                coefficient, _ = self._solve_l2_feature_system(
-                    *equation_terms, alpha
-                )
-                residual = Y[test] - RootKh_test @ coefficient
-                projected_residual = test_basis.T @ residual
-                fold_scores.append(
-                    _to_scalar(
-                        projected_residual.T @ projected_residual
-                    ) / (n_test**2)
-                )
-            scores.append(fold_scores)
+                a = np.linalg.pinv(KMK_train + alpha * Kh_train @ Kh_train) @ B_train
+                res = Y[test] - Kh_test_train @ a
+                scores[it].append(_to_scalar(res.T @ M_test @ res) / (res.shape[0]**2))
 
-        self.alpha_scales_ = alpha_scales.copy()
+        self.alpha_scales = alpha_scales
         self.avg_scores = np.mean(np.array(scores), axis=0)
-        self.best_alpha_scale = float(
-            self.alpha_scales_[np.argmin(self.avg_scores)]
-        )
-        delta = self._get_delta(n)
+        self.best_alpha_scale = alpha_scales[np.argmin(self.avg_scores)]
         self.best_alpha = self.best_alpha_scale * (delta**4)
 
-        self.gamma_z_ = self._resolve_fitted_gamma(Z, "instrument")
-        self.gamma_t_ = self._resolve_fitted_gamma(T, "treatment")
-        self.featZ = self._get_new_approx_instance(
-            n_samples=n, fitted_gamma=self.gamma_z_
-        )
-        RootKf = self.featZ.fit_transform(Z)
-        self.featT = self._get_new_approx_instance(
-            n_samples=n, fitted_gamma=self.gamma_t_
-        )
-        RootKh = self.featT.fit_transform(T)
-        equation_terms = self._l2_reduced_system_terms(
-            RootKf, RootKh, Y
-        )
-        self.theta_, self.a = self._solve_l2_feature_system(
-            *equation_terms, self.best_alpha
-        )
+        Kf = RootKf @ RootKf.T
+        Kh = RootKh @ RootKh.T
+        M = np.linalg.pinv(Kf) @ Kf
+        self.a = np.linalg.pinv(
+            Kh @ M @ Kh + self.best_alpha * Kh @ Kh
+        ) @ Kh @ M @ Y
         self.RootKh_train_ = RootKh
         self.fitted_delta = delta
         return self
