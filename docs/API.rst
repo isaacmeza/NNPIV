@@ -31,7 +31,7 @@ Longitudinal Estimator APIs
      - Key Outputs
    * - RKHS (`RKHSIV*`, `RKHS2IV*`)
      - Kernel-based sequential/joint NPIV with regularization and CV.
-     - `A, B, C, C', Y`
+     - `Z, T, Y` or `A, B, C, D, Y`
      - Fitted bridge/structural predictors
    * - Neural Network (`AGMM*`, `AGMM2L2`)
      - Adversarial minimax estimation with flexible representation learning.

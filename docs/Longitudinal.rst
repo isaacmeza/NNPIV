@@ -92,7 +92,7 @@ Progressive Recipe
    # Step 1: prepare arrays (A, B, C_prime, C, Y)
    from nnpiv.rkhs import RKHS2IVL2
 
-   est = RKHS2IVL2(mu=0.1, mu_prime=0.1)
+   est = RKHS2IVL2()
 
    # Step 2: fit simultaneous nested NPIV
    est.fit(A=A, B=B, C=C, D=C_prime, Y=Y)
