@@ -3,7 +3,7 @@ This module provides implementations of nested NPIV estimators for RKHS function
 
 Classes:
     _BaseRKHS2IV: Base class for nested RKHS IV methods.
-    RKHS2IV: Nested RKHS IV estimator (alternate simultaneous variant).
+    RKHS2IV: Nested RKHS IV estimator with RKHS-norm regularization.
     RKHS2IVCV: Cross-validated RKHS2IV estimator.
     RKHS2IVL2: Nested RKHS IV estimator aligned with Appendix J / Algorithm 2.
     RKHS2IVL2CV: Cross-validated RKHS2IVL2 estimator.
@@ -70,7 +70,8 @@ class _BaseRKHS2IV:
         kernel_params (dict): Additional parameters for the kernel.
         kernel_approx (str): Kernel approximation method ('nystrom' or 'rbfsampler').
         n_components (int or float): Number of approximation components.
-            Integer-like values >= 1 are fixed counts; floats in (0, 1] are sample fractions with a floor of 10.
+            Values in (0, 1] are sample fractions with a floor of 10;
+            integer-like values greater than 1 are fixed component counts.
     """
 
     def __init__(self, *args, **kwargs):
@@ -165,7 +166,7 @@ class _BaseRKHS2IV:
             resolved = int(value)
         else:
             raise ValueError(
-                "`n_components` must be integer-like >= 1 or a fraction in (0, 1]."
+                "`n_components` must be integer-like > 1 or a fraction in (0, 1]."
             )
 
         if n_samples is not None:
@@ -542,6 +543,7 @@ class _BaseRKHS2IV:
         self.cv_fold_scores_ = np.asarray(cv_result["fold_scores"], dtype=float)
         self.cv_alpha_scales_initial_ = np.asarray(cv_result["alpha_scales_initial"], dtype=float)
         self.cv_alpha_scales_used_ = np.asarray(cv_result["alpha_scales_used"], dtype=float)
+        self.alpha_scales_ = self.cv_alpha_scales_used_.copy()
         self.cv_alpha_grid_expanded_ = bool(cv_result["alpha_grid_expanded"])
         self.cv_best_alpha_is_boundary_ = bool(cv_result["best_alpha_is_boundary"])
 
@@ -928,9 +930,8 @@ class RKHS2IV(_BaseRKHS2IV):
     """
     Nested RKHS IV estimator.
 
-    Note:
-        This class is an alternate simultaneous variant.
-        The Appendix J / Algorithm 2 closed-form implementation target is ``RKHS2IVL2``.
+    This class jointly solves the two bridge equations with RKHS-norm learner
+    penalties and unit-ridge instrument actions.
 
     Parameters:
         kernel (str or callable): Kernel function or string identifier.
@@ -962,10 +963,14 @@ class RKHS2IV(_BaseRKHS2IV):
             C (array-like): Second nested-stage instrument block.
             D (array-like): First nested-stage instrument block.
             Y (array-like): Outcome values.
-            W (array-like or None): Optional observation weights.
+            W (array-like or None): Optional observation-level multipliers in
+                the bridge residual ``h(B) - W*g(A)``; defaults to one.
             subsetted (bool): Whether to apply stage-specific subset restrictions.
-            subset_ind1 (array-like or None): Indicator or mask selecting the first-stage subset.
-            subset_ind2 (array-like or None): Optional indicator or mask selecting the second-stage subset.
+            subset_ind1 (array-like or None): Indicator or mask selecting the
+                first-stage ``D``-moment rows.
+            subset_ind2 (array-like or None): Indicator or mask selecting the
+                second-stage ``C``-moment rows; defaults to the complement of
+                ``subset_ind1``.
         """
         Y = _to_column_vector(Y)
         A, B, C, D = map(np.asarray, (A, B, C, D))
@@ -1042,13 +1047,12 @@ class RKHS2IVCV(RKHS2IV):
     """
     Cross-validated RKHS2IV estimator.
 
-    Note:
-        This class cross-validates the alternate simultaneous variant.
-        The Appendix J / Algorithm 2 closed-form implementation target is ``RKHS2IVL2CV``.
+    This class cross-validates the simultaneous RKHS-norm estimator.
 
     Parameters:
         kernel (str or callable): Kernel function or string identifier.
-        gamma (str or float): Length scale for the kernel.
+        gamma (str, float, or array-like): Automatic bandwidth, fixed
+            bandwidth, or candidate bandwidth grid.
         degree (int): Degree for polynomial kernels.
         coef0 (float): Zero coefficient for polynomial kernels.
         kernel_params (dict): Additional parameters for the kernel.
@@ -1085,10 +1089,14 @@ class RKHS2IVCV(RKHS2IV):
             C (array-like): Second nested-stage instrument block.
             D (array-like): First nested-stage instrument block.
             Y (array-like): Outcome values.
-            W (array-like or None): Optional observation weights.
+            W (array-like or None): Optional observation-level multipliers in
+                the bridge residual ``h(B) - W*g(A)``; defaults to one.
             subsetted (bool): Whether to apply stage-specific subset restrictions.
-            subset_ind1 (array-like or None): Indicator or mask selecting the first-stage subset.
-            subset_ind2 (array-like or None): Optional indicator or mask selecting the second-stage subset.
+            subset_ind1 (array-like or None): Indicator or mask selecting the
+                first-stage ``D``-moment rows.
+            subset_ind2 (array-like or None): Indicator or mask selecting the
+                second-stage ``C``-moment rows; defaults to the complement of
+                ``subset_ind1``.
         """
         Y = _to_column_vector(Y)
         A, B, C, D = map(np.asarray, (A, B, C, D))
@@ -1142,7 +1150,6 @@ class RKHS2IVCV(RKHS2IV):
         self.best_gamma_ = best_gamma
         self.cv_gamma_grid_ = list(gamma_candidates)
         self.cv_candidate_summaries_ = candidate_summaries
-        self.alpha_scales = cv_result["alpha_scales_used"]
         self.avg_scores = cv_result["avg_scores"]
         self.best_alpha_scale = cv_result["best_alpha_scale"]
         self.best_alpha = cv_result["best_alpha"]
@@ -1221,10 +1228,14 @@ class RKHS2IVL2(_BaseRKHS2IV):
             C (array-like): Second nested-stage instrument block.
             D (array-like): First nested-stage instrument block.
             Y (array-like): Outcome values.
-            W (array-like or None): Optional observation weights.
+            W (array-like or None): Optional observation-level multipliers in
+                the bridge residual ``h(B) - W*g(A)``; defaults to one.
             subsetted (bool): Whether to apply stage-specific subset restrictions.
-            subset_ind1 (array-like or None): Indicator or mask selecting the first-stage subset.
-            subset_ind2 (array-like or None): Optional indicator or mask selecting the second-stage subset.
+            subset_ind1 (array-like or None): Indicator or mask selecting the
+                first-stage ``D``-moment rows.
+            subset_ind2 (array-like or None): Indicator or mask selecting the
+                second-stage ``C``-moment rows; defaults to the complement of
+                ``subset_ind1``.
         """
         Y = _to_column_vector(Y)
         A, B, C, D = map(np.asarray, (A, B, C, D))
@@ -1308,7 +1319,8 @@ class RKHS2IVL2CV(RKHS2IVL2):
 
     Parameters:
         kernel (str or callable): Kernel function or string identifier.
-        gamma (str or float): Length scale for the kernel.
+        gamma (str, float, or array-like): Automatic bandwidth, fixed
+            bandwidth, or candidate bandwidth grid.
         degree (int): Degree for polynomial kernels.
         coef0 (float): Zero coefficient for polynomial kernels.
         kernel_params (dict): Additional parameters for the kernel.
@@ -1345,10 +1357,14 @@ class RKHS2IVL2CV(RKHS2IVL2):
             C (array-like): Second nested-stage instrument block.
             D (array-like): First nested-stage instrument block.
             Y (array-like): Outcome values.
-            W (array-like or None): Optional observation weights.
+            W (array-like or None): Optional observation-level multipliers in
+                the bridge residual ``h(B) - W*g(A)``; defaults to one.
             subsetted (bool): Whether to apply stage-specific subset restrictions.
-            subset_ind1 (array-like or None): Indicator or mask selecting the first-stage subset.
-            subset_ind2 (array-like or None): Optional indicator or mask selecting the second-stage subset.
+            subset_ind1 (array-like or None): Indicator or mask selecting the
+                first-stage ``D``-moment rows.
+            subset_ind2 (array-like or None): Indicator or mask selecting the
+                second-stage ``C``-moment rows; defaults to the complement of
+                ``subset_ind1``.
         """
         Y = _to_column_vector(Y)
         A, B, C, D = map(np.asarray, (A, B, C, D))
@@ -1402,7 +1418,6 @@ class RKHS2IVL2CV(RKHS2IVL2):
         self.best_gamma_ = best_gamma
         self.cv_gamma_grid_ = list(gamma_candidates)
         self.cv_candidate_summaries_ = candidate_summaries
-        self.alpha_scales = cv_result["alpha_scales_used"]
         self.avg_scores = cv_result["avg_scores"]
         self.best_alpha_scale = cv_result["best_alpha_scale"]
         self.best_alpha = cv_result["best_alpha"]
@@ -1456,8 +1471,8 @@ class ApproxRKHS2IVL2(_BaseRKHS2IV):
     Parameters:
         kernel_approx (str): Kernel approximation method ('nystrom' or 'rbfsampler').
         n_components (int or float): Number of approximation components.
-            If integer-like and >= 1, treated as a fixed component count.
-            If float in (0, 1], treated as the sample fraction with a floor of 10.
+            Values in (0, 1] are sample fractions with a floor of 10;
+            integer-like values greater than 1 are fixed component counts.
         kernel (str or callable): Kernel function or string identifier.
         gamma (str or float): Length scale for the kernel.
         degree (int): Degree for polynomial kernels.
@@ -1645,15 +1660,19 @@ class ApproxRKHS2IVL2(_BaseRKHS2IV):
         Fit the nested RKHS IV estimator.
 
         Parameters:
-            A (array-like): First nested-stage treatment or endogenous block.
-            B (array-like): Second nested-stage treatment or endogenous block.
-            C (array-like): Second nested-stage instrument block.
-            D (array-like): First nested-stage instrument block.
+            A (array-like or scipy.sparse matrix): First nested-stage treatment or endogenous block.
+            B (array-like or scipy.sparse matrix): Second nested-stage treatment or endogenous block.
+            C (array-like or scipy.sparse matrix): Second nested-stage instrument block.
+            D (array-like or scipy.sparse matrix): First nested-stage instrument block.
             Y (array-like): Outcome values.
-            W (array-like or None): Optional observation weights.
+            W (array-like or None): Optional observation-level multipliers in
+                the bridge residual ``h(B) - W*g(A)``; defaults to one.
             subsetted (bool): Whether to apply stage-specific subset restrictions.
-            subset_ind1 (array-like or None): Indicator or mask selecting the first-stage subset.
-            subset_ind2 (array-like or None): Optional indicator or mask selecting the second-stage subset.
+            subset_ind1 (array-like or None): Indicator or mask selecting the
+                first-stage ``D``-moment rows.
+            subset_ind2 (array-like or None): Indicator or mask selecting the
+                second-stage ``C``-moment rows; defaults to the complement of
+                ``subset_ind1``.
         """
         Y = _to_column_vector(Y)
         A, B, C, D = map(_as_feature_input, (A, B, C, D))
@@ -1732,11 +1751,13 @@ class ApproxRKHS2IVL2CV(ApproxRKHS2IVL2):
 
     Parameters:
         kernel_approx (str): Kernel approximation method ('nystrom' or 'rbfsampler').
-        n_components (int or float): Number of approximation components.
-            If integer-like and >= 1, treated as a fixed component count.
-            If float in (0, 1], treated as the sample fraction with a floor of 10.
+        n_components (int, float, or array-like): Component count, sample
+            fraction, or candidate grid. Values in (0, 1] are sample
+            fractions with a floor of 10; integer-like values greater than 1
+            are fixed component counts.
         kernel (str or callable): Kernel function or string identifier.
-        gamma (str or float): Length scale for the kernel.
+        gamma (str, float, or array-like): Automatic bandwidth, fixed
+            bandwidth, or candidate bandwidth grid.
         degree (int): Degree for polynomial kernels.
         coef0 (float): Zero coefficient for polynomial kernels.
         kernel_params (dict): Additional parameters for the kernel.
@@ -1901,7 +1922,7 @@ class ApproxRKHS2IVL2CV(ApproxRKHS2IVL2):
                 )
                 fold_scores.append(
                     (_to_scalar(d_score) + _to_scalar(c_score))
-                    / n_test
+                    / (n_test ** 2)
                 )
             fold_scores_all.append(fold_scores)
 
@@ -1924,15 +1945,19 @@ class ApproxRKHS2IVL2CV(ApproxRKHS2IVL2):
         Fit the nested RKHS IV estimator.
 
         Parameters:
-            A (array-like): First nested-stage treatment or endogenous block.
-            B (array-like): Second nested-stage treatment or endogenous block.
-            C (array-like): Second nested-stage instrument block.
-            D (array-like): First nested-stage instrument block.
+            A (array-like or scipy.sparse matrix): First nested-stage treatment or endogenous block.
+            B (array-like or scipy.sparse matrix): Second nested-stage treatment or endogenous block.
+            C (array-like or scipy.sparse matrix): Second nested-stage instrument block.
+            D (array-like or scipy.sparse matrix): First nested-stage instrument block.
             Y (array-like): Outcome values.
-            W (array-like or None): Optional observation weights.
+            W (array-like or None): Optional observation-level multipliers in
+                the bridge residual ``h(B) - W*g(A)``; defaults to one.
             subsetted (bool): Whether to apply stage-specific subset restrictions.
-            subset_ind1 (array-like or None): Indicator or mask selecting the first-stage subset.
-            subset_ind2 (array-like or None): Optional indicator or mask selecting the second-stage subset.
+            subset_ind1 (array-like or None): Indicator or mask selecting the
+                first-stage ``D``-moment rows.
+            subset_ind2 (array-like or None): Indicator or mask selecting the
+                second-stage ``C``-moment rows; defaults to the complement of
+                ``subset_ind1``.
         """
         Y = _to_column_vector(Y)
         A, B, C, D = map(_as_feature_input, (A, B, C, D))
@@ -2061,7 +2086,7 @@ class ApproxRKHS2IVL2CV(ApproxRKHS2IVL2):
 
 class ApproxRKHS2IV(ApproxRKHS2IVL2):
     """
-    Approximate alternate simultaneous RKHS estimator using finite kernel features.
+    Approximate simultaneous RKHS-norm estimator using finite kernel features.
 
     The learner and instrument equations are contracted directly through the
     finite feature matrices. The fitted system therefore has at most
@@ -2072,8 +2097,8 @@ class ApproxRKHS2IV(ApproxRKHS2IVL2):
         kernel_approx (str): Kernel approximation method ('nystrom' or
             'rbfsampler').
         n_components (int or float): Number of approximation components.
-            Integer-like values are fixed counts. Values in (0, 1] are sample
-            fractions with a floor of 10.
+            Values in (0, 1] are sample fractions with a floor of 10;
+            integer-like values greater than 1 are fixed component counts.
         kernel (str or callable): Kernel function or string identifier.
         gamma (str or float): Kernel bandwidth.
         degree (int): Degree for polynomial kernels.
@@ -2318,25 +2343,29 @@ class ApproxRKHS2IV(ApproxRKHS2IVL2):
             subset_indices=ind2 if subsetted else None,
             scale_n=n,
         )
-        return (_to_scalar(d_score) + _to_scalar(c_score)) / n
+        return (_to_scalar(d_score) + _to_scalar(c_score)) / (n ** 2)
 
     def fit(self, A, B, C, D, Y, W=None, subsetted=False, subset_ind1=None, subset_ind2=None):
         """
         Fit the nested RKHS IV estimator.
 
         Parameters:
-            A (array-like): First nested-stage treatment or endogenous block.
-            B (array-like): Second nested-stage treatment or endogenous block.
-            C (array-like): Second nested-stage instrument block.
-            D (array-like): First nested-stage instrument block.
+            A (array-like or scipy.sparse matrix): First nested-stage treatment or endogenous block.
+            B (array-like or scipy.sparse matrix): Second nested-stage treatment or endogenous block.
+            C (array-like or scipy.sparse matrix): Second nested-stage instrument block.
+            D (array-like or scipy.sparse matrix): First nested-stage instrument block.
             Y (array-like): Outcome values.
-            W (array-like or None): Optional observation weights.
+            W (array-like or None): Optional observation-level multipliers in
+                the bridge residual ``h(B) - W*g(A)``; defaults to one.
             subsetted (bool): Whether to apply stage-specific subset restrictions.
-            subset_ind1 (array-like or None): Indicator or mask selecting the first-stage subset.
-            subset_ind2 (array-like or None): Optional indicator or mask selecting the second-stage subset.
+            subset_ind1 (array-like or None): Indicator or mask selecting the
+                first-stage ``D``-moment rows.
+            subset_ind2 (array-like or None): Indicator or mask selecting the
+                second-stage ``C``-moment rows; defaults to the complement of
+                ``subset_ind1``.
         """
         Y = _to_column_vector(Y)
-        A, B, C, D = map(np.asarray, (A, B, C, D))
+        A, B, C, D = map(_as_feature_input, (A, B, C, D))
         n = Y.shape[0]
         if any(values.ndim == 0 or values.shape[0] != n
                for values in (A, B, C, D)):
@@ -2392,15 +2421,17 @@ class ApproxRKHS2IV(ApproxRKHS2IVL2):
 
 class ApproxRKHS2IVCV(ApproxRKHS2IV):
     """
-    Cross-validated approximate alternate simultaneous RKHS estimator.
+    Cross-validated approximate simultaneous RKHS-norm estimator.
 
     Parameters:
         kernel_approx (str): Kernel approximation method ('nystrom' or 'rbfsampler').
-        n_components (int or float): Number of approximation components.
-            If integer-like and >= 1, treated as a fixed component count.
-            If float in (0, 1], treated as the sample fraction with a floor of 10.
+        n_components (int, float, or array-like): Component count, sample
+            fraction, or candidate grid. Values in (0, 1] are sample
+            fractions with a floor of 10; integer-like values greater than 1
+            are fixed component counts.
         kernel (str or callable): Kernel function or string identifier.
-        gamma (str or float): Length scale for the kernel.
+        gamma (str, float, or array-like): Automatic bandwidth, fixed
+            bandwidth, or candidate bandwidth grid.
         degree (int): Degree for polynomial kernels.
         coef0 (float): Zero coefficient for polynomial kernels.
         kernel_params (dict): Additional parameters for the kernel.
@@ -2585,18 +2616,22 @@ class ApproxRKHS2IVCV(ApproxRKHS2IV):
         Fit the nested RKHS IV estimator.
 
         Parameters:
-            A (array-like): First nested-stage treatment or endogenous block.
-            B (array-like): Second nested-stage treatment or endogenous block.
-            C (array-like): Second nested-stage instrument block.
-            D (array-like): First nested-stage instrument block.
+            A (array-like or scipy.sparse matrix): First nested-stage treatment or endogenous block.
+            B (array-like or scipy.sparse matrix): Second nested-stage treatment or endogenous block.
+            C (array-like or scipy.sparse matrix): Second nested-stage instrument block.
+            D (array-like or scipy.sparse matrix): First nested-stage instrument block.
             Y (array-like): Outcome values.
-            W (array-like or None): Optional observation weights.
+            W (array-like or None): Optional observation-level multipliers in
+                the bridge residual ``h(B) - W*g(A)``; defaults to one.
             subsetted (bool): Whether to apply stage-specific subset restrictions.
-            subset_ind1 (array-like or None): Indicator or mask selecting the first-stage subset.
-            subset_ind2 (array-like or None): Optional indicator or mask selecting the second-stage subset.
+            subset_ind1 (array-like or None): Indicator or mask selecting the
+                first-stage ``D``-moment rows.
+            subset_ind2 (array-like or None): Indicator or mask selecting the
+                second-stage ``C``-moment rows; defaults to the complement of
+                ``subset_ind1``.
         """
         Y = _to_column_vector(Y)
-        A, B, C, D = map(np.asarray, (A, B, C, D))
+        A, B, C, D = map(_as_feature_input, (A, B, C, D))
         n = Y.shape[0]
         if any(values.ndim == 0 or values.shape[0] != n
                for values in (A, B, C, D)):

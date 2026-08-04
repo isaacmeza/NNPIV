@@ -65,6 +65,20 @@ def _sqrt_psd_matrix(K):
     return (evecs * np.sqrt(evals)) @ evecs.T
 
 
+def _pinv_symmetric(matrix):
+    """Return the pseudoinverse of a numerically symmetrized matrix."""
+    matrix = np.asarray(matrix, dtype=float)
+    matrix = 0.5 * (matrix + matrix.T)
+    return np.linalg.pinv(matrix, hermitian=True)
+
+
+def _solve_symmetric(matrix, rhs):
+    """Solve a nonsingular numerically symmetrized linear system."""
+    matrix = np.asarray(matrix, dtype=float)
+    matrix = 0.5 * (matrix + matrix.T)
+    return np.linalg.solve(matrix, rhs)
+
+
 class _BaseRKHSIV:
     """
     Base class for RKHS IV methods.
@@ -421,9 +435,11 @@ class RKHSIVCV(RKHSIV):
                 )
             scores.append(fold_scores)
 
-        self.alpha_scales = alpha_scales
+        self.alpha_scales_ = np.asarray(alpha_scales, dtype=float).copy()
         self.avg_scores = np.mean(np.array(scores), axis=0)
-        self.best_alpha_scale = alpha_scales[np.argmin(self.avg_scores)]
+        self.best_alpha_scale = self.alpha_scales_[
+            np.argmin(self.avg_scores)
+        ]
 
         delta = self._get_delta(n)
         self.best_alpha = self._get_alpha(delta, self.best_alpha_scale)
@@ -689,8 +705,8 @@ class ApproxRKHSIV(_BaseRKHSIV):
     Parameters:
         kernel_approx (str): Kernel approximation method ('nystrom' or 'rbfsampler').
         n_components (int or float): Number of approximation components.
-            If integer-like and >= 1, treated as a fixed component count.
-            If float in (0, 1], treated as the sample fraction with a floor of 10.
+            Values in (0, 1] are sample fractions with a floor of 10;
+            integer-like values greater than 1 are fixed component counts.
         kernel (str or callable): Kernel function or string identifier.
         gamma (str or float): Length scale for the kernel.
         degree (int): Degree for polynomial kernels.
@@ -720,8 +736,8 @@ class ApproxRKHSIV(_BaseRKHSIV):
         Resolve the effective approximation dimension from ``self.n_components``.
 
         Supports two input modes:
-        - integer-like >= 1: fixed component count
-        - float in (0, 1]: fraction of sample size (rounded, with floor 10)
+        - values in (0, 1]: fraction of sample size (rounded, with floor 10)
+        - integer-like values greater than 1: fixed component count
 
         The resolved count is always capped by ``n_samples`` when provided.
         """
@@ -744,7 +760,7 @@ class ApproxRKHSIV(_BaseRKHSIV):
             resolved = int(value)
         else:
             raise ValueError(
-                "`n_components` must be integer-like >= 1 or a fraction in (0, 1]."
+                "`n_components` must be integer-like > 1 or a fraction in (0, 1]."
             )
 
         if n_samples is not None:
@@ -802,12 +818,17 @@ class ApproxRKHSIV(_BaseRKHSIV):
         RootKh = self.featT.fit_transform(T)
         n_feat_f = RootKf.shape[1]
         n_feat_h = RootKh.shape[1]
-        Q = np.linalg.pinv(RootKf.T @ RootKf /
-                           (2 * n * delta**2) + np.eye(n_feat_f) / 2)
+        Q_system = (
+            RootKf.T @ RootKf /
+            (2 * n * delta**2) + np.eye(n_feat_f) / 2
+        )
         A = RootKh.T @ RootKf
-        W = (A @ Q @ A.T + alpha * np.eye(n_feat_h))
-        B = A @ Q @ RootKf.T @ Y
-        self.a = np.linalg.pinv(W) @ B
+        W = (
+            A @ _solve_symmetric(Q_system, A.T)
+            + alpha * np.eye(n_feat_h)
+        )
+        B = A @ _solve_symmetric(Q_system, RootKf.T @ Y)
+        self.a = _pinv_symmetric(W) @ B
         self.fitted_delta = delta
         return self
 
@@ -851,11 +872,15 @@ class ApproxRKHSIV(_BaseRKHSIV):
         )
         RootKf = featZ.fit_transform(Z)
         n_feat_f = RootKf.shape[1]
-        Q = np.linalg.pinv(RootKf.T @ RootKf /
-                           (2 * n * delta**2) + np.eye(n_feat_f) / 2)
+        Q_system = (
+            RootKf.T @ RootKf /
+            (2 * n * delta**2) + np.eye(n_feat_f) / 2
+        )
         Y_pred = self.predict(T)
         res = RootKf.T @ (Y - Y_pred)
-        return _to_scalar(res.T @ Q @ res) / n**2
+        return _to_scalar(
+            res.T @ _solve_symmetric(Q_system, res)
+        ) / n**2
 
 
 class ApproxRKHSIVCV(ApproxRKHSIV):
@@ -868,8 +893,8 @@ class ApproxRKHSIVCV(ApproxRKHSIV):
     Parameters:
         kernel_approx (str): Kernel approximation method ('nystrom' or 'rbfsampler').
         n_components (int or float): Number of approximation components.
-            If integer-like and >= 1, treated as a fixed component count.
-            If float in (0, 1], treated as the sample fraction with a floor of 10.
+            Values in (0, 1] are sample fractions with a floor of 10;
+            integer-like values greater than 1 are fixed component counts.
         kernel (str or callable): Kernel function or string identifier.
         gamma (str or float): Length scale for the kernel.
         degree (int): Degree for polynomial kernels.
@@ -948,21 +973,34 @@ class ApproxRKHSIVCV(ApproxRKHSIV):
             n_feat_f_train = RootKf_train.shape[1]
             n_feat_f_test = RootKf_test.shape[1]
             n_feat_h_train = RootKh_train.shape[1]
-            Q_train = np.linalg.pinv(
-                RootKf_train.T @ RootKf_train / (2 * n_train * (delta_train**2)) + np.eye(n_feat_f_train) / 2)
-            Q_test = np.linalg.pinv(
-                RootKf_test.T @ RootKf_test / (2 * n_test * (delta_test**2)) + np.eye(n_feat_f_test) / 2)
+            Q_train_system = (
+                RootKf_train.T @ RootKf_train /
+                (2 * n_train * (delta_train**2))
+                + np.eye(n_feat_f_train) / 2
+            )
+            Q_test_system = (
+                RootKf_test.T @ RootKf_test /
+                (2 * n_test * (delta_test**2))
+                + np.eye(n_feat_f_test) / 2
+            )
             A_train = RootKh_train.T @ RootKf_train
-            AQA_train = A_train @ Q_train @ A_train.T
-            B_train = A_train @ Q_train @ RootKf_train.T @ Y[train]
+            AQA_train = A_train @ _solve_symmetric(
+                Q_train_system, A_train.T
+            )
+            B_train = A_train @ _solve_symmetric(
+                Q_train_system, RootKf_train.T @ Y[train]
+            )
             fold_scores = []
             for alpha_scale in alpha_scales:
                 alpha = self._get_alpha(delta_train, alpha_scale)
-                a = np.linalg.pinv(AQA_train + alpha *
-                                   np.eye(n_feat_h_train)) @ B_train
+                a = _pinv_symmetric(
+                    AQA_train + alpha * np.eye(n_feat_h_train)
+                ) @ B_train
                 res = RootKf_test.T @ (Y[test] - RootKh_test @ a)
                 fold_scores.append(
-                    _to_scalar(res.T @ Q_test @ res) / (n_test**2)
+                    _to_scalar(
+                        res.T @ _solve_symmetric(Q_test_system, res)
+                    ) / (n_test**2)
                 )
             scores.append(fold_scores)
 
@@ -987,12 +1025,17 @@ class ApproxRKHSIVCV(ApproxRKHSIV):
         RootKh = self.featT.fit_transform(T)
         n_feat_f = RootKf.shape[1]
         n_feat_h = RootKh.shape[1]
-        Q = np.linalg.pinv(RootKf.T @ RootKf /
-                           (2 * n * delta**2) + np.eye(n_feat_f) / 2)
+        Q_system = (
+            RootKf.T @ RootKf /
+            (2 * n * delta**2) + np.eye(n_feat_f) / 2
+        )
         A = RootKh.T @ RootKf
-        W = (A @ Q @ A.T + self.best_alpha * np.eye(n_feat_h))
-        B = A @ Q @ RootKf.T @ Y
-        self.a = np.linalg.pinv(W) @ B
+        W = (
+            A @ _solve_symmetric(Q_system, A.T)
+            + self.best_alpha * np.eye(n_feat_h)
+        )
+        B = A @ _solve_symmetric(Q_system, RootKf.T @ Y)
+        self.a = _pinv_symmetric(W) @ B
         self.fitted_delta = delta
         return self
 
@@ -1159,8 +1202,8 @@ class ApproxRKHSIVL2CV(ApproxRKHSIVL2):
     Parameters:
         kernel_approx (str): Kernel approximation method ('nystrom' or 'rbfsampler').
         n_components (int or float): Number of approximation components.
-            If integer-like and >= 1, treated as a fixed component count.
-            If float in (0, 1], treated as the sample fraction with a floor of 10.
+            Values in (0, 1] are sample fractions with a floor of 10;
+            integer-like values greater than 1 are fixed component counts.
         kernel (str or callable): Kernel function or string identifier.
         gamma (str or float): Length scale for the kernel.
         degree (int): Degree for polynomial kernels.
