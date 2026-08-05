@@ -60,7 +60,8 @@ class _BaseRKHS2IV:
 
     Parameters:
         kernel (str or callable): Kernel function or string identifier.
-        gamma (str or float): Length scale for the kernel.
+        gamma (str or float): Kernel coefficient passed to scikit-learn; for RBF,
+            the kernel is ``exp(-gamma * ||x - x'||^2)``.
         degree (int): Degree for polynomial kernels.
         coef0 (float): Zero coefficient for polynomial kernels.
         delta_scale (str or float): Scale of the critical radius.
@@ -109,11 +110,11 @@ class _BaseRKHS2IV:
                                 filter_params=True, **params)
 
     def _resolve_fitted_gamma(self, X, kernel_role):
-        """Resolve one kernel bandwidth from fitting data."""
+        """Resolve one kernel coefficient from fitting data."""
         return self._resolve_gamma_value(X, kernel_role, self.gamma)
 
     def _resolve_gamma_value(self, X, kernel_role, gamma):
-        """Resolve a specified kernel bandwidth from fitting data."""
+        """Resolve a specified kernel coefficient from fitting data."""
         if callable(self.kernel):
             return None
         if not _check_auto(gamma):
@@ -130,7 +131,7 @@ class _BaseRKHS2IV:
         return 1.0 / (2 * median_dist)
 
     def _get_kernel_at_fitted_gamma(self, X, Y=None, fitted_gamma=None):
-        """Evaluate a kernel using the bandwidth fixed during ``fit``."""
+        """Evaluate a kernel using the coefficient fixed during ``fit``."""
         if callable(self.kernel):
             params = self.kernel_params or {}
         else:
@@ -935,7 +936,8 @@ class RKHS2IV(_BaseRKHS2IV):
 
     Parameters:
         kernel (str or callable): Kernel function or string identifier.
-        gamma (str or float): Length scale for the kernel.
+        gamma (str or float): Kernel coefficient passed to scikit-learn; for RBF,
+            the kernel is ``exp(-gamma * ||x - x'||^2)``.
         degree (int): Degree for polynomial kernels.
         coef0 (float): Zero coefficient for polynomial kernels.
         delta_scale (str or float): Scale of the critical radius.
@@ -1051,8 +1053,9 @@ class RKHS2IVCV(RKHS2IV):
 
     Parameters:
         kernel (str or callable): Kernel function or string identifier.
-        gamma (str, float, or array-like): Automatic bandwidth, fixed
-            bandwidth, or candidate bandwidth grid.
+        gamma (str, float, or array-like): Automatic RBF coefficient, fixed
+            coefficient, or candidate coefficient grid; the RBF kernel is
+            ``exp(-gamma * ||x - x'||^2)``.
         degree (int): Degree for polynomial kernels.
         coef0 (float): Zero coefficient for polynomial kernels.
         kernel_params (dict): Additional parameters for the kernel.
@@ -1200,7 +1203,8 @@ class RKHS2IVL2(_BaseRKHS2IV):
 
     Parameters:
         kernel (str or callable): Kernel function or string identifier.
-        gamma (str or float): Length scale for the kernel.
+        gamma (str or float): Kernel coefficient passed to scikit-learn; for RBF,
+            the kernel is ``exp(-gamma * ||x - x'||^2)``.
         degree (int): Degree for polynomial kernels.
         coef0 (float): Zero coefficient for polynomial kernels.
         delta_scale (str or float): Scale of the critical radius.
@@ -1319,8 +1323,9 @@ class RKHS2IVL2CV(RKHS2IVL2):
 
     Parameters:
         kernel (str or callable): Kernel function or string identifier.
-        gamma (str, float, or array-like): Automatic bandwidth, fixed
-            bandwidth, or candidate bandwidth grid.
+        gamma (str, float, or array-like): Automatic RBF coefficient, fixed
+            coefficient, or candidate coefficient grid; the RBF kernel is
+            ``exp(-gamma * ||x - x'||^2)``.
         degree (int): Degree for polynomial kernels.
         coef0 (float): Zero coefficient for polynomial kernels.
         kernel_params (dict): Additional parameters for the kernel.
@@ -1474,7 +1479,8 @@ class ApproxRKHS2IVL2(_BaseRKHS2IV):
             Values in (0, 1] are sample fractions with a floor of 10;
             integer-like values greater than 1 are fixed component counts.
         kernel (str or callable): Kernel function or string identifier.
-        gamma (str or float): Length scale for the kernel.
+        gamma (str or float): Kernel coefficient passed to scikit-learn; for RBF,
+            the kernel is ``exp(-gamma * ||x - x'||^2)``.
         degree (int): Degree for polynomial kernels.
         coef0 (float): Zero coefficient for polynomial kernels.
         kernel_params (dict): Additional parameters for the kernel.
@@ -1756,8 +1762,9 @@ class ApproxRKHS2IVL2CV(ApproxRKHS2IVL2):
             fractions with a floor of 10; integer-like values greater than 1
             are fixed component counts.
         kernel (str or callable): Kernel function or string identifier.
-        gamma (str, float, or array-like): Automatic bandwidth, fixed
-            bandwidth, or candidate bandwidth grid.
+        gamma (str, float, or array-like): Automatic RBF coefficient, fixed
+            coefficient, or candidate coefficient grid; the RBF kernel is
+            ``exp(-gamma * ||x - x'||^2)``.
         degree (int): Degree for polynomial kernels.
         coef0 (float): Zero coefficient for polynomial kernels.
         kernel_params (dict): Additional parameters for the kernel.
@@ -2100,7 +2107,8 @@ class ApproxRKHS2IV(ApproxRKHS2IVL2):
             Values in (0, 1] are sample fractions with a floor of 10;
             integer-like values greater than 1 are fixed component counts.
         kernel (str or callable): Kernel function or string identifier.
-        gamma (str or float): Kernel bandwidth.
+        gamma (str or float): Kernel coefficient passed to scikit-learn; for
+            RBF, the kernel is ``exp(-gamma * ||x - x'||^2)``.
         degree (int): Degree for polynomial kernels.
         coef0 (float): Zero coefficient for polynomial kernels.
         kernel_params (dict): Additional parameters for the kernel.
@@ -2430,8 +2438,9 @@ class ApproxRKHS2IVCV(ApproxRKHS2IV):
             fractions with a floor of 10; integer-like values greater than 1
             are fixed component counts.
         kernel (str or callable): Kernel function or string identifier.
-        gamma (str, float, or array-like): Automatic bandwidth, fixed
-            bandwidth, or candidate bandwidth grid.
+        gamma (str, float, or array-like): Automatic RBF coefficient, fixed
+            coefficient, or candidate coefficient grid; the RBF kernel is
+            ``exp(-gamma * ||x - x'||^2)``.
         degree (int): Degree for polynomial kernels.
         coef0 (float): Zero coefficient for polynomial kernels.
         kernel_params (dict): Additional parameters for the kernel.

@@ -244,7 +244,7 @@ Internally, the Python drivers also set ``threadpoolctl(1)`` when appropriate.
 
 Replication notebooks are located in ``local_notebooks/``:
 
-- **STAR long-term outcomes** — reproduces paper figures (RKHS + NN).
+- **STAR long-term outcomes** — generates the STAR analysis figures (RKHS + NN).
 - **Job Corps mediation** — DML(mediated) with neural nets and RKHS.
 
 .. note::

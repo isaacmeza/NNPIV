@@ -87,7 +87,8 @@ class _BaseRKHSIV:
 
     Parameters:
         kernel (str or callable): Kernel function or string identifier.
-        gamma (str or float): Length scale for the kernel.
+        gamma (str or float): Kernel coefficient passed to scikit-learn; for RBF,
+            the kernel is ``exp(-gamma * ||x - x'||^2)``.
         degree (int): Degree for polynomial kernels.
         coef0 (float): Zero coefficient for polynomial kernels.
         delta_scale (str or float): Scale of the critical radius.
@@ -140,7 +141,7 @@ class _BaseRKHSIV:
                                 filter_params=True, **params)
 
     def _resolve_fitted_gamma(self, X, kernel_role):
-        """Resolve one kernel bandwidth from fitting data."""
+        """Resolve one kernel coefficient from fitting data."""
         if callable(self.kernel):
             return None
         if not _check_auto(self.gamma):
@@ -158,7 +159,7 @@ class _BaseRKHSIV:
         return 1.0 / (2 * median_dist)
 
     def _get_kernel_at_fitted_gamma(self, X, Y=None, fitted_gamma=None):
-        """Evaluate a kernel using the bandwidth fixed during ``fit``."""
+        """Evaluate a kernel using the coefficient fixed during ``fit``."""
         if callable(self.kernel):
             params = self.kernel_params or {}
         else:
@@ -195,7 +196,8 @@ class RKHSIV(_BaseRKHSIV):
 
     Parameters:
         kernel (str or callable): Kernel function or string identifier.
-        gamma (str or float): Length scale for the kernel.
+        gamma (str or float): Kernel coefficient passed to scikit-learn; for RBF,
+            the kernel is ``exp(-gamma * ||x - x'||^2)``.
         degree (int): Degree for polynomial kernels.
         coef0 (float): Zero coefficient for polynomial kernels.
         delta_scale (str or float): Scale of the critical radius.
@@ -272,7 +274,7 @@ class RKHSIV(_BaseRKHSIV):
                 T_test, Y=self.T, fitted_gamma=self.gamma_t_
             )
         else:
-            # Some subclasses construct kernels without storing a bandwidth.
+            # Some subclasses construct kernels without storing a coefficient.
             kernel = self._get_kernel(T_test, Y=self.T)
         return kernel @ self.a
 
@@ -293,7 +295,7 @@ class RKHSIV(_BaseRKHSIV):
         n = Y.shape[0]
 
         if not hasattr(self, "gamma_z_"):
-            # Subclasses without a stored bandwidth use their configured
+            # Subclasses without a stored coefficient use their configured
             # kernel construction and sample-dependent critical radius.
             score_delta = self._get_delta(n)
             Kf = self._get_kernel(Z)
@@ -329,7 +331,8 @@ class RKHSIVCV(RKHSIV):
 
     Parameters:
         kernel (str or callable): Kernel function or string identifier.
-        gamma (str or float): Length scale for the kernel.
+        gamma (str or float): Kernel coefficient passed to scikit-learn; for RBF,
+            the kernel is ``exp(-gamma * ||x - x'||^2)``.
         degree (int): Degree for polynomial kernels.
         coef0 (float): Zero coefficient for polynomial kernels.
         delta_scale (str or float): Scale of the critical radius.
@@ -475,7 +478,8 @@ class RKHSIVL2(_BaseRKHSIV):
 
     Parameters:
         kernel (str or callable): Kernel function or string identifier.
-        gamma (str or float): Length scale for the kernel.
+        gamma (str or float): Kernel coefficient passed to scikit-learn; for RBF,
+            the kernel is ``exp(-gamma * ||x - x'||^2)``.
         degree (int): Degree for polynomial kernels.
         coef0 (float): Zero coefficient for polynomial kernels.
         delta_scale (str or float): Scale of the critical radius.
@@ -559,7 +563,8 @@ class RKHSIVL2CV(RKHSIVL2):
 
     Parameters:
         kernel (str or callable): Kernel function or string identifier.
-        gamma (str or float): Length scale for the kernel.
+        gamma (str or float): Kernel coefficient passed to scikit-learn; for RBF,
+            the kernel is ``exp(-gamma * ||x - x'||^2)``.
         degree (int): Degree for polynomial kernels.
         coef0 (float): Zero coefficient for polynomial kernels.
         delta_scale (str or float): Scale of the critical radius.
@@ -708,7 +713,8 @@ class ApproxRKHSIV(_BaseRKHSIV):
             Values in (0, 1] are sample fractions with a floor of 10;
             integer-like values greater than 1 are fixed component counts.
         kernel (str or callable): Kernel function or string identifier.
-        gamma (str or float): Length scale for the kernel.
+        gamma (str or float): Kernel coefficient passed to scikit-learn; for RBF,
+            the kernel is ``exp(-gamma * ||x - x'||^2)``.
         degree (int): Degree for polynomial kernels.
         coef0 (float): Zero coefficient for polynomial kernels.
         delta_scale (str or float): Scale of the critical radius.
@@ -774,7 +780,7 @@ class ApproxRKHSIV(_BaseRKHSIV):
 
         Parameters:
             n_samples (int, optional): Sample count used to resolve/cap components.
-            fitted_gamma (float, optional): Bandwidth resolved from fitting data.
+            fitted_gamma (float, optional): Kernel coefficient resolved from fitting data.
 
         Returns:
             object: Kernel approximation instance.
@@ -896,7 +902,8 @@ class ApproxRKHSIVCV(ApproxRKHSIV):
             Values in (0, 1] are sample fractions with a floor of 10;
             integer-like values greater than 1 are fixed component counts.
         kernel (str or callable): Kernel function or string identifier.
-        gamma (str or float): Length scale for the kernel.
+        gamma (str or float): Kernel coefficient passed to scikit-learn; for RBF,
+            the kernel is ``exp(-gamma * ||x - x'||^2)``.
         degree (int): Degree for polynomial kernels.
         coef0 (float): Zero coefficient for polynomial kernels.
         delta_scale (str or float): Scale of the critical radius.
@@ -1205,7 +1212,8 @@ class ApproxRKHSIVL2CV(ApproxRKHSIVL2):
             Values in (0, 1] are sample fractions with a floor of 10;
             integer-like values greater than 1 are fixed component counts.
         kernel (str or callable): Kernel function or string identifier.
-        gamma (str or float): Length scale for the kernel.
+        gamma (str or float): Kernel coefficient passed to scikit-learn; for RBF,
+            the kernel is ``exp(-gamma * ||x - x'||^2)``.
         degree (int): Degree for polynomial kernels.
         coef0 (float): Zero coefficient for polynomial kernels.
         kernel_params (dict): Additional parameters for the kernel.

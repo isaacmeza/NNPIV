@@ -246,13 +246,13 @@ Cross-validation
 ^^^^^^^^^^^^^^^^
 
 All CV estimators use the actual training and validation fold sizes. Automatic
-bandwidths are resolved from each training fold. Approximate CV estimators fit
+kernel coefficients are resolved from each training fold. Approximate CV estimators fit
 Nyström/RFF maps on training rows and only transform held-out rows; the selected
 maps are then refitted on the full sample.
 
 The simultaneous CV classes accept a scalar, ``'auto'``, or a candidate grid
 for ``gamma``. Their approximate versions also accept an ``n_components``
-grid and jointly compare the bandwidth, component, and regularization grids.
+grid and jointly compare the kernel-coefficient, component, and regularization grids.
 Component candidates are scored in a common validation instrument space.
 When ``expand_alpha_grid=True``, a simultaneous CV estimator expands the
 regularization grid once if the best value is on its boundary.
