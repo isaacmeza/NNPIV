@@ -5,7 +5,8 @@ Classes:
     _BaseRKHS2IV: Base class for nested RKHS IV methods.
     RKHS2IV: Nested RKHS IV estimator with RKHS-norm regularization.
     RKHS2IVCV: Cross-validated RKHS2IV estimator.
-    RKHS2IVL2: Nested RKHS IV estimator aligned with Appendix J / Algorithm 2.
+    RKHS2IVL2: Nested RKHS IV estimator aligned with the common-penalty
+        specialization of Appendix L.1 / Algorithm 2.
     RKHS2IVL2CV: Cross-validated RKHS2IVL2 estimator.
     ApproxRKHS2IV: Nystrom/RFF approximate RKHS2IV estimator.
     ApproxRKHS2IVCV: Cross-validated approximate RKHS2IV estimator.
@@ -71,8 +72,9 @@ class _BaseRKHS2IV:
         kernel_params (dict): Additional parameters for the kernel.
         kernel_approx (str): Kernel approximation method ('nystrom' or 'rbfsampler').
         n_components (int or float): Number of approximation components.
-            Values in (0, 1] are sample fractions with a floor of 10;
-            integer-like values greater than 1 are fixed component counts.
+            Values in (0, 1] are sample fractions with a floor of 10 and are
+            then capped at ``n_samples``; integer-like values greater than 1
+            are fixed component counts.
     """
 
     def __init__(self, *args, **kwargs):
@@ -1023,6 +1025,12 @@ class RKHS2IV(_BaseRKHS2IV):
 
         Parameters:
             B_test (array-like): Test data for the second nested-stage block.
+            A_test (array-like, optional): If supplied as the second positional
+                argument, test data for the first nested-stage block.
+
+        Returns:
+            numpy.ndarray or tuple: ``h_hat(B_test)`` when only ``B_test`` is
+            supplied; otherwise ``(h_hat(B_test), g_hat(A_test))``.
         """
         if hasattr(self, "gamma_b_"):
             kernel_b = self._get_kernel_at_fitted_gamma(
@@ -1199,7 +1207,9 @@ class RKHS2IVL2(_BaseRKHS2IV):
     Nested RKHS IV estimator with L2 regularization.
 
     Note:
-        This class implements the Appendix J / Algorithm 2 RKHS closed form.
+        This class implements the common-penalty specialization
+        ``mu_prime = mu = alpha`` of the Appendix L.1 / Algorithm 2 RKHS
+        block solution.
 
     Parameters:
         kernel (str or callable): Kernel function or string identifier.
@@ -1292,6 +1302,12 @@ class RKHS2IVL2(_BaseRKHS2IV):
 
         Parameters:
             B_test (array-like): Test data for the second nested-stage block.
+            A_test (array-like, optional): If supplied as the second positional
+                argument, test data for the first nested-stage block.
+
+        Returns:
+            numpy.ndarray or tuple: ``h_hat(B_test)`` when only ``B_test`` is
+            supplied; otherwise ``(h_hat(B_test), g_hat(A_test))``.
         """
         if hasattr(self, "gamma_b_"):
             kernel_b = self._get_kernel_at_fitted_gamma(
@@ -1319,7 +1335,9 @@ class RKHS2IVL2CV(RKHS2IVL2):
     Cross-validated RKHS2IVL2 estimator.
 
     Note:
-        This class cross-validates the Appendix J / Algorithm 2 RKHS closed form.
+        This class cross-validates the common-penalty specialization
+        ``mu_prime = mu = alpha`` of the Appendix L.1 / Algorithm 2 RKHS
+        block solution.
 
     Parameters:
         kernel (str or callable): Kernel function or string identifier.
@@ -1466,7 +1484,8 @@ class RKHS2IVL2CV(RKHS2IVL2):
 
 class ApproxRKHS2IVL2(_BaseRKHS2IV):
     """
-    Approximate Appendix J / Algorithm 2 RKHS estimator using finite kernel features.
+    Approximate common-penalty Appendix L.1 / Algorithm 2 RKHS estimator using
+    finite kernel features. It uses ``mu_prime = mu = alpha``.
 
     Instrument projections and the empirical-L2 normal equations are
     contracted directly through the finite feature matrices. The fitted block
@@ -1476,8 +1495,9 @@ class ApproxRKHS2IVL2(_BaseRKHS2IV):
     Parameters:
         kernel_approx (str): Kernel approximation method ('nystrom' or 'rbfsampler').
         n_components (int or float): Number of approximation components.
-            Values in (0, 1] are sample fractions with a floor of 10;
-            integer-like values greater than 1 are fixed component counts.
+            Values in (0, 1] are sample fractions with a floor of 10 and are
+            then capped at ``n_samples``; integer-like values greater than 1
+            are fixed component counts.
         kernel (str or callable): Kernel function or string identifier.
         gamma (str or float): Kernel coefficient passed to scikit-learn; for RBF,
             the kernel is ``exp(-gamma * ||x - x'||^2)``.
@@ -1743,6 +1763,10 @@ class ApproxRKHS2IVL2(_BaseRKHS2IV):
         Parameters:
             B_test (array-like): Test data for the second nested-stage block.
             A_test (array-like or None): Optional test data for the first nested-stage block.
+
+        Returns:
+            numpy.ndarray or tuple: ``h_hat(B_test)`` when ``A_test`` is
+            omitted; otherwise ``(h_hat(B_test), g_hat(A_test))``.
         """
         pred_b = self.featB.transform(B_test) @ self.theta_b
         if A_test is None:
@@ -1753,14 +1777,15 @@ class ApproxRKHS2IVL2(_BaseRKHS2IV):
 
 class ApproxRKHS2IVL2CV(ApproxRKHS2IVL2):
     """
-    Cross-validated approximate Appendix J / Algorithm 2 RKHS estimator.
+    Cross-validated approximate common-penalty Appendix L.1 / Algorithm 2 RKHS
+    estimator, with ``mu_prime = mu = alpha``.
 
     Parameters:
         kernel_approx (str): Kernel approximation method ('nystrom' or 'rbfsampler').
         n_components (int, float, or array-like): Component count, sample
             fraction, or candidate grid. Values in (0, 1] are sample
-            fractions with a floor of 10; integer-like values greater than 1
-            are fixed component counts.
+            fractions with a floor of 10 and are then capped at ``n_samples``;
+            integer-like values greater than 1 are fixed component counts.
         kernel (str or callable): Kernel function or string identifier.
         gamma (str, float, or array-like): Automatic RBF coefficient, fixed
             coefficient, or candidate coefficient grid; the RBF kernel is
@@ -2104,8 +2129,9 @@ class ApproxRKHS2IV(ApproxRKHS2IVL2):
         kernel_approx (str): Kernel approximation method ('nystrom' or
             'rbfsampler').
         n_components (int or float): Number of approximation components.
-            Values in (0, 1] are sample fractions with a floor of 10;
-            integer-like values greater than 1 are fixed component counts.
+            Values in (0, 1] are sample fractions with a floor of 10 and are
+            then capped at ``n_samples``; integer-like values greater than 1
+            are fixed component counts.
         kernel (str or callable): Kernel function or string identifier.
         gamma (str or float): Kernel coefficient passed to scikit-learn; for
             RBF, the kernel is ``exp(-gamma * ||x - x'||^2)``.
@@ -2435,8 +2461,8 @@ class ApproxRKHS2IVCV(ApproxRKHS2IV):
         kernel_approx (str): Kernel approximation method ('nystrom' or 'rbfsampler').
         n_components (int, float, or array-like): Component count, sample
             fraction, or candidate grid. Values in (0, 1] are sample
-            fractions with a floor of 10; integer-like values greater than 1
-            are fixed component counts.
+            fractions with a floor of 10 and are then capped at ``n_samples``;
+            integer-like values greater than 1 are fixed component counts.
         kernel (str or callable): Kernel function or string identifier.
         gamma (str, float, or array-like): Automatic RBF coefficient, fixed
             coefficient, or candidate coefficient grid; the RBF kernel is
