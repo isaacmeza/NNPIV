@@ -1,4 +1,17 @@
+from dataclasses import dataclass
+from typing import Callable
+
 import numpy as np
+
+
+@dataclass(frozen=True)
+class NestedTruth:
+    """Structural functions on the same standardized scale as the outcome."""
+
+    g: Callable[[np.ndarray], np.ndarray]
+    h: Callable[[np.ndarray], np.ndarray]
+    y_mean: float
+    y_std: float
 
 # continuously differentiable
 fn_dict_cdiff = {'2dpoly': 1, 'sigmoid': 2,
@@ -100,16 +113,24 @@ def get_tau_fn(func):
     return tau_fn
 
 
-def standardize(A1, A2, B1, B2, y, fn):
-    ym = y.mean()
-    ystd = y.std()
+def standardize(A1, A2, B1, B2, y, fn, return_truth=False):
+    ym = float(y.mean())
+    ystd = float(y.std())
     y = (y - ym) / ystd
 
-    def newfn(x): return (fn(x) - ym) / ystd
-    return A1, A2, B1, B2, y, newfn
+    def h(x):
+        return (fn(x) - ym) / ystd
+
+    def g(x):
+        x = np.asarray(x)
+        first = x[:, [0]] if x.ndim == 2 else x
+        return (np.power(first, 3) - ym) / ystd
+
+    truth = NestedTruth(g=g, h=h, y_mean=ym, y_std=ystd)
+    return A1, A2, B1, B2, y, truth if return_truth else truth.h
 
 
-def get_data(n_samples, n_a, n_b, tau_fn, dgp_num):
+def get_data(n_samples, n_a, n_b, tau_fn, dgp_num, return_truth=False):
     # Construct dataset
     # A1 :- endogeneous treatment in first stage
     # A2 :- instrument in first stage
@@ -152,4 +173,6 @@ def get_data(n_samples, n_a, n_b, tau_fn, dgp_num):
         Y = np.power(A1[:,0],3)
         Y = Y.reshape(n_samples,1)+U+epsilon2.reshape(n_samples,1)
 
-    return standardize(A1, A2, B1, B2, Y, fn)
+    return standardize(
+        A1, A2, B1, B2, Y, fn, return_truth=return_truth
+    )
