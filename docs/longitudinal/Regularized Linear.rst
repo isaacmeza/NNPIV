@@ -3,218 +3,145 @@
 Regularized Linear Function Spaces (:math:`\ell_2-\ell_2`)
 ==========================================================
 
-We continue to work with linear function classes, but in contrast with the previous section :ref:`sparse-linear-function-spaces`, the learner and adversary function spaces are equipped with the :math:`\ell_2`-norm. This difference will translate to modifying :math:`R_{\min}` and :math:`R_{\max}` in Proposition 17, given that the dual norm for the spaces :math:`\Theta` and :math:`W` in this setting is again the :math:`\ell_2`-norm. In particular, for the sequential estimators we will take
+These estimators use linear learners and critics constrained to Euclidean
+balls. Their optimistic projected-gradient updates are the
+:math:`\ell_2` analogue of the entropy updates in
+:ref:`sparse-linear-function-spaces`. The critic objectives are linear: the
+current implementations do not subtract a quadratic critic covariance term.
+
+For each class, returned coefficients and critic weights average feasible
+iterates. The fitted ``duality_gap_`` evaluates the exact constrained learner
+best response. Consequently, it handles both active ball boundaries and
+singular empirical covariance matrices. Moment violations are reported in the
+same :math:`\ell_2` geometry as the critic ball.
+
+One-stage estimators
+--------------------
+
+Let
 
 .. math::
 
-    R_{\min}(\alpha) = \frac{1}{2}\|\alpha\|_2^2 \;,\quad R_{\max}(\omega_1) = \frac{1}{2}\|\omega_1\|_2^2
+   m(\alpha)=\mathbb E_n[Z(X^\top\alpha-Y)],
+   \qquad Q_X=\mathbb E_n[XX^\top].
 
-and
+Estimator 1 - coefficient-L2 penalty
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+The coefficient-regularized class solves
+
+.. math::
+   :label: minimax-regularized-est1
+
+   \min_{\|\alpha\|_2\leq B}
+   \max_{\|\theta\|_2\leq1}
+   \theta^\top m(\alpha)+\frac{\lambda}{2}\|\alpha\|_2^2.
+
+The critic best response is the unit direction of :math:`m(\alpha)`, with the
+zero vector used when the moment is zero. The learner update is projected onto
+the radius-``B`` Euclidean ball.
+
+.. autosummary::
+   :toctree: _autosummary
+   :template: estimator_class
+
+   nnpiv.linear.sparse_l2vsl2
+
+Estimator 2 - empirical-L2 penalty
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+The fitted-value ridge class replaces the coefficient norm by
+
+.. math::
+   :label: minimax-regularized-est2
+
+   \min_{\|\alpha\|_2\leq B}
+   \max_{\|\theta\|_2\leq1}
+   \theta^\top m(\alpha)
+   +\frac{\lambda}{2}\alpha^\top Q_X\alpha.
+
+Its learner best response is a convex trust-region problem. The gap
+calculation uses the unconstrained solution when feasible and otherwise solves
+for the boundary multiplier; it does not approximate the response using a
+single eigenvalue bound.
+
+.. autosummary::
+   :toctree: _autosummary
+   :template: estimator_class
+
+   nnpiv.linear.sparse_ridge_l2vsl2
+
+Nested estimators
+-----------------
+
+Let :math:`\mathbb E_p` and :math:`\mathbb E_q` be the normalized empirical
+means used for the two bridge moments, and define
 
 .. math::
 
-    R_{\min}(\alpha, \beta) = \frac{1}{2}\|\alpha\|_2^2 + \frac{1}{2}\|\beta\|_2^2 \;,\quad R_{\max}(\omega_1, \omega_2) = \frac{1}{2}\|\omega_1\|_2^2 + \frac{1}{2}\|\omega_2\|_2^2
+   \begin{aligned}
+   r_1(\alpha)&=\mathbb E_p[D(Y-A^\top\alpha)],\\
+   r_2(\alpha,\beta)&=
+      \mathbb E_q[C((WA)^\top\alpha-B^\top\beta)],\\
+   Q_A&=\mathbb E_n[AA^\top],\qquad
+   Q_B=\mathbb E_n[BB^\top].
+   \end{aligned}
 
-for the joint estimator, since these regularizers are 1-strongly convex in their respective domains. In these cases, the updates will be essentially optimistic gradient descent. In the following subsections we only state the corresponding Lemmas analogous to section :ref:`sparse-linear-function-spaces`.
+``W`` is the observation-level multiplier on the first learner in the second
+bridge moment; it is not a sample weight. ``W=None`` uses one. If
+``subsetted=False``, both stage means use all observations. If
+``subsetted=True``, ``subset_ind1`` is a required nonempty binary mask and an
+omitted ``subset_ind2`` is its complement. Two explicit nonempty masks may
+overlap or leave observations unused. The ridge matrices :math:`Q_A,Q_B`
+always use the full sample.
 
-.. _estimator-1-l2:
+Estimator 3 - coefficient-L2 penalties
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-Estimator 1 
------------
+The simultaneous coefficient-regularized game is
 
-.. admonition:: FTRL Iterates for Estimator 1
-    :class: lemma
-    :name: regularized-l2-est1
+.. math::
+   :label: minimax-regularized-est3
 
-    Consider the iterates for :math:`t=1,\ldots, T`:
+   \min_{\substack{\|\alpha\|_2\leq V_1\\
+                   \|\beta\|_2\leq V_2}}
+   \max_{\substack{\|\theta_1\|_2\leq1\\
+                   \|\theta_2\|_2\leq1}}
+   \theta_1^\top r_1+\theta_2^\top r_2
+   +\frac{\mu}{2}(\|\alpha\|_2^2+\|\beta\|_2^2).
 
-    .. math::
-        :nowrap:
-
-        \begin{aligned}
-        \tilde{\alpha}_{t+1} &= \tilde{\alpha}_{t}-2\eta\left(-2\mathbb{E}_n[ac'^{\top}]\theta_{1,t} + 2\mu'\tilde{\alpha}_{t}\right) + \eta\left(-2\mathbb{E}_n[ac'^{\top}]\theta_{1,t-1} + 2\mu'\tilde{\alpha}_{t-1}\right) \\
-        \alpha_{t+1} &= \tilde{\alpha}_{t+1}\min\left\{1, \frac{V_1}{\| \tilde{\alpha}_{t+1}\|_2}\right\},
-        \end{aligned}
-
-    .. math::
-        :nowrap:
-
-        \begin{aligned}
-        \tilde{\theta}_{1,t+1} &= \tilde{\theta}_{1,t}+2\eta\left(2\mathbb{E}_n[c'y]-2\mathbb{E}_n[c'a^\top]\alpha_{t} - 2\mathbb{E}_n[c'c'^{\top}]\tilde\theta_{1t}\right) \\
-        &\qquad -\eta\left(2\mathbb{E}_n[c'y]-2\mathbb{E}_n[c'a^\top]\alpha_{t-1} - 2\mathbb{E}_n[c'c'^{\top}]\tilde\theta_{1,t-1}\right) \\
-        \theta_{1,t+1} &= \tilde{\theta_1}_{t+1}\min\left\{1, \frac{U_1}{\| \tilde{\theta_1}_{t+1}\|_2}\right\}
-        \end{aligned}
-
-    with :math:`\tilde{\alpha}_{-1} = \tilde{\alpha}_{0}=\tilde{\theta}_{1,-1}=\tilde{\theta}_{1,0} = 0`, and :math:`\eta = \frac{1}{8\|\mathbb{E}_n[aa^\top]\|_2}`.
-
-    Then, :math:`\bar{\alpha} = \frac{1}{T}\sum_{t=1}^{T}\alpha_t`, is a :math:`O(T^{-1})`-approximate solution to
-
-    .. math::
-
-        \operatorname{argmin}_{\|\alpha\|_2 \leq V_1} \max _{\|\theta_1\|_1 \leq U_1} 2\langle\mathbb{E}_n[(y-\langle\alpha, a\rangle)c'],\theta_1\rangle -\mathbb{E}_n[\langle c',\theta_1\rangle^2]+\mu'\|\alpha\|_2^2
+Both learner and critic updates are optimistic gradient steps followed by
+Euclidean projection onto their respective balls. The reported gap solves the
+two isotropic learner best responses exactly.
 
 .. autosummary::
    :toctree: _autosummary
-   :template: class.rst
+   :template: estimator_class
 
-   sparse_l2_l2.sparse_l2vsl2
+   nnpiv.linear.sparse2_l2vsl2
 
-.. _estimator-2-l2:
+Estimator 4 - empirical-L2 penalties
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-Estimator 2 
------------
+The nested fitted-value ridge class solves
 
-.. admonition:: FTRL Iterates for Estimator 2
-    :class: lemma
-    :name: regularized-l2-est2
+.. math::
+   :label: minimax-regularized-est4
 
-    Consider the iterates for :math:`t=1,\ldots, T`:
+   \min_{\substack{\|\alpha\|_2\leq V_1\\
+                   \|\beta\|_2\leq V_2}}
+   \max_{\substack{\|\theta_1\|_2\leq1\\
+                   \|\theta_2\|_2\leq1}}
+   \theta_1^\top r_1+\theta_2^\top r_2
+   +\frac{\mu}{2}
+      (\alpha^\top Q_A\alpha+\beta^\top Q_B\beta).
 
-    .. math::
-        :nowrap:
-
-        \begin{aligned}
-        \tilde{\alpha}_{t+1} &= \tilde{\alpha}_{t}-2\eta\left(-2\mathbb{E}_n[ac'^{\top}]\theta_{1,t} + 2\mu'\mathbb{E}_n[aa^\top]\tilde{\alpha}_{t}\right) + \eta\left(-2\mathbb{E}_n[ac'^{\top}]\theta_{1,t-1} + 2\mu'\mathbb{E}_n[aa^\top]\tilde{\alpha}_{t-1}\right) \\
-        \alpha_{t+1} &= \tilde{\alpha}_{t+1}\min\left\{1, \frac{V_1}{\| \tilde{\alpha}_{t+1}\|_2}\right\},
-        \end{aligned}
-
-    .. math::
-        :nowrap:
-
-        \begin{aligned}
-        \tilde{\theta}_{1,t+1} &= \tilde{\theta}_{1,t}+2\eta\left(2\mathbb{E}_n[c'y]-2\mathbb{E}_n[c'a^\top]\alpha_{t} - 2\mathbb{E}_n[c'c'^{\top}]\tilde\theta_{1t}\right) \\
-        &\qquad -\eta\left(2\mathbb{E}_n[c'y]-2\mathbb{E}_n[c'a^\top]\alpha_{t-1} - 2\mathbb{E}_n[c'c'^{\top}]\tilde\theta_{1,t-1}\right)\\
-        \theta_{1,t+1} &= \tilde{\theta_1}_{t+1}\min\left\{1, \frac{U_1}{\| \tilde{\theta_1}_{t+1}\|_2}\right\}
-        \end{aligned}
-
-    with :math:`\tilde{\alpha}_{-1} = \tilde{\alpha}_{0}=\tilde{\theta}_{1,-1}=\tilde{\theta}_{1,0} = 0`, and :math:`\eta = \frac{1}{8\|\mathbb{E}_n[aa^\top]\|_2}`.
-
-    Then, :math:`\bar{\alpha} = \frac{1}{T}\sum_{t=1}^{T}\alpha_t`, is a :math:`O(T^{-1})`-approximate solution to
-
-    .. math::
-
-        \operatorname{argmin}_{\|\alpha\|_2 \leq V_1} \max _{\|\theta_1\|_1 \leq U_1} 2\langle\mathbb{E}_n[(y-\langle\alpha, a\rangle)c'],\theta_1\rangle -\mathbb{E}_n[\langle c',\theta_1\rangle^2]+\mu'\mathbb{E}_n[\langle a,\alpha\rangle^2]
+The two gap components are exact Euclidean trust-region minima. An
+eigendecomposition of each symmetric learner covariance supports both
+full-rank and singular cases without changing the estimator's moment game.
 
 .. autosummary::
    :toctree: _autosummary
-   :template: class.rst
+   :template: estimator_class
 
-   sparse_l2_l2.sparse_ridge_l2vsl2
-
-.. _estimator-3-ridge-l2:
-
-
-Estimator 3 - (Ridge)
-----------------------
-
-.. admonition:: FTRL Iterates for Estimator 3 (Ridge)
-    :class: lemma
-    :name: regularized-l2-est3-ridge
-
-    Consider the iterates for :math:`t=1,\ldots, T`:
-
-    .. math::
-        :nowrap:
-
-        \begin{aligned}
-        \tilde{\alpha}_{t+1} &= \tilde{\alpha}_{t} -2\eta\left(-2\mathbb{E}_n[ac'^{\top}]\theta_{1,t} + 2\mu'\mathbb{E}_n[aa^\top]\tilde\alpha_{t}+ 2\mathbb{E}_n[ac^\top]\theta_{2,t}\right) \\
-        &\qquad +\eta\left(-2\mathbb{E}_n[ac'^{\top}]\theta_{1,t-1} + 2\mu'\mathbb{E}_n[aa^\top]\tilde\alpha_{t-1}+ 2\mathbb{E}_n[ac^\top]\theta_{2,t-1}\right) \\
-        \alpha_{t+1} &= \tilde{\alpha}_{t+1}\min\left\{1, \frac{V_1}{\| \tilde{\alpha}_{t+1}\|_2}\right\}, \\
-        \tilde{\beta}_{t+1} &= \tilde{\beta}_{t}-2\eta\left(-2\mathbb{E}_n[bc^\top]\theta_{2,t}+2\mu\mathbb{E}_n[bb^\top]\tilde\beta_{t}\right)+\eta\left(-2\mathbb{E}_n[bc^\top]\theta_{2,t-1}+2\mu\mathbb{E}_n[bb^\top]\tilde\beta_{t-1}\right) \\
-        \beta_{t+1} &= \tilde{\beta}_{t+1}\min\left\{1, \frac{V_2}{\| \tilde{\beta}_{t+1}\|_2}\right\},
-        \end{aligned}
-
-    .. math::
-        :nowrap:
-
-        \begin{aligned}
-        \tilde{\theta}_{1,t+1} &= \tilde{\theta}_{1,t}+2\eta\left(2\mathbb{E}_n[c'y]-2\mathbb{E}_n[c'a^\top]\alpha_{t} - 2\mathbb{E}_n[c'c'^{\top}]\tilde\theta_{1,t}\right) \\
-        &\qquad -\eta\left(2\mathbb{E}_n[c'y]-2\mathbb{E}_n[c'a^\top]\alpha_{t-1} - 2\mathbb{E}_n[c'c'^{\top}]\tilde\theta_{1,t-1}\right)\\
-        \tilde\theta_{1,t+1} &= \tilde{\theta}_{1,t+1}\min\left\{1, \frac{U_1}{\| \tilde{\theta}_{1,t+1}\|_2}\right\}, \\
-        \tilde{\theta}_{2,t+1} &= \tilde{\theta}_{2,t}+2\eta\left(2\mathbb{E}_n[ca^\top]\alpha_{t}-2\mathbb{E}_n[cb^\top]\beta_{t} - 2\mathbb{E}_n[cc^{\top}]\tilde\theta_{2,t}\right) \\
-        &\qquad -\eta\left(2\mathbb{E}_n[ca^\top]\alpha_{t-1}-2\mathbb{E}_n[cb^\top]\beta_{t-1} - 2\mathbb{E}_n[cc^{\top}]\tilde\theta_{2,t-1}\right)\\
-        \tilde\theta_{2,t+1} &= \tilde{\theta}_{2,t+1}\min\left\{1, \frac{U_2}{\| \tilde{\theta}_{2,t+1}\|_2}\right\}
-        \end{aligned}
-
-    with :math:`\tilde{\alpha}_{-1} = \tilde{\alpha}_{0} = \tilde{\beta}_{-1} = \tilde{\beta}_{0}= \theta_{1,-1}=\theta_{1,0} = \theta_{2,-1}=\theta_{2,0}= 0`, and :math:`\eta = [16\max\left\{\left\|\mathbb{E}_n[ac'^\top]\right\|_2, \left\|\mathbb{E}_n[ac^\top]\right\|_2, \left\| \mathbb{E}_n[bc^\top]\right\|_2\right\}]^{-1}`.
-
-    Then,
-
-    .. math::
-        :nowrap:
-
-        \begin{aligned}
-        \bar{\alpha} = \frac{1}{T}\sum_{t=1}^{T}\alpha_{t}\,,\quad \bar{\beta} = \frac{1}{T}\sum_{t=1}^{T}\beta_{t}
-        \end{aligned}
-
-    are a :math:`O(T^{-1})`-approximate solution for
-
-    .. math::
-
-        \underset{\|\beta\|_2 \leq V_2}{\operatorname{argmin}_{\|\alpha\|_2 \leq V_1}} \underset{\|\theta_2\|_2\leq U_2}{\max _{\|\theta_1\|_2\leq U_1}} \left( 2\langle\mathbb{E}_n[(y-\langle\alpha, a\rangle)c'],\theta_1\rangle -\mathbb{E}_n[\langle c',\theta_1\rangle^2]+\mu'\mathbb{E}_n[\langle a,\alpha\rangle^2] \right. \\
-        \left. + 2\langle\mathbb{E}_n[(\langle\alpha, a\rangle-\langle\beta, b\rangle)c],\theta_2\rangle -\mathbb{E}_n[\langle c,\theta_2\rangle^2]+\mu\mathbb{E}_n[\langle b,\beta\rangle^2] \right)
-
-.. autosummary::
-   :toctree: _autosummary
-   :template: class.rst
-
-   sparse2_l2_l2.sparse2_ridge_l2vsl2
-
-.. _estimator-3-l2:
-
-Estimator 3 - (:math:`\ell_2`-norm)
------------------------------------
-
-.. admonition:: FTRL Iterates for Estimator 3 - (:math:`\ell_2`-norm)
-    :class: lemma
-    :name: regularized-l2-est3
-
-    Consider the iterates for :math:`t=1,\ldots, T`:
-
-    .. math::
-        :nowrap:
-    
-        \begin{aligned}
-        \tilde{\alpha}_{t+1} &= \tilde{\alpha}_{t} -2\eta\left(-2\mathbb{E}_n[ac'^{\top}]\theta_{1,t} + 2\mu'\tilde\alpha_{t}+ 2\mathbb{E}_n[ac^\top]\theta_{2,t}\right) \\
-        &\qquad +\eta\left(-2\mathbb{E}_n[ac'^{\top}]\theta_{1,t-1} + 2\mu'\tilde\alpha_{t-1}+ 2\mathbb{E}_n[ac^\top]\theta_{2,t-1}\right) \\
-        \alpha_{t+1} &= \tilde{\alpha}_{t+1}\min\left\{1, \frac{V_1}{\| \tilde{\alpha}_{t+1}\|_2}\right\},\\
-        \tilde{\beta}_{t+1} &= \tilde{\beta}_{t}-2\eta\left(-2\mathbb{E}_n[bc^\top]\theta_{2,t}+2\mu\tilde\beta_{t}\right)+\eta\left(-2\mathbb{E}_n[bc^\top]\theta_{2,t-1}+2\mu\tilde\beta_{t-1}\right) \\
-        \beta_{t+1} &= \tilde{\beta}_{t+1}\min\left\{1, \frac{V_2}{\| \tilde{\beta}_{t+1}\|_2}\right\},
-        \end{aligned}
-
-
-    .. math::
-        :nowrap:
-
-        \begin{aligned}
-        \tilde{\theta}_{1,t+1} &= \tilde{\theta}_{1,t}+2\eta\left(2\mathbb{E}_n[c'y]-2\mathbb{E}_n[c'a^\top]\alpha_{t} - 2\mathbb{E}_n[c'c'^{\top}]\tilde\theta_{1,t}\right) \\
-        &\qquad -\eta\left(2\mathbb{E}_n[c'y]-2\mathbb{E}_n[c'a^\top]\alpha_{t-1} - 2\mathbb{E}_n[c'c'^{\top}]\tilde\theta_{1,t-1}\right)\\
-        \tilde\theta_{1,t+1} &= \tilde{\theta}_{1,t+1}\min\left\{1, \frac{U_1}{\| \tilde{\theta}_{1,t+1}\|_2}\right\}\\
-        \tilde{\theta}_{2,t+1} &= \tilde{\theta}_{2,t}+2\eta\left(2\mathbb{E}_n[ca^\top]\alpha_{t}-2\mathbb{E}_n[cb^\top]\beta_{t} - 2\mathbb{E}_n[cc^{\top}]\tilde\theta_{2,t}\right) \\
-        &\qquad -\eta\left(2\mathbb{E}_n[ca^\top]\alpha_{t-1}-2\mathbb{E}_n[cb^\top]\beta_{t-1} - 2\mathbb{E}_n[cc^{\top}]\tilde\theta_{2,t-1}\right)\\
-        \tilde\theta_{2,t+1} &= \tilde{\theta}_{2,t+1}\min\left\{1, \frac{U_2}{\| \tilde{\theta}_{2,t+1}\|_2}\right\}
-        \end{aligned}
-
-    with :math:`\tilde{\alpha}_{-1} = \tilde{\alpha}_{0} = \tilde{\beta}_{-1} = \tilde{\beta}_{0}= \theta_{1,-1}=\theta_{1,0} = \theta_{2,-1}=\theta_{2,0}= 0`, and :math:`\eta = [16\max\left\{\left\|\mathbb{E}_n[ac'^\top]\right\|_2, \left\|\mathbb{E}_n[ac^\top]\right\|_2, \left\| \mathbb{E}_n[bc^\top]\right\|_2\right\}]^{-1}`.
-
-    Then,
-
-    .. math::
-        :nowrap:
-
-        \begin{aligned}
-        \bar{\alpha} = \frac{1}{T}\sum_{t=1}^{T}\alpha_{t}\,,\quad \bar{\beta} = \frac{1}{T}\sum_{t=1}^{T}\beta_{t}
-        \end{aligned}
-
-    are a :math:`O(T^{-1})`-approximate solution for
-
-    .. math::
-
-        \underset{\|\beta\|_2 \leq V_2}{\operatorname{argmin}_{\|\alpha\|_2 \leq V_1}} \underset{\|\theta_2\|_2\leq U_2}{\max _{\|\theta_1\|_2\leq U_1}} \left( 2\langle\mathbb{E}_n[(y-\langle\alpha, a\rangle)c'],\theta_1\rangle -\mathbb{E}_n[\langle c',\theta_1\rangle^2]+\mu'\|\alpha\|_2^2 \right. \\
-        \left. + 2\langle\mathbb{E}_n[(\langle\alpha, a\rangle-\langle\beta, b\rangle)c],\theta_2\rangle -\mathbb{E}_n[\langle c,\theta_2\rangle^2]+\mu\|\beta\|_2^2 \right)
-
-.. autosummary::
-   :toctree: _autosummary
-   :template: class.rst
-
-   sparse2_l2_l2.sparse2_l2vsl2
+   nnpiv.linear.sparse2_ridge_l2vsl2

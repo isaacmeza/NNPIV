@@ -23,7 +23,10 @@ linear, and linear baselines).
 Assumptions
 -----------
 
-- Observations are i.i.d. draws of :math:`(A, B, C, C', Y)`.
+- Observations are i.i.d. draws of :math:`(A, B, C, D, Y)`, where
+  :math:`D=C'` denotes the first-stage instruments.
+- An optional observation-level multiplier :math:`W` enters the second bridge
+  residual as :math:`h(B)-Wg(A)`; the default is :math:`W=1`.
 - Function classes :math:`\mathcal{G}, \mathcal{H}, \mathcal{F}, \mathcal{F}'`
   are chosen by the estimator family.
 - Penalization and/or norm constraints are used to regularize finite-sample
@@ -34,7 +37,8 @@ Notation
 
 - :math:`A`: first-stage endogenous treatment/features.
 - :math:`B`: second-stage endogenous treatment/features.
-- :math:`C'`: first-stage instruments for recovering :math:`g`.
+- :math:`D` (also denoted :math:`C'`): first-stage instruments for recovering
+  :math:`g`.
 - :math:`C`: second-stage instruments for recovering :math:`h`.
 - :math:`g`: first-stage bridge function, :math:`h`: structural function of
   primary interest.

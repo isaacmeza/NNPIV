@@ -68,7 +68,8 @@ html_static_path = ["_static"]
 
 
 autodoc_mock_imports = ["scipy", "sklearn", "statsmodels", "tqdm", "copy",
-                        "torch", "mliv", "mliv.linear", "joblib", "matplotlib"]
+                        "torch", "cvxopt", "mliv", "mliv.linear", "joblib",
+                        "matplotlib"]
 
 # Pseudo-type strings used in NumPy-style docstrings that are not Python objects.
 nitpick_ignore = [

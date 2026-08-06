@@ -1,6 +1,7 @@
-﻿nnpiv.ensemble.EnsembleIV
+nnpiv.ensemble.EnsembleIV
 =========================
 
 .. currentmodule:: nnpiv.ensemble
 
 .. autoclass:: EnsembleIV
+   :members: fit, predict

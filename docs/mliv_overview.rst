@@ -34,7 +34,7 @@ Ensemble and Random Forest Estimators
 
 .. autosummary::
    :toctree: longitudinal/_autosummary
-   :template: class.rst
+   :template: ensemble_class
 
    nnpiv.ensemble.EnsembleIV
    nnpiv.ensemble.EnsembleIVStar
@@ -54,6 +54,11 @@ Neural Network Estimators
    nnpiv.neuralnet.CentroidMMDGMM
    nnpiv.neuralnet.KernelLossAGMM
    nnpiv.neuralnet.MMDGMM
+
+.. autosummary::
+   :toctree: longitudinal/_autosummary
+   :template: estimator_class
+
    nnpiv.neuralnet.AGMM2L2
 
 Sparse and Regularized Linear Estimators
@@ -61,16 +66,22 @@ Sparse and Regularized Linear Estimators
 
 .. autosummary::
    :toctree: longitudinal/_autosummary
-   :template: class.rst
+   :template: estimator_class
 
    nnpiv.linear.sparse_l1vsl1
    nnpiv.linear.sparse_ridge_l1vsl1
    nnpiv.linear.sparse2_l1vsl1
    nnpiv.linear.sparse2_ridge_l1vsl1
+   nnpiv.linear.sparse2_ridge_quadratic_l1vsl1
    nnpiv.linear.sparse_l2vsl2
    nnpiv.linear.sparse_ridge_l2vsl2
    nnpiv.linear.sparse2_l2vsl2
    nnpiv.linear.sparse2_ridge_l2vsl2
+   nnpiv.linear.SubGradientVsHedge
+   nnpiv.linear.ProxGradientVsHedge
+   nnpiv.linear.L2SubGradient
+   nnpiv.linear.L2ProxGradient
+   nnpiv.linear.L2OptimisticHedgeVsOGD
 
 TSLS Baselines
 --------------

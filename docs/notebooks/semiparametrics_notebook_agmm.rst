@@ -1,9 +1,18 @@
 .. _semiparametrics_notebook_agmm:
 
-Semiparametrics: DML (Mediated) with Neural Nets - AGMM (Sequential) and AGMM2L2 (Simultaneous)
-====================================================================================================
+Semiparametric AGMM Notebook: Mediated DML Pipeline
+===================================================
+
+
+1) Imports and setup
+--------------------
+
 
 .. code-block:: python
+
+  # =========================================================
+  # DML (mediated) with Neural Nets — AGMM (sequential) & AGMM2L2 (simultaneous)
+  # =========================================================
 
   # ---- Limit BLAS/OpenMP threads BEFORE importing heavy libs ----
   import os as os
@@ -28,13 +37,13 @@ Semiparametrics: DML (Mediated) with Neural Nets - AGMM (Sequential) and AGMM2L2
 
   # ---- Local repo imports (adjust path if needed) ----
   sys.path.append(str(Path.cwd() / "../../simulations"))
-  import dgps_mediated as dgps  
+  import dgps_mediated as dgps
 
-  import torch 
-  import torch.nn as nn  
-  from nnpiv.neuralnet.agmm import AGMM  
-  from nnpiv.neuralnet.agmm2 import AGMM2L2 
-  from nnpiv.semiparametrics import DML_mediated  
+  import torch
+  import torch.nn as nn
+  from nnpiv.neuralnet.agmm import AGMM
+  from nnpiv.neuralnet.agmm2 import AGMM2L2
+  from nnpiv.semiparametrics import DML_mediated
 
 
   # -----------------------
@@ -93,7 +102,7 @@ Semiparametrics: DML (Mediated) with Neural Nets - AGMM (Sequential) and AGMM2L2
   # -----------------------
   def summarize_dml_result(name: str, result, elapsed: float):
       """
-      Accepts result from .dml() and prints θ, SE, 95% CI when available.
+      Accepts result from .dml() and prints θ, influence-function SD, and 95% CI.
       Compatible with returns like (theta, var, ci) or (theta, var, ci, cov).
       """
       if isinstance(result, tuple):
@@ -111,7 +120,7 @@ Semiparametrics: DML (Mediated) with Neural Nets - AGMM (Sequential) and AGMM2L2
 
       theta = np.atleast_1d(theta).astype(float)
       var = np.atleast_1d(var).astype(float)
-      se = np.sqrt(var)
+      influence_sd = np.sqrt(var)
       ci = np.array(ci, dtype=float) if ci is not None else None
 
       def fmt_arr(a):
@@ -119,7 +128,7 @@ Semiparametrics: DML (Mediated) with Neural Nets - AGMM (Sequential) and AGMM2L2
 
       print(f"[{name}] time={elapsed:.2f}s")
       print(f"  theta: {fmt_arr(theta)}")
-      print(f"  SE   : {fmt_arr(se)}")
+      print(f"  influence-function SD: {fmt_arr(influence_sd)}")
       if ci is not None:
           if ci.ndim == 1 and ci.size == 2:
               print(f"  95% CI: [{ci[0]:.4f}, {ci[1]:.4f}]")
@@ -129,23 +138,25 @@ Semiparametrics: DML (Mediated) with Neural Nets - AGMM (Sequential) and AGMM2L2
           print(f"  (cov shape: {cov.shape})")
       print("")
 
+2) Resource check
+-----------------
+
 
 .. code-block:: python
 
   # -----------------------
-  # Print resources 
+  # Print resources
   # -----------------------
   print_resources()
   DEVICE = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
 
-
 .. parsed-literal::
 
   === Compute resources ===
-  Python: 3.10.18
-  NumPy: 2.2.6
-  PyTorch: 2.5.0
-  CPU cores: 112
+  Python: 3.14.4
+  NumPy: 2.3.2
+  PyTorch: 2.11.0
+  CPU cores: 18
   CUDA: not available
   Thread caps (env):
     OMP_NUM_THREADS=1
@@ -153,8 +164,11 @@ Semiparametrics: DML (Mediated) with Neural Nets - AGMM (Sequential) and AGMM2L2
     MKL_NUM_THREADS=1
     VECLIB_MAXIMUM_THREADS=1
     NUMEXPR_NUM_THREADS=1
-  Platform: Linux-4.18.0-553.44.1.el8_10.x86_64-x86_64-with-glibc2.28
-  =========================    
+  Platform: macOS-26.5.2-arm64-arm-64bit-Mach-O
+  =========================
+
+3) Data generation and pre-estimation Diagnostic A
+--------------------------------------------------
 
 
 .. code-block:: python
@@ -172,6 +186,24 @@ Semiparametrics: DML (Mediated) with Neural Nets - AGMM (Sequential) and AGMM2L2
   tau_fn = dgps.get_tau_fn(fn_number)
   tauinv_fn = dgps.get_tauinv_fn(fn_number)  # kept for parity with your code
   W, Z, X, M, D, Y, tau_fn = dgps.get_data(2000, tau_fn)
+
+  # Diagnostic A immediately after data generation (minimal semiparametric usage)
+  from nnpiv.diagnostics import relative_wellposedness_from_data
+
+  diag_result = relative_wellposedness_from_data(
+      {"M": M, "X": X, "W": W, "Z": Z},
+      A=["M", "X", "W"],
+      B="M",
+      C=["X", "Z"],
+      C_prime=["M", "X", "Z"],
+      mask_s=(np.asarray(D).reshape(-1) == 1),
+      mask_t=(np.asarray(D).reshape(-1) == 0),
+      feature_map="rff",
+      n_features=300,
+      eta=1e-6,
+      random_state=123,
+  )
+  print(f"Diagnostic A: kappa={diag_result['kappa']:.4f}, kappa2={diag_result['kappa2']:.4f}")
 
   # Ground-truth value for the target estimand (for log reference)
   TRUE_PARAM = 4.05
@@ -218,10 +250,10 @@ Semiparametrics: DML (Mediated) with Neural Nets - AGMM (Sequential) and AGMM2L2
 
   def build_agmm2_for_mediated(M, X, W, Z):
       """For model1 (outcome bridge)."""
-      A_dim = M.shape[1] + X.shape[1] + W.shape[1]   
-      B_dim = X.shape[1] + W.shape[1]                 
-      E_dim = M.shape[1] + X.shape[1] + Z.shape[1]   
-      C_dim = X.shape[1] + Z.shape[1]                 
+      A_dim = M.shape[1] + X.shape[1] + W.shape[1]
+      B_dim = X.shape[1] + W.shape[1]
+      E_dim = M.shape[1] + X.shape[1] + Z.shape[1]
+      C_dim = X.shape[1] + Z.shape[1]
       return AGMM2L2(
           learnerh=_get_learner(B_dim),
           learnerg=_get_learner(A_dim),
@@ -236,16 +268,21 @@ Semiparametrics: DML (Mediated) with Neural Nets - AGMM (Sequential) and AGMM2L2
       D_prime_dim = X.shape[1] + Z.shape[1]                 #  (this goes to adversary1)
       C_prime_dim = M.shape[1] + X.shape[1] + Z.shape[1]    #  (this goes to adversary2)
       return AGMM2L2(
-          learnerh=_get_learner(B_prime_dim),   
-          learnerg=_get_learner(A_prime_dim),   
-          adversary1=_get_adversary(D_prime_dim),  
-          adversary2=_get_adversary(C_prime_dim),  
+          learnerh=_get_learner(B_prime_dim),
+          learnerg=_get_learner(A_prime_dim),
+          adversary1=_get_adversary(D_prime_dim),
+          adversary2=_get_adversary(C_prime_dim),
       )
 
 .. parsed-literal::
 
+  Diagnostic A: kappa=951.1347, kappa2=904657.2809
   === Ground truth (for log reference) ===
   True parameter for E[Y(1,M(0))] ≈ 4.05
+
+4) Estimation and comparison
+----------------------------
+
 
 .. code-block:: python
 
@@ -272,6 +309,7 @@ Semiparametrics: DML (Mediated) with Neural Nets - AGMM (Sequential) and AGMM2L2
       fitargs1=[fitargs_seq, fitargs_seq],
       fitargsq1=[fitargs_seq, fitargs_seq],
       opts={"lin_degree": 1, "burnin": 200},
+      inner_n_jobs=1
   )
   t0 = time.perf_counter()
   res_seq = dml_agmm.dml()
@@ -302,7 +340,7 @@ Semiparametrics: DML (Mediated) with Neural Nets - AGMM (Sequential) and AGMM2L2
       modelq1=agmm2_model_q1, nn_q1=True,
       fitargs1=fitargs_sim,
       fitargsq1=fitargs_sim,
-      n_folds=5, n_rep=1, opts=opts_sim,
+      n_folds=5, n_rep=1, opts=opts_sim, inner_n_jobs=1
   )
   t0 = time.perf_counter()
   res_sim = dml2_agmm.dml()
@@ -312,16 +350,14 @@ Semiparametrics: DML (Mediated) with Neural Nets - AGMM (Sequential) and AGMM2L2
 .. parsed-literal::
 
   Rep: 1
-  100%|██████████| 5/5 [03:17<00:00, 39.59s/it] 
-  [Sequential (MR) with AGMM] time=197.93s
-    theta: 4.0745
-    SE   : 5.2253
-    95% CI: [3.8455, 4.3035]
+  100%|██████████| 5/5 [00:45<00:00,  9.02s/it]
+  [Sequential (MR) with AGMM] time=45.13s
+    theta: 4.0197
+    influence-function SD: 5.2788
+    95% CI: [3.7884, 4.2511]
 
   Rep: 1
-  100%|██████████| 5/5 [11:24<00:00, 136.81s/it]
-  [Simultaneous (MR) with AGMM2L2] time=684.06s
-    theta: 4.1246
-    SE   : 5.2737
-    95% CI: [3.8935, 4.3557]
-    
+  100%|██████████| 5/5 [02:12<00:00, 26.48s/it][Simultaneous (MR) with AGMM2L2] time=132.40s
+    theta: 4.1070
+    influence-function SD: 5.2959
+    95% CI: [3.8749, 4.3391]

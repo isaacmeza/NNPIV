@@ -25,5 +25,5 @@ Solving first for :math:`\alpha` in the first equation, and then for :math:`\bet
    :toctree: _autosummary
    :template: class.rst
 
-   tsls.tsls
-   tsls.regtsls
+   nnpiv.tsls.tsls
+   nnpiv.tsls.regtsls

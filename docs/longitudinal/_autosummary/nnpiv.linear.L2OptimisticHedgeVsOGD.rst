@@ -1,8 +1,8 @@
-﻿nnpiv.linear.sparse2\_ridge\_l2vsl2
+﻿nnpiv.linear.L2OptimisticHedgeVsOGD
 ===================================
 
 .. currentmodule:: nnpiv.linear
 
-.. autoclass:: sparse2_ridge_l2vsl2
+.. autoclass:: L2OptimisticHedgeVsOGD
    :members: fit, predict
    :inherited-members:

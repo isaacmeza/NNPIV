@@ -35,15 +35,15 @@ Longitudinal Estimator APIs
      - Fitted bridge/structural predictors
    * - Neural Network (`AGMM*`, `AGMM2L2`)
      - Adversarial minimax estimation with flexible representation learning.
-     - `A, B, C, C', Y` tensors/arrays
-     - Learned predictors and training diagnostics
+     - `A, B, C, D, Y` (+ optional `W` and subset masks)
+     - Fitted, epoch-averaged `g`/`h` predictors
    * - Ensemble / Random Forest (`Ensemble*`)
      - Oracle-style ensemble approximations for minimax objectives.
-     - `A, B, C, C', Y`
+     - `A, B, C, D, Y` (+ optional `W` and subset masks)
      - Ensemble estimators for `g`/`h`
    * - Sparse/Regularized Linear + TSLS
      - Interpretable baselines and constrained optimization settings.
-     - Matrix covariates + outcomes
+     - `Z, X, Y` or `A, B, C, D, Y` (+ optional `W` and masks)
      - Coefficients and predictions
 
 .. toctree::

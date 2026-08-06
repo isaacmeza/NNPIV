@@ -4,3 +4,5 @@
 .. currentmodule:: nnpiv.linear
 
 .. autoclass:: sparse2_l2vsl2
+   :members: fit, predict
+   :inherited-members:

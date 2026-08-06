@@ -1,8 +1,8 @@
-﻿nnpiv.linear.sparse\_l1vsl1
+﻿nnpiv.linear.L2ProxGradient
 ===========================
 
 .. currentmodule:: nnpiv.linear
 
-.. autoclass:: sparse_l1vsl1
+.. autoclass:: L2ProxGradient
    :members: fit, predict
    :inherited-members:
