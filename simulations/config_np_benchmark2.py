@@ -41,7 +41,7 @@ CONFIG = {
     "sweep_plots": {
     },
     "mc_opts": {
-        'n_experiments': 2500,  # number of monte carlo experiments
+        'n_experiments': 5000,  # number of monte carlo experiments
         "seed": 123,
         "skip_failed_runs": True,
     },

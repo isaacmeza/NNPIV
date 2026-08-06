@@ -32,7 +32,7 @@ CONFIG = {
     },
     "estimator": "joint",
     "mc_opts": {
-        "n_experiments": 2500,
+        "n_experiments": 5000,
         "seed": 123,
         "skip_failed_runs": True,
     },

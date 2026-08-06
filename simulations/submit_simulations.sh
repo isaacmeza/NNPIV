@@ -49,6 +49,8 @@ ALL_SP_CONFIGS=0
 MODE="auto"
 NODE_ID=0
 N_NODES=1
+N_EXPERIMENTS=""
+SMOKE_TEST=0
 
 RUNTIME_ARGS=()
 EXTRA_SWEEP_ARGS=()
@@ -87,11 +89,21 @@ while [[ $# -gt 0 ]]; do
       N_NODES="$2"
       shift 2
       ;;
-    --n-experiments|--seed|--smoke-n-experiments|--smoke-max-n-samples|--smoke-max-n-test|--smoke-max-n-epochs|--smoke-max-burnin)
+    --n-experiments)
+      N_EXPERIMENTS="$2"
       RUNTIME_ARGS+=("$1" "$2")
       shift 2
       ;;
-    --smoke-test|--force-rerun)
+    --seed|--smoke-n-experiments|--smoke-max-n-samples|--smoke-max-n-test|--smoke-max-n-epochs|--smoke-max-burnin)
+      RUNTIME_ARGS+=("$1" "$2")
+      shift 2
+      ;;
+    --smoke-test)
+      SMOKE_TEST=1
+      RUNTIME_ARGS+=("$1")
+      shift
+      ;;
+    --force-rerun)
       RUNTIME_ARGS+=("$1")
       shift
       ;;
@@ -145,31 +157,31 @@ case "${PROFILE}" in
   sapphire)
     PARTITION="sapphire"
     TIME_LIMIT="2-12:00"
-    CPUS="110"
+    CPUS="111"
     MEM="128000"
     ;;
   test)
     PARTITION="test"
     TIME_LIMIT="0-10:30"
-    CPUS="110"
+    CPUS="111"
     MEM="128000"
     ;;
   shared)
     PARTITION="shared"
     TIME_LIMIT="2-12:00"
-    CPUS="48"
+    CPUS="47"
     MEM="100000"
     ;;
   unrestricted)
     PARTITION="unrestricted"
     TIME_LIMIT="30-10:30"
-    CPUS="48"
+    CPUS="47"
     MEM="180000"
     ;;
   intermediate)
     PARTITION="intermediate"
     TIME_LIMIT="7-00:00"
-    CPUS="110"
+    CPUS="111"
     MEM="180000"
     ;;
   *)
@@ -177,6 +189,56 @@ case "${PROFILE}" in
     exit 1
     ;;
 esac
+
+# Use empirical wall-time requests for single 5,000-replication configurations.
+# The 47-core profiles receive additional time relative to the 111-core profiles.
+if [[ -n "${CONFIG}" && ( -z "${N_EXPERIMENTS}" || "${N_EXPERIMENTS}" == "5000" ) && ${SMOKE_TEST} -eq 0 ]]; then
+  CONFIG_NAME="${CONFIG##*/}"
+  CONFIG_NAME="${CONFIG_NAME%.py}"
+  CONFIG_NAME="${CONFIG_NAME##*.}"
+
+  choose_time() {
+    if (( CPUS >= 100 )); then
+      TIME_LIMIT="$1"
+    else
+      TIME_LIMIT="$2"
+    fi
+  }
+
+  case "${CONFIG_NAME}" in
+    config_np_benchmark|config_sp_benchmark)
+      TIME_LIMIT="0-00:30"
+      ;;
+    config_sp_benchmark2)
+      choose_time "0-01:30" "0-03:00"
+      ;;
+    config_np_benchmark2)
+      choose_time "0-14:00" "1-07:00"
+      ;;
+    config_np_nn)
+      choose_time "0-07:00" "0-16:00"
+      ;;
+    config_sp_nn)
+      if [[ "${PROFILE}" == "unrestricted" ]]; then
+        TIME_LIMIT="4-03:00"
+      else
+        choose_time "2-00:00" "3-00:00"
+      fi
+      ;;
+    config_np_approxrkhs2ivl2)
+      choose_time "0-03:00" "0-05:00"
+      ;;
+    config_np_approxrkhs2iv|config_np_rkhs2iv)
+      choose_time "0-04:00" "0-09:00"
+      ;;
+    config_np_rkhs2ivl2)
+      choose_time "0-06:00" "0-10:00"
+      ;;
+    config_sp_approxrkhs2iv|config_sp_approxrkhs2ivl2|config_sp_rkhs2iv|config_sp_rkhs2ivl2)
+      choose_time "0-11:00" "1-01:00"
+      ;;
+  esac
+fi
 
 SBATCH_CMD=(
   sbatch
