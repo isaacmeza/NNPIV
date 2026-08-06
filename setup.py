@@ -8,7 +8,7 @@ with open("README.rst", "r") as fh:
 
 setuptools.setup(
     name="nnpiv",  
-    version="0.2.0",
+    version="1.0.0",
     author="",
     author_email="",
     description="NESTED NONPARAMETRIC INSTRUMENTAL VARIABLE REGRESSION",
