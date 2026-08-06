@@ -1,14 +1,13 @@
-r"""
-This module provides implementations of sparse linear NPIV estimators.
+r"""Sparse linear NPIV estimators with :math:`\ell_1` learner and critic balls.
 
 Classes
 -------
 _SparseLinearAdversarialGMM
     Base class for sparse linear adversarial GMM.
 sparse_l1vsl1
-    Sparse Linear NPIV estimator using :math:`\ell_1-\ell_1` optimization.
+    Linear-critic estimator with an :math:`\ell_1` coefficient penalty.
 sparse_ridge_l1vsl1
-    Sparse Ridge NPIV estimator using :math:`\ell_1-\ell_1` optimization.
+    Linear-critic estimator with an empirical-L2 learner penalty.
 """
 
 # Licensed under the MIT License.
@@ -16,18 +15,18 @@ sparse_ridge_l1vsl1
 import numpy as np
 from sklearn.linear_model import Lasso, LassoCV, ElasticNet
 from sklearn.base import clone
-from nnpiv.linear.utilities import cross_product
+from nnpiv.linear.utilities import cross_product, quadratic_min_l1
 
 
 class _SparseLinearAdversarialGMM:
-    """
+    r"""
     Base class for sparse linear adversarial GMM.
 
     This class implements common functionality for sparse linear models using adversarial GMM.
 
     Parameters:
-        lambda_theta (float): Regularization parameter.
-        B (int): Budget parameter.
+        lambda_theta (float): Nonnegative learner regularization coefficient.
+        B (float): Nonnegative :math:`\ell_1` learner radius.
         eta_theta (str or float): Learning rate for theta.
         eta_w (str or float): Learning rate for w.
         n_iter (int): Number of iterations.
@@ -47,6 +46,14 @@ class _SparseLinearAdversarialGMM:
         self.sparsity = sparsity
         self.fit_intercept = fit_intercept
 
+    def _validate_parameters(self):
+        if self.n_iter < 2:
+            raise ValueError("n_iter must be at least 2")
+        if self.B < 0:
+            raise ValueError("B must be nonnegative")
+        if self.lambda_theta < 0:
+            raise ValueError("lambda_theta must be nonnegative")
+
     def _check_input(self, Z, X, Y):
         if self.fit_intercept:
             X = np.hstack([np.ones((X.shape[0], 1)), X])
@@ -59,6 +66,9 @@ class _SparseLinearAdversarialGMM:
 
         Parameters:
             X (array-like): Feature or treatment matrix.
+
+        Returns:
+            ndarray: Fitted linear function evaluated at ``X``.
         """
         if self.fit_intercept:
             X = np.hstack([np.ones((X.shape[0], 1)), X])
@@ -74,10 +84,19 @@ class _SparseLinearAdversarialGMM:
 
 
 class sparse_l1vsl1(_SparseLinearAdversarialGMM):
-    r"""
-    Sparse Linear NPIV estimator using :math:`\ell_1-\ell_1` optimization.
+    r"""Sparse linear NPIV with :math:`\ell_1` learner regularization.
 
-    This class solves the high-dimensional sparse linear problem using :math:`\ell_1` relaxations for the minimax optimization problem.
+    With :math:`m(\alpha)=\mathbb E_n[Z(X^\top\alpha-Y)]`, the
+    implemented linear-critic game is
+
+    .. math::
+
+        \min_{\|\alpha\|_1\leq B}\max_{\|\theta\|_1\leq 1}
+        \theta^\top m(\alpha)+\lambda\|\alpha\|_1.
+
+    OFTRL is applied to positive-negative lifts of both players. The returned
+    coefficients average the feasible iterates, and ``duality_gap_`` evaluates
+    the corresponding exact constrained best-response gap.
 
     Parameters:
         Same as `_SparseLinearAdversarialGMM`.
@@ -130,6 +149,7 @@ class sparse_l1vsl1(_SparseLinearAdversarialGMM):
         Returns:
             self: Fitted estimator.
         """
+        self._validate_parameters()
         Z, X, Y = self._check_input(Z, X, Y)
         T = self.n_iter
         d_x = X.shape[1]
@@ -222,10 +242,19 @@ class sparse_l1vsl1(_SparseLinearAdversarialGMM):
 
 
 class sparse_ridge_l1vsl1(_SparseLinearAdversarialGMM):
-    r"""
-    Sparse Ridge NPIV estimator using :math:`\ell_1-\ell_1` optimization.
+    r"""Sparse linear NPIV with empirical-L2 learner regularization.
 
-    This class solves the high-dimensional sparse ridge problem using :math:`\ell_1` relaxations for the minimax optimization problem.
+    Let :math:`Q_X=\mathbb E_n[XX^\top]` and
+    :math:`m(\alpha)=\mathbb E_n[Z(X^\top\alpha-Y)]`. This estimator solves
+
+    .. math::
+
+        \min_{\|\alpha\|_1\leq B}\max_{\|\theta\|_1\leq 1}
+        \theta^\top m(\alpha)
+        +\frac{\lambda}{2}\alpha^\top Q_X\alpha.
+
+    ``duality_gap_`` uses the exact quadratic learner best response over the
+    :math:`\ell_1` ball, including the active-boundary case.
 
     Parameters:
         Same as `_SparseLinearAdversarialGMM`.
@@ -245,14 +274,16 @@ class sparse_ridge_l1vsl1(_SparseLinearAdversarialGMM):
         Returns:
             bool: True if the duality gap is less than the tolerance, otherwise False.
         """
-        self.max_response_loss_ = np.linalg.norm(
-            np.mean(Z * (Y - np.dot(X, self.coef_)).reshape(-1, 1), axis=0), ord=np.inf)\
-            + self.lambda_theta * self.coef_.T @ self.xx @ self.coef_
-
-        self.min_response_loss_ = 2 * np.mean(Y * np.dot(Z, self.w_))\
-            - (self.msvp / self.lambda_theta) * np.linalg.norm(np.mean(X * np.dot(Z, self.w_).reshape(-1, 1),
-                                                                            axis=0),
-                                                            ord=2)
+        moment = np.mean(
+            Z * (np.dot(X, self.coef_) - Y).reshape(-1, 1), axis=0)
+        learner_gradient = np.mean(
+            X * np.dot(Z, self.w_).reshape(-1, 1), axis=0)
+        self.max_response_loss_ = np.linalg.norm(moment, ord=np.inf)\
+            + .5 * self.lambda_theta * self.coef_.T @ self.xx @ self.coef_
+        self.min_response_loss_ = -np.mean(Y * np.dot(Z, self.w_))\
+            + quadratic_min_l1(learner_gradient, self.xx,
+                               self.lambda_theta, self.B,
+                               getattr(self, 'xx_pinv', None))
 
         self.duality_gap_ = self.max_response_loss_ - self.min_response_loss_
         return self.duality_gap_ < self.tol
@@ -278,6 +309,7 @@ class sparse_ridge_l1vsl1(_SparseLinearAdversarialGMM):
         Returns:
             self: Fitted estimator.
         """
+        self._validate_parameters()
         Z, X, Y = self._check_input(Z, X, Y)
         T = self.n_iter
         d_x = X.shape[1]
@@ -292,13 +324,7 @@ class sparse_ridge_l1vsl1(_SparseLinearAdversarialGMM):
         xx = np.mean(cross_product(X, X),
                         axis=0).reshape(d_x, d_x).T
         self.xx = xx
-        # Perform SVD on E_n[xx^T]
-        Sigma = np.linalg.svd(xx, compute_uv=False)
-        # Find the minimum non-zero singular value
-        sigma_min = np.min(Sigma[Sigma > 1e-10])
-        # Compute the maximum singular value of the pseudoinverse
-        self.msvp = 1 / sigma_min
-
+        self.xx_pinv = np.linalg.pinv(xx)
         if d_x * d_z < n**2:
             xz = np.mean(cross_product(X, Z),
                          axis=0).reshape(d_z, d_x).T

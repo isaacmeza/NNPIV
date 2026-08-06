@@ -1,3 +1,10 @@
+r"""First-order sparse linear NPIV algorithms.
+
+The learner is constrained to an :math:`\ell_1` ball. Algorithms differ in
+whether the critic uses an :math:`\ell_1` or :math:`\ell_2` ball and in the
+online update used for each player.
+"""
+
 # Copyright (c) Microsoft Corporation.
 # Licensed under the MIT License.
 
@@ -5,6 +12,30 @@ import numpy as np
 from sklearn.linear_model import Lasso, LassoCV, ElasticNet
 from sklearn.base import clone
 from .utilities import cross_product
+
+
+def _project_l1_ball(values, radius):
+    """Project a vector onto an l1 ball."""
+    values = np.asarray(values)
+    if radius < 0:
+        raise ValueError("B must be nonnegative")
+    if np.linalg.norm(values, ord=1) <= radius:
+        return values
+    if radius == 0:
+        return np.zeros_like(values)
+
+    magnitudes = np.sort(np.abs(values))[::-1]
+    cumulative = np.cumsum(magnitudes)
+    indices = np.arange(1, values.size + 1)
+    active = np.nonzero(magnitudes - (cumulative - radius) / indices > 0)[0]
+    threshold = (cumulative[active[-1]] - radius) / (active[-1] + 1)
+    return np.sign(values) * np.maximum(np.abs(values) - threshold, 0)
+
+
+def _unit_l2_direction(values):
+    """Return an l2-unit direction, using zero at a zero residual."""
+    norm = np.linalg.norm(values, ord=2)
+    return values / norm if norm > 0 else np.zeros_like(values)
 
 
 class TSLasso:
@@ -49,12 +80,12 @@ class TSLasso:
 
 class _SparseLinearAdversarialGMM:
 
-    """
+    r"""
     _SparseLinearAdversarialGMM.
 
     Parameters:
         lambda_theta (float): Learner regularization parameter.
-        B (float or array-like): Bound or second nested-stage treatment block, depending on context.
+        B (float): Nonnegative :math:`\ell_1` learner radius.
         eta_theta (str or float): Learner step size.
         eta_w (str or float): Adversary step size.
         n_iter (int): Maximum number of iterations.
@@ -85,6 +116,9 @@ class _SparseLinearAdversarialGMM:
 
         Parameters:
             X (array-like): Feature or treatment matrix.
+
+        Returns:
+            ndarray: Fitted linear function evaluated at ``X``.
         """
         if self.fit_intercept:
             X = np.hstack([np.ones((X.shape[0], 1)), X])
@@ -125,6 +159,11 @@ class _L1Adversary(_SparseLinearAdversarialGMM):
 
 
 class SubGradientVsHedge(_L1Adversary):
+    r"""Projected subgradient learner against an :math:`\ell_1` Hedge critic.
+
+    Each learner step is the Euclidean projection onto the radius-``B``
+    :math:`\ell_1` ball; it is not coordinatewise clipping.
+    """
 
     def fit(self, Z, X, Y):
         """
@@ -167,7 +206,7 @@ class SubGradientVsHedge(_L1Adversary):
             theta[:] = theta - eta_theta * \
                 (np.mean(test_fn * X, axis=0) +
                  lambda_theta * np.sign(theta))
-            theta[:] = np.clip(theta, -self.B, self.B)
+            theta[:] = _project_l1_ball(theta, self.B)
 
             w[:] = w * np.exp(eta_w * res)
             w[:] = w / np.sum(w)
@@ -416,6 +455,11 @@ def prox(x, thres):
 
 
 class ProxGradientVsHedge(_L1Adversary):
+    r"""Proximal-gradient learner against an :math:`\ell_1` Hedge critic.
+
+    The soft-thresholded learner step is projected onto the radius-``B``
+    :math:`\ell_1` ball.
+    """
 
     def fit(self, Z, X, Y):
         """
@@ -460,7 +504,7 @@ class ProxGradientVsHedge(_L1Adversary):
 
             theta[:] = prox(- (cors + cors_t) * eta_theta,
                             lambda_theta * eta_theta * (t + 1))
-            theta[:] = np.clip(theta, -self.B, self.B)
+            theta[:] = _project_l1_ball(theta, self.B)
 
             w[:] = w * \
                 np.exp(2 * eta_w * res - eta_w * res_pre)
@@ -515,11 +559,17 @@ class _L2Adversary(_SparseLinearAdversarialGMM):
             filt = (np.abs(self.coef_) < thresh)
             self.coef_[filt] = 0
         self.max_violation_ = np.linalg.norm(
-            np.mean(Z * (np.dot(X, self.coef_) - Y).reshape(-1, 1), axis=0), ord=np.inf)
+            np.mean(Z * (np.dot(X, self.coef_) - Y).reshape(-1, 1), axis=0), ord=2)
         self._check_duality_gap(Z, X, Y)
 
 
 class L2SubGradient(_L2Adversary):
+    r"""Projected subgradient learner against an :math:`\ell_2` critic.
+
+    The critic is the unit direction of the empirical moment and is zero when
+    that moment is zero. Learner steps are projected onto the :math:`\ell_1`
+    ball of radius ``B``.
+    """
 
     def fit(self, Z, X, Y):
         """
@@ -554,13 +604,13 @@ class L2SubGradient(_L2Adversary):
 
             pred_fn = np.dot(X, theta).reshape(-1, 1)
             res = np.mean(Z * pred_fn, axis=0) - yx
-            w[:] = res / np.linalg.norm(res, ord=2)
+            w[:] = _unit_l2_direction(res)
 
             test_fn = np.dot(Z, w).reshape(-1, 1)
             theta[:] = theta - eta_theta * \
                 (np.mean(test_fn * X, axis=0) +
                  lambda_theta * np.sign(theta))
-            theta[:] = np.clip(theta[:], -self.B, self.B)
+            theta[:] = _project_l1_ball(theta, self.B)
 
             theta_acc = theta_acc * (t - 1) / t + theta / t
             w_acc = w_acc * (t - 1) / t + w / t
@@ -587,6 +637,11 @@ class L2SubGradient(_L2Adversary):
 
 
 class L2ProxGradient(_L2Adversary):
+    r"""Proximal-gradient learner against an :math:`\ell_2` critic.
+
+    The zero-moment critic is defined as zero, and each learner step remains in
+    the radius-``B`` :math:`\ell_1` ball.
+    """
 
     def fit(self, Z, X, Y):
         """
@@ -622,14 +677,14 @@ class L2ProxGradient(_L2Adversary):
 
             pred_fn = np.dot(X, theta).reshape(-1, 1)
             res = np.mean(Z * pred_fn, axis=0) - yx
-            w[:] = res / np.linalg.norm(res, ord=2)
+            w[:] = _unit_l2_direction(res)
 
             test_fn = np.dot(Z, w).reshape(-1, 1)
             cors_t = np.mean(test_fn * X, axis=0)
             cors += cors_t
             theta[:] = prox(- cors * eta_theta,
                             lambda_theta * eta_theta * t)
-            theta[:] = np.clip(theta, -self.B, self.B)
+            theta[:] = _project_l1_ball(theta, self.B)
 
             theta_acc = theta_acc * (t - 1) / t + theta / t
             w_acc = w_acc * (t - 1) / t + w / t
@@ -656,6 +711,11 @@ class L2ProxGradient(_L2Adversary):
 
 
 class L2OptimisticHedgeVsOGD(_L2Adversary):
+    """Optimistic Hedge learner against projected gradient ascent.
+
+    The optimistic critic update uses the immediately preceding moment score.
+    Returned coefficients and critic weights average the feasible iterates.
+    """
 
     def fit(self, Z, X, Y):
         """
@@ -725,6 +785,7 @@ class L2OptimisticHedgeVsOGD(_L2Adversary):
 
             theta_acc = theta_acc * (t - 1) / t + theta / t
             w_acc = w_acc * (t - 1) / t + w / t
+            res_pre[:] = res
 
             if t % 50 == 0:
                 self.coef_ = theta_acc[:d_x] - theta_acc[d_x:]

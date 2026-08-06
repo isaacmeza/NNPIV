@@ -43,12 +43,13 @@ import torch
 
 from nnpiv.rkhs import RKHSIVL2
 from ._utils import (
+    align_crossfit_results,
     as_2d,
     as_column,
     canonicalize_localization_inputs,
     localization_loadings,
     prepare_localization,
-    summarize_ratio_scores,
+    summarize_repeated_ratio_scores,
 )
 
 
@@ -850,9 +851,8 @@ class DML_dynamic:
             confidence intervals. Variance and covariance are not divided by
             the sample size.
         """
-        theta = []
-        theta_var = []
-        theta_cov = []
+        score_reps = []
+        loading_reps = []
 
         for rep in range(self.n_rep):
 
@@ -861,6 +861,7 @@ class DML_dynamic:
                 self.progress_bar = tqdm(total=self.n_folds, position=0)
 
             kf = KFold(n_splits=self.n_folds, shuffle=True, random_state=self.random_seed+rep)
+            splits = list(kf.split(self.Y))
             if self.V is None:
                 fold_results = Parallel(n_jobs=self.inner_n_jobs, backend='threading')(
                     delayed(self._process_fold)(
@@ -869,7 +870,7 @@ class DML_dynamic:
                          self.S1[train_index], self.S2[train_index]),
                         (self.Y[test_index], self.D1[test_index], self.D2[test_index],
                          self.S1[test_index], self.S2[test_index]))
-                    for fold_idx, (train_index, test_index) in enumerate(kf.split(self.Y))
+                    for fold_idx, (train_index, test_index) in enumerate(splits)
                 )
             else:
                 fold_results = Parallel(n_jobs=self.inner_n_jobs, backend='threading')(
@@ -879,29 +880,22 @@ class DML_dynamic:
                          self.S1[train_index], self.S2[train_index], self.V[train_index]),
                         (self.Y[test_index], self.D1[test_index], self.D2[test_index],
                          self.S1[test_index], self.S2[test_index], self.V[test_index]))
-                    for fold_idx, (train_index, test_index) in enumerate(kf.split(self.Y))
+                    for fold_idx, (train_index, test_index) in enumerate(splits)
                 )
             if self.verbose == True:
                 self.progress_bar.close()
 
-            psi_hat_array = np.concatenate(
-                [result[0] for result in fold_results], axis=0
+            psi_hat_array, theta_loading_array = align_crossfit_results(
+                fold_results,
+                [test_index for _, test_index in splits],
+                len(self.Y),
             )
-            theta_loading_array = np.concatenate(
-                [result[1] for result in fold_results], axis=0
-            )
-            theta_rep, theta_var_rep, theta_cov_rep = summarize_ratio_scores(
-                psi_hat_array, theta_loading_array
-            )
-            theta_cov_rep = np.atleast_2d(theta_cov_rep)
+            score_reps.append(psi_hat_array)
+            loading_reps.append(theta_loading_array)
 
-            theta.append(theta_rep)
-            theta_var.append(theta_var_rep)
-            theta_cov.append(theta_cov_rep)
-
-        theta_hat = np.mean(np.stack(theta, axis=0), axis=0)
-        theta_var_hat = np.mean(np.stack(theta_var, axis=0), axis=0)
-        theta_cov_hat = np.mean(np.stack(theta_cov, axis=0), axis=0)
+        theta_hat, theta_var_hat, theta_cov_hat = summarize_repeated_ratio_scores(
+            score_reps, loading_reps
+        )
 
         confidence_interval = self._calculate_confidence_interval(theta_hat, theta_var_hat, theta_cov_hat)
 

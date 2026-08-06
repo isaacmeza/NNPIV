@@ -49,12 +49,13 @@ from nnpiv.rkhs import RKHS2IVCV, ApproxRKHSIVCV, RKHS2IVL2
 from joblib import Parallel, delayed, cpu_count
 from scipy.optimize import minimize_scalar
 from ._utils import (
+    align_crossfit_results,
     as_2d,
     as_column,
     canonicalize_localization_inputs,
     localization_loadings,
     prepare_localization,
-    summarize_ratio_scores,
+    summarize_repeated_ratio_scores,
 )
 
 DEVICE = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
@@ -643,8 +644,8 @@ class DML_longterm:
             A_test = np.column_stack((test_S, test_X))
 
             if self.nn_1==True:
-                A_train, E_train, B_train, C_train, B_test, A_test, train_G, train_Y = map(
-                    toT, [A_train, E_train, B_train, C_train, B_test, A_test, train_G, train_Y]
+                A_train, E_train, B_train, C_train, B_test, A_test, train_G, train_Y, train_D = map(
+                    toT, [A_train, E_train, B_train, C_train, B_test, A_test, train_G, train_Y, train_D]
                 )
 
             # D==1
@@ -1477,9 +1478,8 @@ class DML_longterm:
             confidence intervals. Variance and covariance are not divided by
             the sample size.
         """
-        theta = []
-        theta_var = []
-        theta_cov = []
+        score_reps = []
+        loading_reps = []
 
         for rep in range(self.n_rep):
 
@@ -1488,13 +1488,14 @@ class DML_longterm:
                 self.progress_bar = tqdm(total=self.n_folds, position=0)
 
             kf = KFold(n_splits=self.n_folds, shuffle=True, random_state=self.random_seed+rep)
+            splits = list(kf.split(self.Y))
             if self.V is None:
                 fold_results = Parallel(n_jobs=self.inner_n_jobs, backend='threading')(
                     delayed(self._process_fold)(
                         fold_idx,
                         (self.Y[train_index], self.D[train_index], self.S[train_index], self.X[train_index], self.G[train_index]),
                         (self.Y[test_index], self.D[test_index], self.S[test_index], self.X[test_index], self.G[test_index]))
-                        for fold_idx, (train_index, test_index) in enumerate(kf.split(self.Y))
+                        for fold_idx, (train_index, test_index) in enumerate(splits)
                 )
             else:
                 fold_results = Parallel(n_jobs=self.inner_n_jobs, backend='threading')(
@@ -1502,24 +1503,22 @@ class DML_longterm:
                         fold_idx,
                         (self.Y[train_index], self.D[train_index], self.S[train_index], self.X[train_index], self.G[train_index], self.V[train_index]),
                         (self.Y[test_index], self.D[test_index], self.S[test_index], self.X[test_index], self.G[test_index], self.V[test_index]))
-                        for fold_idx, (train_index, test_index) in enumerate(kf.split(self.Y))
+                        for fold_idx, (train_index, test_index) in enumerate(splits)
                 )
             if self.verbose==True:
                 self.progress_bar.close()
 
-            psi_hat_array = np.concatenate([result[0] for result in fold_results], axis=0)
-            theta_loading_array = np.concatenate([result[1] for result in fold_results], axis=0)
-            theta_rep, theta_var_rep, theta_cov_rep = summarize_ratio_scores(
-                psi_hat_array, theta_loading_array
+            psi_hat_array, theta_loading_array = align_crossfit_results(
+                fold_results,
+                [test_index for _, test_index in splits],
+                len(self.Y),
             )
+            score_reps.append(psi_hat_array)
+            loading_reps.append(theta_loading_array)
 
-            theta.append(theta_rep)
-            theta_var.append(theta_var_rep)
-            theta_cov.append(theta_cov_rep)
-
-        theta_hat = np.mean(np.stack(theta, axis=0), axis=0)
-        theta_var_hat = np.mean(np.stack(theta_var, axis=0), axis=0)
-        theta_cov_hat = np.mean(np.stack(theta_cov, axis=0), axis=0)
+        theta_hat, theta_var_hat, theta_cov_hat = summarize_repeated_ratio_scores(
+            score_reps, loading_reps
+        )
 
         # Calculate the confidence interval
         confidence_interval = self._calculate_confidence_interval(theta_hat, theta_var_hat, theta_cov_hat)

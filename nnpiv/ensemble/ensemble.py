@@ -1,13 +1,14 @@
 """
-This module provides implementations of ensemble instrumental variable (IV) estimators using RandomForest models.
+Random-forest ensemble estimators for one-stage NPIV problems.
 
 Classes:
-    EnsembleIV: Implements an ensemble learning IV method with adversarial and learner components.
-    EnsembleIVStar: Similar to EnsembleIV but with a different method for updating the test predictions.
-    EnsembleIVL2: An extension of EnsembleIV with L2 regularization and optional cross-validation for regularization parameter selection.
+    EnsembleIV: Bounded-learner adversarial IV estimator.
+    EnsembleIVStar: Heuristic bounded-learner ensemble with an adaptive critic.
+    EnsembleIVL2: Empirical-L2-regularized adversarial IV estimator, optionally
+        with conditional-moment cross-validation.
 
 Functions:
-    _mysign: A helper function that returns 2 if the input is non-negative and -1 otherwise.
+    _mysign: Return 1 for nonnegative inputs and -1 otherwise.
 """
 
 # Licensed under the MIT License.
@@ -16,7 +17,6 @@ import numpy as np
 from sklearn.ensemble import RandomForestRegressor, RandomForestClassifier
 from sklearn.base import clone
 from sklearn.model_selection import KFold
-from sklearn.metrics import mean_squared_error
 
 def _mysign(x):
     return 2 * (x >= 0) - 1
@@ -24,13 +24,19 @@ def _mysign(x):
 
 class EnsembleIV:
     """
-    Implements an ensemble learning IV method with adversarial and learner components.
+    Bounded-learner ensemble IV estimator.
+
+    At each iteration a regression critic fits the current conditional-moment
+    residual and a weighted classifier approximates the bounded learner best
+    response. Predictions average the resulting learner ensemble.
     
     Parameters:
-        adversary (str or estimator): Adversary model. If 'auto', a default RandomForestRegressor is used.
-        learner (str or estimator): Learner model. If 'auto', a default RandomForestClassifier is used.
-        max_abs_value (float): Maximum absolute value for the predictions.
-        n_iter (int): Number of iterations for the ensemble.
+        adversary (str or estimator): Regression critic. ``'auto'`` uses a
+            shallow ``RandomForestRegressor``.
+        learner (str or estimator): Weighted-classification learner.
+            ``'auto'`` uses a shallow ``RandomForestClassifier``.
+        max_abs_value (float): Absolute value of each signed learner output.
+        n_iter (int): Number of learners to average; must be positive.
     """
     
     def __init__(self, adversary='auto', learner='auto',
@@ -58,16 +64,18 @@ class EnsembleIV:
 
     def fit(self, Z, T, Y):
         """
-        Fits the ensemble IV model to the provided data.
+        Fit the bounded-learner ensemble IV model.
         
         Parameters:
-            Z (array-like): Instrumental variables.
-            T (array-like): Treatment variables.
-            Y (array-like): Outcome variables.
+            Z (array-like): Instrument covariates used by the critic.
+            T (array-like): Covariates used by the learner function.
+            Y (array-like): Scalar outcome.
         
         Returns:
             self: Fitted ensemble IV model.
         """
+        if self.n_iter < 1:
+            raise ValueError("n_iter must be at least 1")
         Z, T, Y = self._check_input(Z, T, Y)
         max_value = self.max_abs_value
         adversary = self._get_new_adversary().fit(Z, Y.flatten())
@@ -90,7 +98,7 @@ class EnsembleIV:
 
     def predict(self, T):
         """
-        Predicts outcomes for new data using the fitted ensemble IV model.
+        Average the fitted bounded learners at ``T``.
         
         Parameters:
             T (array-like): Treatment variables.
@@ -104,13 +112,19 @@ class EnsembleIV:
 
 class EnsembleIVStar:
     """
-    Similar to EnsembleIV but with a different method for updating the test predictions using a linear combination approach.
+    Heuristic bounded-learner ensemble with an adaptive critic update.
+
+    This variant selects a linear combination of the previous critic and a
+    newly fitted residual critic before computing each learner response. It is
+    distinct from the exact best-response update used by ``EnsembleIV``.
     
     Parameters:
-        adversary (str or estimator): Adversary model. If 'auto', a default RandomForestRegressor is used.
-        learner (str or estimator): Learner model. If 'auto', a default RandomForestClassifier is used.
-        max_abs_value (float): Maximum absolute value for the predictions.
-        n_iter (int): Number of iterations for the ensemble.
+        adversary (str or estimator): Regression critic. ``'auto'`` uses a
+            shallow ``RandomForestRegressor``.
+        learner (str or estimator): Weighted-classification learner.
+            ``'auto'`` uses a shallow ``RandomForestClassifier``.
+        max_abs_value (float): Absolute value of each signed learner output.
+        n_iter (int): Number of learners to average; must be positive.
     """
     
     def __init__(self, adversary='auto', learner='auto',
@@ -151,16 +165,18 @@ class EnsembleIVStar:
 
     def fit(self, Z, T, Y):
         """
-        Fits the ensemble IV model to the provided data.
+        Fit the adaptive-critic ensemble IV model.
         
         Parameters:
-            Z (array-like): Instrumental variables.
-            T (array-like): Treatment variables.
-            Y (array-like): Outcome variables.
+            Z (array-like): Instrument covariates used by the critic.
+            T (array-like): Covariates used by the learner function.
+            Y (array-like): Scalar outcome.
         
         Returns:
             self: Fitted ensemble IV model.
         """
+        if self.n_iter < 1:
+            raise ValueError("n_iter must be at least 1")
         Z, T, Y = self._check_input(Z, T, Y)
         max_value = self.max_abs_value
         adversary = self._get_new_adversary()
@@ -183,7 +199,7 @@ class EnsembleIVStar:
 
     def predict(self, T):
         """
-        Predicts outcomes for new data using the fitted ensemble IV model.
+        Average the fitted bounded learners at ``T``.
         
         Parameters:
             T (array-like): Treatment variables.
@@ -197,18 +213,31 @@ class EnsembleIVStar:
 
 class EnsembleIVL2:
     """
-    An extension of EnsembleIV with L2 regularization and optional cross-validation to select the best regularization parameter.
+    Empirical-L2-regularized ensemble IV estimator.
+
+    The effective learner penalty is ``mu = alpha * delta_n**2``, where
+    ``delta_n = delta_scale / n**delta_exp``. Cross-validation evaluates a
+    critic trained on each training-fold residual through the held-out payoff
+    ``mean(2 * residual * critic - critic**2)``.
     
     Parameters:
-        adversary (str or estimator): Adversary model. If 'auto', a default RandomForestRegressor is used.
-        learner (str or estimator): Learner model. If 'auto', a default RandomForestRegressor is used.
-        n_iter (int): Number of iterations for the ensemble.
-        delta_scale (str or float): Scale factor for the critical radius delta. Default is 'auto'.
-        delta_exp (str or float): Exponent for the critical radius delta. Default is 'auto'.
-        CV (bool): Whether to perform cross-validation to select the best alpha value.
-        alpha_scales (str or list): Scales for alpha in cross-validation. Default is 'auto'.
-        n_alphas (int): Number of alpha values to test in cross-validation.
-        n_folds (int): Number of folds for cross-validation.
+        adversary (str or estimator): Regression critic. ``'auto'`` uses a
+            shallow ``RandomForestRegressor``.
+        learner (str or estimator): Regression learner. ``'auto'`` uses a
+            shallow ``RandomForestRegressor``.
+        n_iter (int): Number of learners to average; must be positive.
+        delta_scale (str or float): Numerator of ``delta_n``. ``'auto'`` uses
+            5.
+        delta_exp (str or float): Sample-size exponent in ``delta_n``.
+            ``'auto'`` uses 0.4.
+        CV (bool): Whether to select ``alpha`` by cross-validation.
+        alpha_scales (str or iterable): Candidate ``alpha`` scales.
+            ``'auto'`` uses a geometric grid.
+        n_alphas (int): Size of the automatic candidate grid.
+        n_folds (int): Number of cross-validation folds.
+
+    Attributes:
+        best_alpha_ (float): Selected scale when ``CV=True``.
     """
     
     def __init__(self, adversary='auto', learner='auto',
@@ -226,15 +255,15 @@ class EnsembleIVL2:
         return
 
     def _get_delta(self, n):
-        '''
-        Computes the critical radius delta based on the sample size.
+        """
+        Compute ``delta_scale / n**delta_exp``.
         
         Parameters:
             n (int): Sample size.
         
         Returns:
             float: Critical radius delta.
-        '''
+        """
         delta_scale = 5 if self.delta_scale == 'auto' else self.delta_scale
         delta_exp = .4 if self.delta_exp == 'auto' else self.delta_exp
         return delta_scale / (n**(delta_exp))
@@ -258,9 +287,21 @@ class EnsembleIVL2:
         return RandomForestRegressor(n_estimators=40, max_depth=2, 
                                      bootstrap=True, min_samples_leaf=40, min_impurity_decrease=0.001) if self.learner == 'auto' else clone(self.learner)
 
+    def _conditional_moment_score(self, Z_train, residual_train,
+                                  Z_test, residual_test):
+        """Evaluate a training-critic payoff on held-out residuals."""
+        critic = self._get_new_adversary().fit(
+            Z_train, np.asarray(residual_train).reshape(-1)
+        )
+        test_action = critic.predict(Z_test).reshape(-1)
+        residual_test = np.asarray(residual_test).reshape(-1)
+        return np.mean(
+            2 * residual_test * test_action - test_action ** 2
+        )
+
     def _cross_validate_alpha(self, Z, T, Y):
         """
-        Performs cross-validation to select the best alpha value.
+        Select the ``alpha`` scale by held-out conditional-moment payoff.
         
         Parameters:
             Z (array-like): Instrumental variables.
@@ -283,9 +324,15 @@ class EnsembleIVL2:
                 T_train, T_test = T[train_index], T[test_index]
                 Y_train, Y_test = Y[train_index], Y[test_index]
                 
-                self.fit(Z_train, T_train, Y_train, alpha=alpha)
-                predictions = self.predict(T_test)
-                score = mean_squared_error(Y_test, predictions)
+                self.fit(
+                    Z_train, T_train, Y_train, alpha=alpha,
+                    cross_validating=True
+                )
+                train_residual = self.predict(T_train) - Y_train
+                test_residual = self.predict(T_test) - Y_test
+                score = self._conditional_moment_score(
+                    Z_train, train_residual, Z_test, test_residual
+                )
                 scores.append(score)
             
             avg_score = np.mean(scores)
@@ -293,28 +340,39 @@ class EnsembleIVL2:
                 best_score = avg_score
                 best_alpha = alpha
         
+        if best_alpha is None:
+            raise ValueError("Cross-validation produced no valid alpha score")
         return best_alpha
  
     def fit(self, Z, T, Y, alpha=1.0, cross_validating=False):
         """
-        Fits the ensemble IV model with L2 regularization to the provided data.
+        Fit the empirical-L2-regularized ensemble IV model.
         
         Parameters:
-            Z (array-like): Instrumental variables.
-            T (array-like): Treatment variables.
-            Y (array-like): Outcome variables.
-            alpha (float): Regularization parameter.
-            cross_validating (bool): Whether the function is called during cross-validation.
+            Z (array-like): Instrument covariates used by the critic.
+            T (array-like): Covariates used by the learner function.
+            Y (array-like): Scalar outcome.
+            alpha (float): Positive scale in
+                ``mu = alpha * delta_n**2``. Ignored when ``CV=True`` on the
+                outer fit.
+            cross_validating (bool): Internal guard that prevents recursive
+                cross-validation while fitting a fold.
         
         Returns:
             self: Fitted ensemble IV model.
         """
+        if self.n_iter < 1:
+            raise ValueError("n_iter must be at least 1")
+        Z, T, Y = self._check_input(Z, T, Y)
         if self.CV and not cross_validating:
             alpha = self._cross_validate_alpha(Z, T, Y)
+            self.best_alpha_ = alpha
 
-        Z, T, Y = self._check_input(Z, T, Y)
         n = Y.shape[0] 
         delta = self._get_delta(n)
+        mu = alpha * delta ** 2
+        if not np.isfinite(mu) or mu <= 0:
+            raise ValueError("alpha * delta**2 must be positive and finite")
         adversary = []
         adversary.append(self._get_new_adversary().fit(Z, Y.flatten()))
         f = 0
@@ -322,7 +380,7 @@ class EnsembleIVL2:
         h = 0
         for it in range(self.n_iter):
             f = f * it / (it + 1)
-            f += adversary[it].predict(Z).flatten() / ((alpha * delta ** 2) * (it + 1))
+            f += adversary[it].predict(Z).flatten() / (mu * (it + 1))
             learners.append(self._get_new_learner().fit(T, f))
             h = h * it / (it + 1)
             h += learners[it].predict(T).flatten() / (it + 1)
@@ -333,7 +391,7 @@ class EnsembleIVL2:
 
     def predict(self, T):
         """
-        Predicts outcomes for new data using the fitted ensemble IV model with L2 regularization.
+        Average the fitted regression learners at ``T``.
         
         Parameters:
             T (array-like): Treatment variables.

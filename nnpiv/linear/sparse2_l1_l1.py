@@ -1,14 +1,13 @@
-r"""
-This module provides implementations of sparse linear NPIV estimators with L1 norm regularization for nested NPIV.
+r"""Nested sparse NPIV estimators with linear :math:`\ell_1` critics.
 
 Classes:
 -------
 _SparseLinear2AdversarialGMM
     Base class for sparse linear adversarial GMM for nested NPIV.
 sparse2_l1vsl1
-    Sparse Linear NPIV estimator using :math:`\ell_1-\ell_1` optimization for nested NPIV.
+    Simultaneous estimator with coefficient :math:`\ell_1` penalties.
 sparse2_ridge_l1vsl1
-    Sparse Ridge NPIV estimator using :math:`\ell_1-\ell_1` optimization for nested NPIV.
+    Simultaneous estimator with empirical-L2 learner penalties.
 """
 
 # Licensed under the MIT License.
@@ -16,19 +15,19 @@ sparse2_ridge_l1vsl1
 import numpy as np
 from sklearn.linear_model import Lasso, LassoCV, ElasticNet
 from sklearn.base import clone
-from nnpiv.linear.utilities import cross_product
+from nnpiv.linear.utilities import cross_product, quadratic_min_l1
 
 
 class _SparseLinear2AdversarialGMM:
-    """
+    r"""
     Base class for sparse linear adversarial GMM for nested NPIV.
 
     This class implements common functionality for sparse linear models using adversarial GMM in a nested NPIV setting.
 
     Parameters:
-        mu (float): Regularization parameter.
-        V1 (int): Budget parameter for the first stage.
-        V2 (int): Budget parameter for the second stage.
+        mu (float): Nonnegative learner regularization coefficient.
+        V1 (float): Nonnegative :math:`\ell_1` radius for ``alpha``.
+        V2 (float): Nonnegative :math:`\ell_1` radius for ``beta``.
         eta_alpha (str or float): Learning rate for alpha.
         eta_w1 (str or float): Learning rate for w1.
         eta_beta (str or float): Learning rate for beta.
@@ -54,6 +53,42 @@ class _SparseLinear2AdversarialGMM:
         self.sparsity = sparsity
         self.fit_intercept = fit_intercept
 
+    def _validate_parameters(self):
+        if self.n_iter < 2:
+            raise ValueError("n_iter must be at least 2")
+        if self.V1 < 0 or self.V2 < 0:
+            raise ValueError("V1 and V2 must be nonnegative")
+        if self.mu < 0:
+            raise ValueError("mu must be nonnegative")
+
+    def _set_subset_weights(self, n, subsetted, subset_ind1, subset_ind2):
+        self.weights1 = np.ones(n)
+        self.weights2 = np.ones(n)
+        if not subsetted:
+            return
+        if subset_ind1 is None:
+            raise ValueError("subset_ind1 must be provided when subsetted is True")
+
+        subset_ind1 = np.asarray(subset_ind1).reshape(-1)
+        if subset_ind1.size != n:
+            raise ValueError("subset_ind1 must have the same length as Y")
+        if not np.all(np.isin(subset_ind1, [0, 1])):
+            raise ValueError("subset_ind1 must contain only 0 and 1")
+
+        if subset_ind2 is None:
+            subset_ind2 = 1 - subset_ind1
+        else:
+            subset_ind2 = np.asarray(subset_ind2).reshape(-1)
+            if subset_ind2.size != n:
+                raise ValueError("subset_ind2 must have the same length as Y")
+            if not np.all(np.isin(subset_ind2, [0, 1])):
+                raise ValueError("subset_ind2 must contain only 0 and 1")
+
+        if np.sum(subset_ind1) == 0 or np.sum(subset_ind2) == 0:
+            raise ValueError("each selected subset must contain an observation")
+        self.weights1 = subset_ind1.astype(float)
+        self.weights2 = subset_ind2.astype(float)
+
     def weighted_mean(self, arr, weights, axis=0):
         """
         Compute the weighted mean of an array.
@@ -77,12 +112,13 @@ class _SparseLinear2AdversarialGMM:
         Check and preprocess input arrays.
 
         Parameters:
-            A (array-like): Covariates for the first stage.
-            B (array-like): Covariates for the second stage.
-            C (array-like): Instrumental variables for the second stage.
-            D (array-like): Instrumental variables for the first stage.
+            A (array-like): Features for the first learner ``g``.
+            B (array-like): Features for the second learner ``h``.
+            C (array-like): Instruments for the ``h - W*g`` moment.
+            D (array-like): Instruments for the ``Y - g`` moment.
             Y (array-like): Outcomes.
-            W (array-like): Weights.
+            W (array-like): Observation-level multiplier on the first learner
+                in the second bridge moment.
 
         Returns:
             tuple: Processed A, B, C, D, Y, W.
@@ -99,12 +135,12 @@ class _SparseLinear2AdversarialGMM:
         Predict using the fitted model.
 
         Parameters:
-            B (array-like): Covariates for the second stage.
-            args (array-like): Optional covariates for the first stage.
+            B (array-like): Features for the second learner ``h``.
+            args (array-like): Optional features for the first learner ``g``.
 
         Returns:
-            array: Predicted values for the second stage.
-            If args are provided, also returns predicted values for the first stage.
+            array or tuple: Predictions for ``h``. If ``A`` is also supplied,
+            returns ``(h(B), g(A))``.
         """
         if len(args) == 0:
             if self.fit_intercept:
@@ -129,10 +165,25 @@ class _SparseLinear2AdversarialGMM:
 
 
 class sparse2_l1vsl1(_SparseLinear2AdversarialGMM):
-    r"""
-    Sparse Linear NPIV estimator using :math:`\ell_1-\ell_1` optimization for nested NPIV.
+    r"""Nested sparse NPIV with coefficient :math:`\ell_1` penalties.
 
-    This class solves the high-dimensional sparse linear problem using :math:`\ell_1` relaxations for the minimax optimization problem in a nested NPIV setting.
+    Define
+    :math:`r_1(\alpha)=\mathbb E_p[D(Y-A^\top\alpha)]` and
+    :math:`r_2(\alpha,\beta)=
+    \mathbb E_q[C((WA)^\top\alpha-B^\top\beta)]`. The linear-critic game is
+
+    .. math::
+
+        \min_{\substack{\|\alpha\|_1\leq V_1\\
+                        \|\beta\|_1\leq V_2}}
+        \max_{\substack{\|\theta_1\|_1\leq1\\
+                        \|\theta_2\|_1\leq1}}
+        \theta_1^\top r_1+\theta_2^\top r_2
+        +\mu(\|\alpha\|_1+\|\beta\|_1).
+
+    OFTRL operates on positive-negative lifts and averages feasible iterates.
+    The reported ``duality_gap_`` is the constrained best-response gap for
+    this game.
 
     Parameters:
         Same as `_SparseLinear2AdversarialGMM`.
@@ -145,32 +196,36 @@ class sparse2_l1vsl1(_SparseLinear2AdversarialGMM):
         The ensembles can be thought of as primal and dual solutions, and the duality gap can be used as a certificate for convergence of the algorithm.
 
         Parameters:
-            A (array-like): Covariates for the first stage.
-            B (array-like): Covariates for the second stage.
-            C (array-like): Instrumental variables for the second stage.
-            D (array-like): Instrumental variables for the first stage.
+            A (array-like): Features for the first learner ``g``.
+            B (array-like): Features for the second learner ``h``.
+            C (array-like): Instruments for the ``h - W*g`` moment.
+            D (array-like): Instruments for the ``Y - g`` moment.
             Y (array-like): Outcomes.
-            W (array-like): Weights.
+            W (array-like): Observation-level bridge multiplier.
 
         Returns:
             bool: True if the duality gap is below the tolerance level, indicating convergence.
         """
-        self.max_response_loss_ = np.linalg.norm(self.weighted_mean(D * (Y - np.dot(A, self.alpha_)).reshape(-1, 1), self.weights1, axis=0), ord=np.inf)\
-            + np.linalg.norm(self.weighted_mean(C * (np.dot(W * A, self.alpha_) - np.dot(B, self.beta_)).reshape(-1, 1), self.weights2, axis=0), ord=np.inf)\
+        first_moment = self.weighted_mean(
+            D * (Y - np.dot(A, self.alpha_)).reshape(-1, 1),
+            self.weights1, axis=0)
+        second_moment = self.weighted_mean(
+            C * (np.dot(W * A, self.alpha_) - np.dot(B, self.beta_)).reshape(-1, 1),
+            self.weights2, axis=0)
+        alpha_gradient = -self.weighted_mean(
+            A * np.dot(D, self.w1_).reshape(-1, 1), self.weights1, axis=0)\
+            + self.weighted_mean(
+                W * A * np.dot(C, self.w2_).reshape(-1, 1),
+                self.weights2, axis=0)
+        beta_gradient = -self.weighted_mean(
+            B * np.dot(C, self.w2_).reshape(-1, 1), self.weights2, axis=0)
+
+        self.max_response_loss_ = np.linalg.norm(first_moment, ord=np.inf)\
+            + np.linalg.norm(second_moment, ord=np.inf)\
             + self.mu * np.linalg.norm(self.alpha_, ord=1) + self.mu * np.linalg.norm(self.beta_, ord=1)
-              
         self.min_response_loss_ = self.weighted_mean(Y * np.dot(D, self.w1_), self.weights1)\
-            + self.V1 * np.clip(self.mu - 2 * np.linalg.norm(self.weighted_mean(A * np.dot(D, self.w1_).reshape(-1, 1),
-                                                                            self.weights1, axis=0),
-                                                                    ord=np.inf)
-                                        + 2 * np.linalg.norm(self.weighted_mean(W * A * np.dot(C, self.w2_).reshape(-1, 1),
-                                                                self.weights2, axis=0),
-                                                            ord=np.inf),
-                                                   -np.inf, 0)\
-            + self.V2 * np.clip(self.mu - 2 * np.linalg.norm(self.weighted_mean(B * np.dot(C, self.w2_).reshape(-1, 1),
-                                                                self.weights2, axis=0),
-                                                            ord=np.inf),
-                                                   -np.inf, 0)
+            - self.V1 * max(np.linalg.norm(alpha_gradient, ord=np.inf) - self.mu, 0)\
+            - self.V2 * max(np.linalg.norm(beta_gradient, ord=np.inf) - self.mu, 0)
         
         self.duality_gap_ = self.max_response_loss_ - self.min_response_loss_
         return self.duality_gap_ < self.tol
@@ -190,32 +245,28 @@ class sparse2_l1vsl1(_SparseLinear2AdversarialGMM):
         Fit the model.
 
         Parameters:
-            A (array-like): Covariates for the first stage.
-            B (array-like): Covariates for the second stage.
-            C (array-like): Instrumental variables for the second stage.
-            D (array-like): Instrumental variables for the first stage.
+            A (array-like): Features for the first learner ``g``.
+            B (array-like): Features for the second learner ``h``.
+            C (array-like): Instruments for the ``h - W*g`` moment.
+            D (array-like): Instruments for the ``Y - g`` moment.
             Y (array-like): Outcomes.
-            W (array-like, optional): Weights. Defaults to None.
-            subsetted (bool, optional): Whether to use subsets. Defaults to False.
-            subset_ind1 (array-like, optional): Subset indices for the first stage. Required if subsetted is True.
-            subset_ind2 (array-like, optional): Subset indices for the second stage. Defaults to None.
+            W (array-like, optional): Observation-level multiplier on ``g`` in
+                the second bridge moment. ``None`` uses ones.
+            subsetted (bool, optional): Use stage-specific empirical means.
+            subset_ind1 (array-like, optional): Nonempty binary mask for the
+                ``Y - g`` moment; required when ``subsetted=True``.
+            subset_ind2 (array-like, optional): Nonempty binary mask for the
+                ``h - W*g`` moment. If omitted, uses the complement of
+                ``subset_ind1``. Explicit masks need not partition the sample.
 
         Returns:
             self: Fitted estimator.
         """
+        self._validate_parameters()
         W = np.ones(Y.shape[0]) if W is None else W 
         A, B, C, D, Y, W = self._check_input(A, B, C, D, Y, W) 
-        self.weights1 = np.ones(Y.shape[0])
-        self.weights2 = np.ones(Y.shape[0])
-        if subsetted:
-            if subset_ind1 is None:
-                raise ValueError("subset_ind1 must be provided when subsetted is True")
-            if len(subset_ind1) != len(Y):
-                raise ValueError("subset_ind1 must have the same length as Y")
-            ind1 = np.where(subset_ind1==0)[0] 
-            ind2 = np.where(subset_ind2==0)[0] if subset_ind2 is not None else np.where(subset_ind1==1)[0]  
-            self.weights1[ind1] = 0
-            self.weights2[ind2] = 0
+        self._set_subset_weights(
+            Y.shape[0], subsetted, subset_ind1, subset_ind2)
          
         T = self.n_iter
         d_a = A.shape[1]
@@ -249,11 +300,11 @@ class sparse2_l1vsl1(_SparseLinear2AdversarialGMM):
             if t == 2:
                 self.duality_gaps = []
                 alpha = np.ones(2 * d_a) * V1 / (2 * d_a)
-                beta = np.ones(2 * d_b) * V1 / (2 * d_b)
+                beta = np.ones(2 * d_b) * V2 / (2 * d_b)
                 w1 = np.ones(2 * d_d) / (2 * d_d)
                 w2 = np.ones(2 * d_c) / (2 * d_c)
                 alpha_acc = np.ones(2 * d_a) * V1 / (2 * d_a)
-                beta_acc = np.ones(2 * d_b) * V1 / (2 * d_b)
+                beta_acc = np.ones(2 * d_b) * V2 / (2 * d_b)
                 w1_acc = np.ones(2 * d_d) / (2 * d_d)
                 w2_acc = np.ones(2 * d_c) / (2 * d_c)
                 res1 = np.zeros(2 * d_d)
@@ -364,17 +415,31 @@ class sparse2_l1vsl1(_SparseLinear2AdversarialGMM):
         self.alpha_ = alpha_acc[:d_a] - alpha_acc[d_a:]
         self.beta_ = beta_acc[:d_b] - beta_acc[d_b:]
         self.w1_ = w1_acc[:d_d] - w1_acc[d_d:]
-        self.w2_ = w2_acc[:d_c] - w2_acc[d_c]
+        self.w2_ = w2_acc[:d_c] - w2_acc[d_c:]
         
         self._post_process(A, B, C, D, Y, W)
         return self
 
 
 class sparse2_ridge_l1vsl1(_SparseLinear2AdversarialGMM):
-    r"""
-    Sparse Ridge NPIV estimator using :math:`\ell_1-\ell_1` optimization for nested NPIV.
+    r"""Nested sparse NPIV with empirical-L2 learner penalties.
 
-    This class solves the high-dimensional sparse ridge problem using :math:`\ell_1` relaxations for the minimax optimization problem in a nested NPIV setting.
+    Using the moments :math:`r_1,r_2` defined by
+    :class:`sparse2_l1vsl1`, this linear-critic estimator replaces the
+    coefficient penalties by
+
+    .. math::
+
+        \frac{\mu}{2}\left(
+        \alpha^\top\mathbb E_n[AA^\top]\alpha+
+        \beta^\top\mathbb E_n[BB^\top]\beta\right).
+
+    The stage moments use their normalized stage samples, while both ridge
+    terms use the full sample. ``duality_gap_`` computes the exact quadratic
+    learner best responses over the two :math:`\ell_1` balls. This is the
+    linear-critic variant; use
+    :class:`nnpiv.linear.sparse2_ridge_quadratic_l1vsl1` for quadratically
+    penalized critics.
 
     Parameters:
         Same as `_SparseLinear2AdversarialGMM`.
@@ -387,29 +452,40 @@ class sparse2_ridge_l1vsl1(_SparseLinear2AdversarialGMM):
         The ensembles can be thought of as primal and dual solutions, and the duality gap can be used as a certificate for convergence of the algorithm.
 
         Parameters:
-            A (array-like): Covariates for the first stage.
-            B (array-like): Covariates for the second stage.
-            C (array-like): Instrumental variables for the second stage.
-            D (array-like): Instrumental variables for the first stage.
+            A (array-like): Features for the first learner ``g``.
+            B (array-like): Features for the second learner ``h``.
+            C (array-like): Instruments for the ``h - W*g`` moment.
+            D (array-like): Instruments for the ``Y - g`` moment.
             Y (array-like): Outcomes.
-            W (array-like): Weights.
+            W (array-like): Observation-level bridge multiplier.
 
         Returns:
             bool: True if the duality gap is below the tolerance level, indicating convergence.
         """
-        self.max_response_loss_ = np.linalg.norm(self.weighted_mean(D * (Y - np.dot(A, self.alpha_)).reshape(-1, 1), self.weights1, axis=0), ord=np.inf)\
-            + np.linalg.norm(self.weighted_mean(C * (np.dot(A * W, self.alpha_) - np.dot(B, self.beta_)).reshape(-1, 1), self.weights2, axis=0), ord=np.inf)\
-            + self.mu * self.alpha_.T @ self.aa @ self.alpha_ + self.mu * self.beta_.T @ self.bb @ self.beta_
-            
-        self.min_response_loss_ = 2 * self.weighted_mean(Y * np.dot(D, self.w1_), self.weights1)\
-            - (self.msvp_a/self.mu) * np.linalg.norm(self.weighted_mean(A * np.dot(D, self.w1_).reshape(-1, 1), self.weights1,
-                                                            axis=0)
-                                                    - self.weighted_mean(W * A * np.dot(C, self.w2_).reshape(-1, 1), self.weights2,
-                                                            axis=0),
-                                                    ord=2)\
-            - (self.msvp_b/self.mu) * np.linalg.norm(self.weighted_mean(B * np.dot(C, self.w2_).reshape(-1, 1), self.weights2,
-                                                            axis=0),
-                                                    ord=2)
+        first_moment = self.weighted_mean(
+            D * (Y - np.dot(A, self.alpha_)).reshape(-1, 1),
+            self.weights1, axis=0)
+        second_moment = self.weighted_mean(
+            C * (np.dot(A * W, self.alpha_) - np.dot(B, self.beta_)).reshape(-1, 1),
+            self.weights2, axis=0)
+        alpha_gradient = -self.weighted_mean(
+            A * np.dot(D, self.w1_).reshape(-1, 1), self.weights1, axis=0)\
+            + self.weighted_mean(
+                W * A * np.dot(C, self.w2_).reshape(-1, 1),
+                self.weights2, axis=0)
+        beta_gradient = -self.weighted_mean(
+            B * np.dot(C, self.w2_).reshape(-1, 1), self.weights2, axis=0)
+
+        self.max_response_loss_ = np.linalg.norm(first_moment, ord=np.inf)\
+            + np.linalg.norm(second_moment, ord=np.inf)\
+            + .5 * self.mu * self.alpha_.T @ self.aa @ self.alpha_\
+            + .5 * self.mu * self.beta_.T @ self.bb @ self.beta_
+        self.min_response_loss_ = self.weighted_mean(
+            Y * np.dot(D, self.w1_), self.weights1)\
+            + quadratic_min_l1(
+                alpha_gradient, self.aa, self.mu, self.V1, self.aa_pinv)\
+            + quadratic_min_l1(
+                beta_gradient, self.bb, self.mu, self.V2, self.bb_pinv)
         
         self.duality_gap_ = self.max_response_loss_ - self.min_response_loss_
         return self.duality_gap_ < self.tol
@@ -429,32 +505,28 @@ class sparse2_ridge_l1vsl1(_SparseLinear2AdversarialGMM):
         Fit the model.
 
         Parameters:
-            A (array-like): Covariates for the first stage.
-            B (array-like): Covariates for the second stage.
-            C (array-like): Instrumental variables for the second stage.
-            D (array-like): Instrumental variables for the first stage.
+            A (array-like): Features for the first learner ``g``.
+            B (array-like): Features for the second learner ``h``.
+            C (array-like): Instruments for the ``h - W*g`` moment.
+            D (array-like): Instruments for the ``Y - g`` moment.
             Y (array-like): Outcomes.
-            W (array-like, optional): Weights. Defaults to None.
-            subsetted (bool, optional): Whether to use subsets. Defaults to False.
-            subset_ind1 (array-like, optional): Subset indices for the first stage. Required if subsetted is True.
-            subset_ind2 (array-like, optional): Subset indices for the second stage. Defaults to None.
+            W (array-like, optional): Observation-level multiplier on ``g`` in
+                the second bridge moment. ``None`` uses ones.
+            subsetted (bool, optional): Use stage-specific empirical means.
+            subset_ind1 (array-like, optional): Nonempty binary mask for the
+                ``Y - g`` moment; required when ``subsetted=True``.
+            subset_ind2 (array-like, optional): Nonempty binary mask for the
+                ``h - W*g`` moment. If omitted, uses the complement of
+                ``subset_ind1``. Explicit masks need not partition the sample.
 
         Returns:
             self: Fitted estimator.
         """
+        self._validate_parameters()
         W = np.ones(Y.shape[0]) if W is None else W
         A, B, C, D, Y, W = self._check_input(A, B, C, D, Y, W) 
-        self.weights1 = np.ones(Y.shape[0])
-        self.weights2 = np.ones(Y.shape[0])
-        if subsetted:
-            if subset_ind1 is None:
-                raise ValueError("subset_ind1 must be provided when subsetted is True")
-            if len(subset_ind1) != len(Y):
-                raise ValueError("subset_ind1 must have the same length as Y")
-            ind1 = np.where(subset_ind1==0)[0] 
-            ind2 = np.where(subset_ind2==0)[0] if subset_ind2 is not None else np.where(subset_ind1==1)[0]  
-            self.weights1[ind1] = 0
-            self.weights2[ind2] = 0
+        self._set_subset_weights(
+            Y.shape[0], subsetted, subset_ind1, subset_ind2)
         
         T = self.n_iter
         d_a = A.shape[1]
@@ -473,15 +545,10 @@ class sparse2_ridge_l1vsl1(_SparseLinear2AdversarialGMM):
         yd = self.weighted_mean(Y.reshape(-1, 1) * D, self.weights1, axis=0)
         aa = np.mean(cross_product(A, A), axis=0).reshape(d_a, d_a).T
         self.aa = aa
-        Sigma = np.linalg.svd(aa, compute_uv=False)
-        sigma_min = np.min(Sigma[Sigma > 1e-10])  
-        self.msvp_a = 1 / sigma_min
-
+        self.aa_pinv = np.linalg.pinv(aa)
         bb = np.mean(cross_product(B, B), axis=0).reshape(d_b, d_b).T
         self.bb = bb
-        Sigma = np.linalg.svd(bb, compute_uv=False)
-        sigma_min = np.min(Sigma[Sigma > 1e-10])
-        self.msvp_b = 1 / sigma_min
+        self.bb_pinv = np.linalg.pinv(bb)
 
         if d_a * d_d < n**2:
             ad = self.weighted_mean(cross_product(A, D), self.weights1,
@@ -500,11 +567,11 @@ class sparse2_ridge_l1vsl1(_SparseLinear2AdversarialGMM):
             if t == 2:
                 self.duality_gaps = []
                 alpha = np.ones(2 * d_a) * V1 / (2 * d_a)
-                beta = np.ones(2 * d_b) * V1 / (2 * d_b)
+                beta = np.ones(2 * d_b) * V2 / (2 * d_b)
                 w1 = np.ones(2 * d_d) / (2 * d_d)
                 w2 = np.ones(2 * d_c) / (2 * d_c)
                 alpha_acc = np.ones(2 * d_a) * V1 / (2 * d_a)
-                beta_acc = np.ones(2 * d_b) * V1 / (2 * d_b)
+                beta_acc = np.ones(2 * d_b) * V2 / (2 * d_b)
                 w1_acc = np.ones(2 * d_d) / (2 * d_d)
                 w2_acc = np.ones(2 * d_c) / (2 * d_c)
                 res1 = np.zeros(2 * d_d)
@@ -611,7 +678,7 @@ class sparse2_ridge_l1vsl1(_SparseLinear2AdversarialGMM):
         self.alpha_ = alpha_acc[:d_a] - alpha_acc[d_a:]
         self.beta_ = beta_acc[:d_b] - beta_acc[d_b:]
         self.w1_ = w1_acc[:d_d] - w1_acc[d_d:]
-        self.w2_ = w2_acc[:d_c] - w2_acc[d_c]
+        self.w2_ = w2_acc[:d_c] - w2_acc[d_c:]
         
         self._post_process(A, B, C, D, Y, W)
         return self

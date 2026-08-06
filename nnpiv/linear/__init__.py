@@ -4,7 +4,9 @@
 Public linear/sparse estimator API for nested NPIV.
 
 This module re-exports optimization-based sparse linear estimators and their
-ridge/L1/L2 variants used in sequential and simultaneous formulations.
+ridge/L1/L2 variants used in sequential and simultaneous formulations. It also
+exposes the simultaneous empirical-L2 estimator with quadratically penalized
+critics, :class:`sparse2_ridge_quadratic_l1vsl1`.
 """
 
 from .sparse_linear import OptimisticHedgeVsOptimisticHedge,\
@@ -15,6 +17,7 @@ from .sparse_linear import OptimisticHedgeVsOptimisticHedge,\
     L2SubGradient, L2ProxGradient, L2OptimisticHedgeVsOGD
 from .sparse_l1_l1 import sparse_l1vsl1, sparse_ridge_l1vsl1
 from .sparse2_l1_l1 import sparse2_l1vsl1, sparse2_ridge_l1vsl1
+from .sparse2_quadratic_l1_l1 import sparse2_ridge_quadratic_l1vsl1
 from . sparse_l2_l2 import sparse_l2vsl2, sparse_ridge_l2vsl2
 from .sparse2_l2_l2 import sparse2_l2vsl2, sparse2_ridge_l2vsl2
 
@@ -26,5 +29,6 @@ __all__ = ['OptimisticHedgeVsOptimisticHedge',
            'L2SubGradient', 'L2ProxGradient', 'L2OptimisticHedgeVsOGD',
            'sparse_l1vsl1', 'sparse_ridge_l1vsl1',
            'sparse2_l1vsl1', 'sparse2_ridge_l1vsl1',
+           'sparse2_ridge_quadratic_l1vsl1',
            'sparse_l2vsl2', 'sparse_ridge_l2vsl2',
            'sparse2_l2vsl2', 'sparse2_ridge_l2vsl2']

@@ -294,35 +294,8 @@ def prepare_localization(V, v_values, bw_loc, kernel, target_V=None):
     return V, v_values, bandwidth, normalizers
 
 
-def summarize_ratio_scores(score, loading):
-    """Estimate a ratio target and summarize its influence values.
-
-    The function solves ``mean(H - a * theta) = 0`` and therefore computes
-    ``theta = mean(H) / mean(a)``.  Its estimated influence values are
-    ``(H - a * theta) / mean(a)``; the denominator is required whenever the
-    loading is not normalized to have empirical mean one.
-
-    Parameters
-    ----------
-    score : array-like of shape (n_samples,) or (n_samples, n_targets)
-        Uncentered score contributions ``H``.
-    loading : array-like
-        Parameter loadings ``a``, broadcastable to the shape of ``score``.
-        Examples are one for an ordinary average, a normalized kernel
-        loading for a localized target, a normalized group indicator for a
-        subgroup target, or their product.
-
-    Returns
-    -------
-    theta : ndarray of shape (n_targets,)
-        Ratio estimates.
-    variance : ndarray of shape (n_targets,)
-        Sample variances of the estimated influence values.  These are not
-        divided by the sample size.
-    covariance : ndarray of shape (n_targets, n_targets)
-        Sample covariance of the estimated influence values across targets.
-        This is not divided by the sample size.
-    """
+def _ratio_estimate_and_influence(score, loading):
+    """Return a ratio estimate and its observation-level influence values."""
     score = np.asarray(score, dtype=float)
     loading = np.asarray(loading, dtype=float)
     if score.ndim == 1:
@@ -352,6 +325,111 @@ def summarize_ratio_scores(score, loading):
 
     theta = np.mean(score, axis=0) / loading_mean
     influence = (score - loading * theta) / loading_mean
+    return theta, influence
+
+
+def _summarize_influence(influence):
+    """Return the marginal variances and covariance of influence values."""
     variance = np.var(influence, axis=0, ddof=1)
     covariance = np.atleast_2d(np.cov(influence, rowvar=False))
+    return variance, covariance
+
+
+def align_crossfit_results(fold_results, test_indices, n_obs):
+    """Arrange cross-fitted fold scores in original observation order."""
+    if len(fold_results) != len(test_indices):
+        raise ValueError("fold_results and test_indices must have equal length.")
+
+    score_parts = []
+    loading_parts = []
+    index_parts = []
+    for result, test_index in zip(fold_results, test_indices):
+        score = np.asarray(result[0], dtype=float)
+        loading = np.asarray(result[1], dtype=float)
+        test_index = np.asarray(test_index, dtype=int).reshape(-1)
+        if score.ndim == 0 or loading.ndim == 0:
+            raise ValueError("Fold scores and loadings must include a sample axis.")
+        if score.shape[0] != test_index.size or loading.shape[0] != test_index.size:
+            raise ValueError(
+                "Each fold result must contain one score and loading per test row."
+            )
+        score_parts.append(score)
+        loading_parts.append(loading)
+        index_parts.append(test_index)
+
+    indices = np.concatenate(index_parts)
+    if indices.size != n_obs or not np.array_equal(
+        np.sort(indices), np.arange(n_obs)
+    ):
+        raise ValueError("Test indices must partition the observations exactly once.")
+
+    order = np.argsort(indices)
+    score = np.concatenate(score_parts, axis=0)[order]
+    loading = np.concatenate(loading_parts, axis=0)[order]
+    return score, loading
+
+
+def summarize_ratio_scores(score, loading):
+    """Estimate a ratio target and summarize its influence values.
+
+    The function solves ``mean(H - a * theta) = 0`` and therefore computes
+    ``theta = mean(H) / mean(a)``.  Its estimated influence values are
+    ``(H - a * theta) / mean(a)``; the denominator is required whenever the
+    loading is not normalized to have empirical mean one.
+
+    Parameters
+    ----------
+    score : array-like of shape (n_samples,) or (n_samples, n_targets)
+        Uncentered score contributions ``H``.
+    loading : array-like
+        Parameter loadings ``a``, broadcastable to the shape of ``score``.
+        Examples are one for an ordinary average, a normalized kernel
+        loading for a localized target, a normalized group indicator for a
+        subgroup target, or their product.
+
+    Returns
+    -------
+    theta : ndarray of shape (n_targets,)
+        Ratio estimates.
+    variance : ndarray of shape (n_targets,)
+        Sample variances of the estimated influence values.  These are not
+        divided by the sample size.
+    covariance : ndarray of shape (n_targets, n_targets)
+        Sample covariance of the estimated influence values across targets.
+        This is not divided by the sample size.
+    """
+    theta, influence = _ratio_estimate_and_influence(score, loading)
+    variance, covariance = _summarize_influence(influence)
+    return theta, variance, covariance
+
+
+def summarize_repeated_ratio_scores(score_reps, loading_reps):
+    """Summarize ratio scores averaged over repeated sample splits.
+
+    Scores and loadings for every repetition must be arranged in the same
+    observation order.  Each repetition is centered at its own ratio estimate;
+    inference is then based on the observation-level average of those
+    influence values.
+    """
+    if len(score_reps) == 0 or len(score_reps) != len(loading_reps):
+        raise ValueError(
+            "score_reps and loading_reps must have the same positive length."
+        )
+
+    theta_reps = []
+    influence_reps = []
+    for score, loading in zip(score_reps, loading_reps):
+        theta, influence = _ratio_estimate_and_influence(score, loading)
+        theta_reps.append(theta)
+        influence_reps.append(influence)
+
+    try:
+        theta = np.mean(np.stack(theta_reps, axis=0), axis=0)
+        influence = np.mean(np.stack(influence_reps, axis=0), axis=0)
+    except ValueError as exc:
+        raise ValueError(
+            "All repetitions must have matching sample and target dimensions."
+        ) from exc
+
+    variance, covariance = _summarize_influence(influence)
     return theta, variance, covariance
