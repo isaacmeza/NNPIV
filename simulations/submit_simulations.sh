@@ -190,6 +190,10 @@ case "${PROFILE}" in
     ;;
 esac
 
+# Keep configuration-specific runtime estimates within the selected profile's
+# configured wall-time limit.
+PROFILE_TIME_LIMIT="${TIME_LIMIT}"
+
 # Use empirical wall-time requests for single 5,000-replication configurations.
 # The 47-core profiles receive additional time relative to the 111-core profiles.
 if [[ -n "${CONFIG}" && ( -z "${N_EXPERIMENTS}" || "${N_EXPERIMENTS}" == "5000" ) && ${SMOKE_TEST} -eq 0 ]]; then
@@ -213,7 +217,7 @@ if [[ -n "${CONFIG}" && ( -z "${N_EXPERIMENTS}" || "${N_EXPERIMENTS}" == "5000" 
       choose_time "0-01:30" "0-03:00"
       ;;
     config_np_benchmark2)
-      choose_time "0-14:00" "1-07:00"
+      choose_time "1-00:00" "1-07:00"
       ;;
     config_np_nn)
       choose_time "0-07:00" "0-16:00"
@@ -234,10 +238,34 @@ if [[ -n "${CONFIG}" && ( -z "${N_EXPERIMENTS}" || "${N_EXPERIMENTS}" == "5000" 
     config_np_rkhs2ivl2)
       choose_time "0-06:00" "0-10:00"
       ;;
-    config_sp_approxrkhs2iv|config_sp_approxrkhs2ivl2|config_sp_rkhs2iv|config_sp_rkhs2ivl2)
+    config_sp_rkhs2ivl2)
+      choose_time "1-12:00" "3-12:00"
+      ;;
+    config_sp_approxrkhs2iv|config_sp_approxrkhs2ivl2|config_sp_rkhs2iv)
       choose_time "0-11:00" "1-01:00"
       ;;
   esac
+fi
+
+time_limit_seconds() {
+  local value="$1"
+  local days=0
+  local clock="${value}"
+  local hours minutes seconds
+
+  if [[ "${value}" == *-* ]]; then
+    days="${value%%-*}"
+    clock="${value#*-}"
+  fi
+
+  IFS=: read -r hours minutes seconds <<< "${clock}"
+  seconds="${seconds:-0}"
+  echo $((10#${days} * 86400 + 10#${hours} * 3600 + 10#${minutes} * 60 + 10#${seconds}))
+}
+
+if (( $(time_limit_seconds "${TIME_LIMIT}") > $(time_limit_seconds "${PROFILE_TIME_LIMIT}") )); then
+  echo "Requested time ${TIME_LIMIT} exceeds the ${PROFILE} profile limit ${PROFILE_TIME_LIMIT}; using ${PROFILE_TIME_LIMIT}." >&2
+  TIME_LIMIT="${PROFILE_TIME_LIMIT}"
 fi
 
 SBATCH_CMD=(
