@@ -143,3 +143,8 @@ temp/
 # logs from cluster runs
 *.err
 *.out
+
+# Monte Carlo result caches
+simulations/nonparametric_fit/*.jbl
+simulations/semiparametric_cov/*.jbl
+release-assets/

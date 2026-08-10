@@ -1,0 +1,15 @@
+config,partitions,method,job_ids,completed_batches,time_hms,jbl_sum_time_hms
+config_np_benchmark,shared,2SLS,37582696,4/4,0:00:16,
+config_np_benchmark2,sapphire/test,2SLS+Reg2SLS,37582756+37689757,4/4,17:43:48,
+config_np_nn,sapphire,AGMM2L2,37582758,4/4,5:17:12,
+config_np_rkhs2iv,test,RKHS2IV,37589092,4/4,2:27:24,
+config_np_rkhs2ivl2,test,RKHS2IVL2,37582896,4/4,5:52:24,
+config_np_approxrkhs2iv,test,ApproxRKHS2IV,37582898,4/4,0:02:30,
+config_np_approxrkhs2ivl2,test,ApproxRKHS2IVL2,37582899,4/4,0:03:28,
+config_sp_benchmark,shared,2SLS,37582978,4/4,0:01:16,0:20:40
+config_sp_benchmark2,shared,2SLS+Reg2SLS,37582990,8/8,1:32:04,71:22:15
+config_sp_nn,sapphire,AGMM2,37582994,4/4,38:40:06,4257:43:06
+config_sp_rkhs2iv,test,RKHS2IV,37583048,4/4,1:56:18,213:31:55
+config_sp_rkhs2ivl2,sapphire,RKHS2IVL2,37583353+37695051,4/4,28:01:48,3093:50:14
+config_sp_approxrkhs2iv,sapphire,ApproxRKHS2IV,37583354,4/4,0:11:12,19:51:12
+config_sp_approxrkhs2ivl2,test,ApproxRKHS2IVL2,37638544,4/4,0:14:12,25:50:40
