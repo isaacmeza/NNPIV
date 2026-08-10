@@ -1,9 +1,11 @@
 Nested Nonparametric Instrumental Variable Regression
 =====================================================
 
-.. image:: https://readthedocs.org/projects/nnpiv/badge/?version=latest
-    :target: https://nnpiv.readthedocs.io/en/latest/?badge=latest
+.. image:: https://app.readthedocs.org/projects/nnpiv/badge/?version=latest
+    :target: https://nnpiv.readthedocs.io/en/latest/
     :alt: Documentation Status
+
+Source code: `NNPIV on GitHub <https://github.com/isaacmeza/NNPIV>`_.
 
 Overview
 --------
