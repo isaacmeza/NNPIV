@@ -3,7 +3,7 @@
 \begin{tabular}{ccccccccc}
     & \multicolumn{3}{c}{Benchmarks} & \multicolumn{5}{c}{Proposals} \tabularnewline
     \cmidrule(lr){2-4}\cmidrule(lr){5-9}
-     & 2SLS & series & reg. & neural & RKHS & RKHS (variant) & RKHS (Nyström) & RKHS (variant Nyström) \tabularnewline
+     & 2SLS & series & reg. & neural & RKHS & RKHS2 & RKHS (Nyström) & RKHS2 (Nyström) \tabularnewline
     \hline
     linear & 4.9$\times 10^{-3}$ (7.5$\times 10^{-3}$) & 9.9$\times 10^{3}$ (6.3$\times 10^{4}$) & 0.522 (0.859) & 6.5$\times 10^{-3}$ (4.8$\times 10^{-3}$) & 0.015 (3.6$\times 10^{-3}$) & 5.3$\times 10^{-3}$ (7.8$\times 10^{-3}$) & 0.026 (0.022) & 5.3$\times 10^{-3}$ (7.8$\times 10^{-3}$) \tabularnewline
     pwlinear & 8.6$\times 10^{-3}$ (2.1$\times 10^{-3}$) & 1.1$\times 10^{4}$ (7.1$\times 10^{4}$) & 0.203 (0.353) & 0.012 (5.6$\times 10^{-3}$) & 0.010 (2.4$\times 10^{-3}$) & 8.8$\times 10^{-3}$ (2.1$\times 10^{-3}$) & 0.038 (0.031) & 8.8$\times 10^{-3}$ (2.1$\times 10^{-3}$) \tabularnewline
@@ -17,7 +17,7 @@
 \begin{tabular}{ccccccccc}
     & \multicolumn{3}{c}{Benchmarks} & \multicolumn{5}{c}{Proposals} \tabularnewline
     \cmidrule(lr){2-4}\cmidrule(lr){5-9}
-     & 2SLS & series & reg. & neural & RKHS & RKHS (variant) & RKHS (Nyström) & RKHS (variant Nyström) \tabularnewline
+     & 2SLS & series & reg. & neural & RKHS & RKHS2 & RKHS (Nyström) & RKHS2 (Nyström) \tabularnewline
     \hline
     bias & -6.8$\times 10^{-4}$ (0.114) & -4.4$\times 10^{5}$ (3.1$\times 10^{7}$) & -0.461 (11.461) & -1.6$\times 10^{-3}$ (0.121) & 0.075 (0.106) & -4.1$\times 10^{-4}$ (0.116) & -0.327 (5.605) & -4.1$\times 10^{-4}$ (0.116) \tabularnewline
     variance & 27.386 (2.573) & 4.5$\times 10^{10}$ (4.7$\times 10^{11}$) & 281.577 (417.562) & 30.211 (3.167) & 21.802 (1.579) & 28.163 (2.884) & 1.0$\times 10^{4}$ (4.4$\times 10^{4}$) & 28.163 (2.884) \tabularnewline
@@ -30,7 +30,7 @@
 \begin{tabular}{ccccccccc}
     & \multicolumn{3}{c}{Benchmarks} & \multicolumn{5}{c}{Proposals} \tabularnewline
     \cmidrule(lr){2-4}\cmidrule(lr){5-9}
-     & 2SLS & series & reg. & neural & RKHS & RKHS (variant) & RKHS (Nyström) & RKHS (variant Nyström) \tabularnewline
+     & 2SLS & series & reg. & neural & RKHS & RKHS2 & RKHS (Nyström) & RKHS2 (Nyström) \tabularnewline
     \hline
     bias & -0.028 (0.124) & -6.1$\times 10^{4}$ (2.0$\times 10^{6}$) & -3.2$\times 10^{-3}$ (0.120) & -0.020 (0.124) & 0.073 (0.108) & -0.027 (0.124) & 2.5$\times 10^{-3}$ (1.366) & -0.027 (0.124) \tabularnewline
     variance & 32.631 (4.289) & 4.5$\times 10^{11}$ (5.5$\times 10^{12}$) & 27.604 (3.112) & 32.027 (3.090) & 23.009 (1.590) & 31.972 (4.001) & 661.094 (2.4$\times 10^{3}$) & 31.972 (4.001) \tabularnewline
@@ -43,7 +43,7 @@
 \begin{tabular}{ccccccccc}
     & \multicolumn{3}{c}{Benchmarks} & \multicolumn{5}{c}{Proposals} \tabularnewline
     \cmidrule(lr){2-4}\cmidrule(lr){5-9}
-     & 2SLS & series & reg. & neural & RKHS & RKHS (variant) & RKHS (Nyström) & RKHS (variant Nyström) \tabularnewline
+     & 2SLS & series & reg. & neural & RKHS & RKHS2 & RKHS (Nyström) & RKHS2 (Nyström) \tabularnewline
     \hline
     bias & -0.022 (0.123) & -5.7$\times 10^{4}$ (3.2$\times 10^{6}$) & -6.3$\times 10^{-3}$ (0.130) & -0.032 (0.123) & 0.059 (0.108) & -0.022 (0.122) & 0.044 (0.474) & -0.022 (0.122) \tabularnewline
     variance & 31.793 (4.000) & 7.4$\times 10^{10}$ (8.7$\times 10^{11}$) & 34.961 (6.571) & 26.585 (2.180) & 22.427 (1.514) & 31.157 (3.729) & 321.518 (1.1$\times 10^{3}$) & 31.157 (3.729) \tabularnewline
@@ -56,7 +56,7 @@
 \begin{tabular}{ccccccccc}
     & \multicolumn{3}{c}{Benchmarks} & \multicolumn{5}{c}{Proposals} \tabularnewline
     \cmidrule(lr){2-4}\cmidrule(lr){5-9}
-     & 2SLS & series & reg. & neural & RKHS & RKHS (variant) & RKHS (Nyström) & RKHS (variant Nyström) \tabularnewline
+     & 2SLS & series & reg. & neural & RKHS & RKHS2 & RKHS (Nyström) & RKHS2 (Nyström) \tabularnewline
     \hline
     bias & -0.201 (11.010) & -2.2$\times 10^{8}$ (1.5$\times 10^{10}$) & -1.4$\times 10^{12}$ (6.5$\times 10^{13}$) & 0.050 (0.239) & -0.042 (0.977) & -3.1$\times 10^{-3}$ (0.170) & -223.111 (4.9$\times 10^{3}$) & -7.7$\times 10^{-3}$ (0.159) \tabularnewline
     variance & 3.1$\times 10^{3}$ (2.8$\times 10^{4}$) & 4.7$\times 10^{15}$ (4.9$\times 10^{16}$) & 2.0$\times 10^{27}$ (1.8$\times 10^{28}$) & 77.158 (65.803) & 1.2$\times 10^{3}$ (4.2$\times 10^{3}$) & 54.476 (26.739) & 1.5$\times 10^{9}$ (9.3$\times 10^{9}$) & 54.949 (24.208) \tabularnewline
@@ -67,41 +67,41 @@
 
 % Compact tables: entries use three decimals and one-significant-digit scientific notation.
 % Table 3: Compact nonparametric MSE
-\begin{tabular}{cccccc}
-    & \multicolumn{3}{c}{Benchmarks} & \multicolumn{2}{c}{Proposals} \tabularnewline
-    \cmidrule(lr){2-4}\cmidrule(lr){5-6}
-     & 2SLS & series & reg. & neural & RKHS \tabularnewline
+\begin{tabular}{ccccccc}
+    & \multicolumn{3}{c}{Benchmarks} & \multicolumn{3}{c}{Proposals} \tabularnewline
+    \cmidrule(lr){2-4}\cmidrule(lr){5-7}
+     & 2SLS & series & reg. & RKHS & RKHS2 & neural \tabularnewline
     \hline
-    linear & 0.005 & 1$\times 10^{4}$ & 0.523 & 0.006 & 0.015 \tabularnewline
-    pwlinear & 0.009 & 1$\times 10^{4}$ & 0.204 & 0.012 & 0.011 \tabularnewline
-    sigmoid & 0.006 & 2$\times 10^{4}$ & 0.076 & 0.010 & 0.014 \tabularnewline
-    exponential & 0.063 & 3$\times 10^{3}$ & 37.336 & 0.020 & 0.023 \tabularnewline
+    linear & 0.005 & 1$\times 10^{4}$ & 0.523 & 0.015 & 0.005 & 0.006 \tabularnewline
+    pwlinear & 0.009 & 1$\times 10^{4}$ & 0.204 & 0.011 & 0.009 & 0.012 \tabularnewline
+    sigmoid & 0.006 & 2$\times 10^{4}$ & 0.076 & 0.014 & 0.006 & 0.010 \tabularnewline
+    exponential & 0.063 & 3$\times 10^{3}$ & 37.336 & 0.023 & 0.060 & 0.020 \tabularnewline
     \hline
 \end{tabular}
 
 % Table 4: Compact semiparametric results
 % (a) Sigmoid DGP
-\begin{tabular}{cccccc}
-    & \multicolumn{3}{c}{Benchmarks} & \multicolumn{2}{c}{Proposals} \tabularnewline
-    \cmidrule(lr){2-4}\cmidrule(lr){5-6}
-     & 2SLS & series & reg. & neural & RKHS \tabularnewline
+\begin{tabular}{ccccccc}
+    & \multicolumn{3}{c}{Benchmarks} & \multicolumn{3}{c}{Proposals} \tabularnewline
+    \cmidrule(lr){2-4}\cmidrule(lr){5-7}
+     & 2SLS & series & reg. & RKHS & RKHS2 & neural \tabularnewline
     \hline
-    bias & -0.023 & -6$\times 10^{4}$ & -0.006 & -0.032 & 0.059 \tabularnewline
-    variance & 31.794 & 7$\times 10^{10}$ & 34.961 & 26.585 & 22.427 \tabularnewline
-    coverage & 0.949 & 0.922 & 0.943 & 0.918 & 0.894 \tabularnewline
-    length & 0.495 & 2$\times 10^{5}$ & 0.518 & 0.452 & 0.415 \tabularnewline
+    bias & -0.023 & -6$\times 10^{4}$ & -0.006 & 0.059 & -0.022 & -0.032 \tabularnewline
+    variance & 31.794 & 7$\times 10^{10}$ & 34.961 & 22.427 & 31.158 & 26.585 \tabularnewline
+    coverage & 0.949 & 0.922 & 0.943 & 0.894 & 0.946 & 0.918 \tabularnewline
+    length & 0.495 & 2$\times 10^{5}$ & 0.518 & 0.415 & 0.490 & 0.452 \tabularnewline
     \hline
 \end{tabular}
 
 % (b) Exponential DGP
-\begin{tabular}{cccccc}
-    & \multicolumn{3}{c}{Benchmarks} & \multicolumn{2}{c}{Proposals} \tabularnewline
-    \cmidrule(lr){2-4}\cmidrule(lr){5-6}
-     & 2SLS & series & reg. & neural & RKHS \tabularnewline
+\begin{tabular}{ccccccc}
+    & \multicolumn{3}{c}{Benchmarks} & \multicolumn{3}{c}{Proposals} \tabularnewline
+    \cmidrule(lr){2-4}\cmidrule(lr){5-7}
+     & 2SLS & series & reg. & RKHS & RKHS2 & neural \tabularnewline
     \hline
-    bias & -0.202 & -2$\times 10^{8}$ & -1$\times 10^{12}$ & 0.050 & -0.042 \tabularnewline
-    variance & 3$\times 10^{3}$ & 5$\times 10^{15}$ & 2$\times 10^{27}$ & 77.158 & 1$\times 10^{3}$ \tabularnewline
-    coverage & 0.958 & 0.982 & 0.881 & 0.940 & 0.966 \tabularnewline
-    length & 11.132 & 9$\times 10^{8}$ & 1$\times 10^{13}$ & 0.781 & 2.261 \tabularnewline
+    bias & -0.202 & -2$\times 10^{8}$ & -1$\times 10^{12}$ & -0.042 & -0.003 & 0.050 \tabularnewline
+    variance & 3$\times 10^{3}$ & 5$\times 10^{15}$ & 2$\times 10^{27}$ & 1$\times 10^{3}$ & 54.477 & 77.158 \tabularnewline
+    coverage & 0.958 & 0.982 & 0.881 & 0.966 & 0.951 & 0.940 \tabularnewline
+    length & 11.132 & 9$\times 10^{8}$ & 1$\times 10^{13}$ & 2.261 & 0.661 & 0.781 \tabularnewline
     \hline
 \end{tabular}
